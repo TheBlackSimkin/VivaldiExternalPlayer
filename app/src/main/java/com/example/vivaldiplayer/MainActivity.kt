@@ -18,8 +18,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var urlInput: EditText
     private lateinit var resolveButton: Button
+    private lateinit var browserResolveButton: Button
     private lateinit var progress: ProgressBar
     private lateinit var status: TextView
+
+    private var lastFailedUrl: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,19 +37,45 @@ class MainActivity : AppCompatActivity() {
         resolveButton =
             findViewById(R.id.resolve_button)
 
+        browserResolveButton =
+            findViewById(R.id.browser_resolve_button)
+
         progress =
             findViewById(R.id.progress)
 
         status =
             findViewById(R.id.status)
 
-        acceptSharedUrl(intent)
-
         resolveButton.setOnClickListener {
             resolveAndPlay(
                 urlInput.text.toString()
             )
         }
+
+        browserResolveButton.setOnClickListener {
+            val url =
+                lastFailedUrl
+                    ?: urlInput.text
+                        .toString()
+                        .trim()
+
+            if (
+                url.startsWith("https://") ||
+                url.startsWith("http://")
+            ) {
+                startActivity(
+                    Intent(
+                        this,
+                        BrowserResolverActivity::class.java
+                    ).putExtra(
+                        BrowserResolverActivity.EXTRA_URL,
+                        url
+                    )
+                )
+            }
+        }
+
+        acceptSharedUrl(intent)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -88,15 +117,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun resolveAndPlay(url: String) {
 
+        val cleanUrl =
+            url.trim()
+
         if (
-            !url.startsWith("http://") &&
-            !url.startsWith("https://")
+            !cleanUrl.startsWith("http://") &&
+            !cleanUrl.startsWith("https://")
         ) {
             status.text =
                 "Paste or share a complete web address."
 
             return
         }
+
+        lastFailedUrl = null
+
+        browserResolveButton.visibility =
+            View.GONE
 
         setBusy(true)
 
@@ -115,7 +152,7 @@ class MainActivity : AppCompatActivity() {
                         .getModule("resolver")
                         .callAttr(
                             "resolve",
-                            url,
+                            cleanUrl,
                             "auto"
                         )
                         .toString()
@@ -124,6 +161,11 @@ class MainActivity : AppCompatActivity() {
             }.onSuccess { json ->
 
                 setBusy(false)
+
+                status.text = ""
+
+                browserResolveButton.visibility =
+                    View.GONE
 
                 startActivity(
                     Intent(
@@ -135,15 +177,38 @@ class MainActivity : AppCompatActivity() {
                     )
                 )
 
-                status.text = ""
-
             }.onFailure { error ->
 
                 setBusy(false)
 
-                status.text =
+                lastFailedUrl =
+                    cleanUrl
+
+                browserResolveButton.visibility =
+                    View.VISIBLE
+
+                val technical =
                     error.message
                         ?: error.toString()
+
+                status.text =
+                    buildString {
+                        appendLine(
+                            "Direct resolver failed."
+                        )
+
+                        appendLine()
+
+                        appendLine(technical)
+
+                        appendLine()
+
+                        append(
+                            "Browser-assisted mode is available as a fallback. " +
+                            "It does not automate challenges, DRM, subscriptions, " +
+                            "authentication, or regional access controls."
+                        )
+                    }
             }
         }
     }
@@ -158,6 +223,9 @@ class MainActivity : AppCompatActivity() {
             }
 
         resolveButton.isEnabled =
+            !busy
+
+        browserResolveButton.isEnabled =
             !busy
 
         urlInput.isEnabled =
