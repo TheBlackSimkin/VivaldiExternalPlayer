@@ -119,9 +119,12 @@ class PlayerActivity : AppCompatActivity() {
             ) ?: return finish()
 
         val resolved =
-            ResolvedMedia.fromJson(json)
+            ResolvedMedia.fromJson(
+                json
+            )
 
-        title = resolved.title
+        title =
+            resolved.title
 
         createPlayer()
 
@@ -132,9 +135,12 @@ class PlayerActivity : AppCompatActivity() {
         }
 
         loadResolvedMedia(
-            resolved = resolved,
-            startPositionMs = 0L,
-            playWhenReady = true
+            resolved =
+                resolved,
+            startPositionMs =
+                0L,
+            playWhenReady =
+                true
         )
     }
 
@@ -189,7 +195,9 @@ class PlayerActivity : AppCompatActivity() {
 
         val playbackSource:
             MediaSource =
-            when (resolved.mode) {
+            when (
+                resolved.mode
+            ) {
 
                 "merged" -> {
 
@@ -214,6 +222,7 @@ class PlayerActivity : AppCompatActivity() {
                 }
 
                 else -> {
+
                     primaryMediaSourceFactory
                         .createMediaSource(
                             previewItem
@@ -230,7 +239,9 @@ class PlayerActivity : AppCompatActivity() {
             playbackSource
         )
 
-        if (startPositionMs > 0L) {
+        if (
+            startPositionMs > 0L
+        ) {
             exoPlayer.seekTo(
                 startPositionMs
             )
@@ -265,7 +276,33 @@ class PlayerActivity : AppCompatActivity() {
 
     private fun showQualityDialog() {
 
-        if (qualityChangeInProgress) {
+        if (
+            qualityChangeInProgress
+        ) {
+            return
+        }
+
+        val resolved =
+            currentResolved
+                ?: return
+
+        /*
+         * Browser-assisted mode currently plays exactly
+         * the media source detected by WebView.
+         *
+         * We deliberately do not send the webpage back
+         * through Python when changing quality.
+         */
+        if (
+            resolved.resolverMode ==
+            "browser"
+        ) {
+            Toast.makeText(
+                this,
+                "Browser-assisted streams currently use the quality supplied by the detected stream.",
+                Toast.LENGTH_LONG
+            ).show()
+
             return
         }
 
@@ -288,15 +325,15 @@ class PlayerActivity : AppCompatActivity() {
             )
 
         val currentKey =
-            currentResolved
-                ?.requestedQuality
-                ?: "auto"
+            resolved.requestedQuality
 
         val checkedIndex =
             keys.indexOf(
                 currentKey
             ).let {
-                if (it >= 0) {
+                if (
+                    it >= 0
+                ) {
                     it
                 } else {
                     0
@@ -311,7 +348,9 @@ class PlayerActivity : AppCompatActivity() {
             .setSingleChoiceItems(
                 labels,
                 checkedIndex
-            ) { dialog, which ->
+            ) {
+                dialog,
+                which ->
 
                 dialog.dismiss()
 
@@ -342,11 +381,19 @@ class PlayerActivity : AppCompatActivity() {
             currentResolved
                 ?: return
 
+        if (
+            resolved.resolverMode !=
+            "ytdlp"
+        ) {
+            return
+        }
+
         val webpageUrl =
             resolved.webpageUrl
 
-        if (webpageUrl.isBlank()) {
-
+        if (
+            webpageUrl.isBlank()
+        ) {
             Toast.makeText(
                 this,
                 "The original webpage URL is unavailable.",
@@ -394,13 +441,17 @@ class PlayerActivity : AppCompatActivity() {
                         .toString()
                 }
 
-            }.onSuccess { json ->
+            }.onSuccess {
+                json ->
 
                 val newResolved =
                     ResolvedMedia
                         .fromJson(
                             json
                         )
+
+                qualityChangeInProgress =
+                    false
 
                 loadResolvedMedia(
                     resolved =
@@ -410,12 +461,6 @@ class PlayerActivity : AppCompatActivity() {
                     playWhenReady =
                         shouldResume
                 )
-
-                qualityChangeInProgress =
-                    false
-
-                qualityButton.isEnabled =
-                    true
 
                 val actual =
                     newResolved
@@ -437,13 +482,11 @@ class PlayerActivity : AppCompatActivity() {
                     Toast.LENGTH_SHORT
                 ).show()
 
-            }.onFailure { error ->
+            }.onFailure {
+                error ->
 
                 qualityChangeInProgress =
                     false
-
-                qualityButton.isEnabled =
-                    true
 
                 updateQualityButton(
                     resolved
@@ -463,6 +506,22 @@ class PlayerActivity : AppCompatActivity() {
         resolved: ResolvedMedia
     ) {
 
+        if (
+            resolved.resolverMode ==
+            "browser"
+        ) {
+            qualityButton.text =
+                "Quality: stream"
+
+            qualityButton.isEnabled =
+                false
+
+            return
+        }
+
+        qualityButton.isEnabled =
+            !qualityChangeInProgress
+
         val height =
             resolved.displayedHeight
 
@@ -481,7 +540,9 @@ class PlayerActivity : AppCompatActivity() {
                     "720",
                     "480",
                     "360" -> {
-                        "Quality: ${resolved.requestedQuality}p"
+
+                        "Quality: " +
+                            "${resolved.requestedQuality}p"
                     }
 
                     else -> {
@@ -551,7 +612,9 @@ class PlayerActivity : AppCompatActivity() {
     ) {
 
         previewTime.text =
-            formatTime(position)
+            formatTime(
+                position
+            )
 
         if (
             !force &&
@@ -591,7 +654,8 @@ class PlayerActivity : AppCompatActivity() {
 
                 runCatching {
                     request.get()
-                }.onSuccess { frame ->
+                }.onSuccess {
+                    frame ->
 
                     previewImage
                         .setImageBitmap(
@@ -661,8 +725,12 @@ class PlayerActivity : AppCompatActivity() {
         val builder =
             MediaItem
                 .Builder()
-                .setUri(url)
-                .setMediaId(url)
+                .setUri(
+                    url
+                )
+                .setMediaId(
+                    url
+                )
                 .setMediaMetadata(
                     androidx.media3.common
                         .MediaMetadata
@@ -675,7 +743,9 @@ class PlayerActivity : AppCompatActivity() {
 
         mimeType?.let {
             builder.setMimeType(
-                normalizeMimeType(it)
+                normalizeMimeType(
+                    it
+                )
             )
         }
 
@@ -685,7 +755,9 @@ class PlayerActivity : AppCompatActivity() {
     private fun normalizeMimeType(
         value: String
     ): String =
-        when (value) {
+        when (
+            value
+        ) {
 
             "application/x-mpegURL" ->
                 MimeTypes.APPLICATION_M3U8
@@ -702,19 +774,26 @@ class PlayerActivity : AppCompatActivity() {
     ): String {
 
         val totalSeconds =
-            ms.coerceAtLeast(0) /
-            1000
+            ms.coerceAtLeast(
+                0
+            ) / 1000
 
         val seconds =
             totalSeconds % 60
 
         val minutes =
-            (totalSeconds / 60) % 60
+            (
+                totalSeconds /
+                60
+            ) % 60
 
         val hours =
-            totalSeconds / 3600
+            totalSeconds /
+                3600
 
-        return if (hours > 0) {
+        return if (
+            hours > 0
+        ) {
 
             String.format(
                 Locale.US,
