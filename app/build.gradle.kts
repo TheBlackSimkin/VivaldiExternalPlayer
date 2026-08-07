@@ -36,6 +36,7 @@ android {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     kotlinOptions {
         jvmTarget = "17"
     }
@@ -44,9 +45,9 @@ android {
 chaquopy {
     defaultConfig {
         version = "3.13"
+
         pip {
             install("yt-dlp==2026.06.09")
-            install("curl-cffi==0.15.0")
         }
     }
 }
