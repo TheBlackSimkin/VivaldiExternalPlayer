@@ -66,13 +66,19 @@ def resolve(url: str) -> str:
         "noplaylist": True,
         "skip_download": True,
         "cachedir": False,
-        # Prefer 1080p, then 720p, and allow separate video/audio streams.
+        # Prefer exactly 720p. If unavailable, try 1080p,
+        # then fall back to the best available quality up to 1080p.
         "format": (
+            "bestvideo[height=720]+bestaudio/"
+            "best[height=720][vcodec!=none][acodec!=none]/"
+            "bestvideo[height=1080]+bestaudio/"
+            "best[height=1080][vcodec!=none][acodec!=none]/"
             "bestvideo[height<=1080]+bestaudio/"
             "best[height<=1080][vcodec!=none][acodec!=none]/"
             "best[height<=1080]/best"
         ),
         "http_headers": {"User-Agent": USER_AGENT},
+        "geo_bypass": "never",
     }
 
     with yt_dlp.YoutubeDL(options) as ydl:
