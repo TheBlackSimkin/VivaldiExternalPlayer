@@ -16,7 +16,7 @@ android {
         versionName = "0.1.0"
 
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += listOf("arm64-v8a")
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -45,8 +45,8 @@ chaquopy {
     defaultConfig {
         version = "3.13"
         pip {
-            // After confirming a working build, pin this to a tested yt-dlp release.
-            install("yt-dlp")
+            install("yt-dlp==2026.06.09")
+            install("curl-cffi==0.15.0")
         }
     }
 }
