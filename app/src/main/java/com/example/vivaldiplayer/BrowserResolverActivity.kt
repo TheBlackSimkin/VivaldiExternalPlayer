@@ -58,15 +58,22 @@ class BrowserResolverActivity : AppCompatActivity() {
 
     /**
      * A possible media stream discovered by network observation or by examining
-     * normal browser/page state. mimeType may be null for extensionless direct
-     * progressive URLs; Media3 can sometimes infer those itself.
+     * normal browser/page state.
+     *
+     * `firstSeenOrder` is important. In HLS, a player normally requests the
+     * master playlist before its child video/audio playlists. The Bitmovin test
+     * showed exactly this pattern: the oldest HLS candidate was the full stream,
+     * while later HLS requests were audio-only or video-only renditions.
+     *
+     * We use that fact only as a ranking hint. We do not hide alternatives.
      */
     private data class StreamCandidate(
         val url: String,
         val mimeType: String?,
         val typeLabel: String,
         val requestHeaders: Map<String, String>,
-        val discoveredBy: DiscoverySource
+        val discoveredBy: DiscoverySource,
+        val firstSeenOrder: Long = 0L
     )
 
     /** Used only to make candidate descriptions understandable to the user. */
@@ -88,6 +95,7 @@ class BrowserResolverActivity : AppCompatActivity() {
     /** `shouldInterceptRequest` can run off the UI thread, so candidate access is synchronized. */
     private val candidateLock = Any()
     private val candidates = mutableListOf<StreamCandidate>()
+    private var nextCandidateOrder = 1L
 
     /** Main-thread timer which periodically checks page-visible media sources. */
     private val probeHandler = Handler(Looper.getMainLooper())
@@ -445,25 +453,46 @@ class BrowserResolverActivity : AppCompatActivity() {
     }
 
     /**
-     * De-duplicate candidates and prefer the copy which contains real network
-     * headers. Those headers (especially Referer/User-Agent) can be necessary
-     * for a CDN to accept the exact media request outside WebView.
+     * De-duplicate candidates while PRESERVING first-seen order.
+     *
+     * The old implementation moved a duplicate to the front every time it was
+     * seen. That destroyed useful HLS request order. We now keep the original
+     * order but still upgrade a candidate when a later network observation gives
+     * us better request headers.
      */
     private fun addCandidate(candidate: StreamCandidate) {
         val count = synchronized(candidateLock) {
-            val existing = candidates.firstOrNull { it.url == candidate.url }
+            val existingIndex = candidates.indexOfFirst { it.url == candidate.url }
 
-            val preferred = when {
-                candidate.requestHeaders.isNotEmpty() -> candidate
-                existing != null && existing.requestHeaders.isNotEmpty() -> existing
-                else -> candidate
+            if (existingIndex >= 0) {
+                val existing = candidates[existingIndex]
+
+                val merged = existing.copy(
+                    mimeType = candidate.mimeType ?: existing.mimeType,
+                    typeLabel = candidate.typeLabel,
+                    requestHeaders = if (candidate.requestHeaders.isNotEmpty()) {
+                        candidate.requestHeaders
+                    } else {
+                        existing.requestHeaders
+                    },
+                    discoveredBy = if (candidate.requestHeaders.isNotEmpty()) {
+                        candidate.discoveredBy
+                    } else {
+                        existing.discoveredBy
+                    }
+                )
+
+                candidates[existingIndex] = merged
+            } else {
+                candidates.add(
+                    candidate.copy(
+                        firstSeenOrder = nextCandidateOrder++
+                    )
+                )
             }
 
-            candidates.removeAll { it.url == candidate.url }
-            candidates.add(0, preferred)
-
             while (candidates.size > MAX_CANDIDATES) {
-                candidates.removeAt(candidates.lastIndex)
+                candidates.removeAt(0)
             }
 
             candidates.size
@@ -485,8 +514,110 @@ class BrowserResolverActivity : AppCompatActivity() {
         candidates.size
     }
 
+    /**
+     * Return candidates in a useful order rather than raw network order.
+     *
+     * This is ranking, not blocking. Every detected candidate remains available.
+     * The score only tries to put a likely complete stream near the top.
+     */
     private fun candidateSnapshot(): List<StreamCandidate> = synchronized(candidateLock) {
-        candidates.toList()
+        candidates
+            .toList()
+            .sortedWith(
+                compareByDescending<StreamCandidate> { candidateScore(it) }
+                    .thenBy { it.firstSeenOrder }
+            )
+    }
+
+    /**
+     * Generic ranking hints learned from the safe Bitmovin test and target tests.
+     *
+     * - Adaptive manifests are generally more useful than one progressive asset.
+     * - A URL exposed by the actual page's VIDEO element is a strong signal.
+     * - Same-site media is slightly preferred.
+     * - Obvious advertising infrastructure is demoted, never hidden.
+     * - Among otherwise-equal HLS candidates, first-seen wins because a master
+     *   playlist is normally requested before its child renditions.
+     */
+    private fun candidateScore(candidate: StreamCandidate): Int {
+        var score = when (candidate.typeLabel) {
+            "HLS" -> 80
+            "DASH" -> 75
+            "MP4" -> 50
+            "WebM" -> 45
+            else -> 35
+        }
+
+        score += when (candidate.discoveredBy) {
+            DiscoverySource.PAGE -> 30
+            DiscoverySource.PERFORMANCE -> 10
+            DiscoverySource.NETWORK -> 0
+        }
+
+        val candidateUri = runCatching { Uri.parse(candidate.url) }.getOrNull()
+        val candidateHost = candidateUri?.host.orEmpty().lowercase(Locale.US)
+        val originalHost = runCatching { Uri.parse(originalUrl).host }
+            .getOrNull()
+            .orEmpty()
+            .lowercase(Locale.US)
+
+        if (hostsLookRelated(candidateHost, originalHost)) {
+            score += 15
+        }
+
+        val path = candidateUri?.path.orEmpty().lowercase(Locale.US)
+        if (
+            path.contains("master") ||
+            path.contains("manifest") ||
+            path.contains("playlist")
+        ) {
+            score += 20
+        }
+
+        if (looksLikeAdvertisingHost(candidateHost)) {
+            score -= 100
+        }
+
+        return score
+    }
+
+    /** A deliberately small same-site heuristic; this is not a public-suffix parser. */
+    private fun hostsLookRelated(first: String, second: String): Boolean {
+        if (first.isBlank() || second.isBlank()) {
+            return false
+        }
+
+        if (first == second || first.endsWith(".$second") || second.endsWith(".$first")) {
+            return true
+        }
+
+        val firstParts = first.split('.')
+        val secondParts = second.split('.')
+
+        if (firstParts.size < 2 || secondParts.size < 2) {
+            return false
+        }
+
+        return firstParts.takeLast(2) == secondParts.takeLast(2)
+    }
+
+    /**
+     * Demote only hosts whose names strongly resemble common advertising
+     * infrastructure. We do NOT reject them because a site may use unexpected
+     * hostnames, and the manual chooser must remain a diagnostic escape hatch.
+     */
+    private fun looksLikeAdvertisingHost(host: String): Boolean {
+        val markers = listOf(
+            "doubleclick",
+            "googlesyndication",
+            "adservice",
+            "adsystem",
+            "adnxs",
+            "adtng",
+            "advertising"
+        )
+
+        return markers.any { marker -> host.contains(marker) }
     }
 
     /** Show a chooser when a page requested several possible manifests/files. */
@@ -520,7 +651,13 @@ class BrowserResolverActivity : AppCompatActivity() {
                 candidate.typeLabel
             }
 
-            "${index + 1}. $type • $host • $source"
+            val prefix = if (index == 0) {
+                getString(R.string.browser_recommended_prefix)
+            } else {
+                "${index + 1}."
+            }
+
+            "$prefix $type • $host • $source"
         }.toTypedArray()
 
         AlertDialog.Builder(this)
@@ -588,13 +725,25 @@ class BrowserResolverActivity : AppCompatActivity() {
             else -> "https"
         }
 
+        val extension = when (candidate.typeLabel) {
+            "MP4" -> "mp4"
+            "WebM" -> "webm"
+            "HLS" -> "m3u8"
+            "DASH" -> "mpd"
+            else -> JSONObject.NULL
+        }
+
         val media = JSONObject()
             .put("url", candidate.url)
             .put("mime_type", candidate.mimeType ?: JSONObject.NULL)
             .put("protocol", protocol)
+            .put("ext", extension)
+            .put("container", JSONObject.NULL)
             .put("height", JSONObject.NULL)
             .put("width", JSONObject.NULL)
-            .put("format_id", "browser")
+            .put("format_id", "browser-${candidate.typeLabel.lowercase(Locale.US)}")
+            .put("vcodec", JSONObject.NULL)
+            .put("acodec", JSONObject.NULL)
             .put("headers", headerJson)
 
         val root = JSONObject()
