@@ -1,73 +1,62 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <!--
-    Main screen used for two workflows:
-    1) receiving a URL shared by Vivaldi, and
-    2) manually pasting a URL while debugging.
+    Browser-assisted resolver.
 
-    All user-facing text comes from string resources so Android can
-    automatically choose English or Spanish from the phone language.
+    The WebView is intentionally visible: the user interacts with the page
+    normally and starts playback. The app only observes media URLs which the
+    page/browser actually requests or exposes; it does not replace responses.
 -->
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="20dp">
+    android:background="@android:color/black"
+    android:orientation="vertical">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/main_intro"
-        android:textSize="17sp" />
+        android:background="#202020"
+        android:padding="10dp"
+        android:text="@string/browser_resolver_intro"
+        android:textColor="@android:color/white"
+        android:textSize="13sp" />
 
-    <!-- Manual URL entry is intentionally kept even though browser sharing is preferred. -->
-    <EditText
-        android:id="@+id/url_input"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:hint="@string/url_hint"
-        android:inputType="textUri"
-        android:maxLines="4" />
-
-    <Button
-        android:id="@+id/resolve_button"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/resolve_and_play" />
-
-    <!-- Visible only while the direct yt-dlp resolver is doing network work. -->
+    <!-- Horizontal page-load progress supplied by WebChromeClient. -->
     <ProgressBar
-        android:id="@+id/progress"
-        style="?android:attr/progressBarStyle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="center_horizontal"
-        android:layout_marginTop="16dp"
-        android:visibility="gone" />
+        android:id="@+id/browser_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:max="100"
+        android:progress="0" />
 
-    <!--
-        The app now opens this fallback automatically after a direct failure,
-        but the button remains available when the user returns to this screen
-        and wants to retry the browser-assisted path manually.
-    -->
-    <Button
-        android:id="@+id/browser_resolve_button"
+    <!-- Status is selectable so debugging information can be copied if needed. -->
+    <TextView
+        android:id="@+id/browser_status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:text="@string/open_browser_assisted_resolver"
+        android:background="#202020"
+        android:padding="8dp"
+        android:textColor="@android:color/white"
+        android:textIsSelectable="true"
+        android:textSize="13sp" />
+
+    <!-- Appears only after at least one plausible transferable media URL is found. -->
+    <Button
+        android:id="@+id/play_detected_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:enabled="false"
+        android:text="@string/browser_no_stream_button"
         android:textAllCaps="false"
         android:visibility="gone" />
 
-    <!-- Technical resolver errors stay selectable so the user can copy them into chat. -->
-    <TextView
-        android:id="@+id/status"
+    <WebView
+        android:id="@+id/browser_web_view"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
-        android:textIsSelectable="true" />
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
 </LinearLayout>
