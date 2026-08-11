@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Android selects these translations automatically when the phone uses Spanish. -->
+
+    <!-- Pantalla principal. -->
     <string name="main_intro">Comparte una página de vídeo desde Vivaldi o pega su URL abajo. Solo se admiten transmisiones sin DRM.</string>
     <string name="url_hint">https://…</string>
     <string name="resolve_and_play">Resolver y reproducir</string>
@@ -11,6 +13,7 @@
     <string name="status_opening_browser_fallback">Abriendo automáticamente la resolución asistida por navegador…</string>
     <string name="status_browser_fallback_explanation">El modo asistido por navegador observa solicitudes multimedia normales hechas por el WebView de esta aplicación. No automatiza desafíos, DRM, suscripciones, autenticación ni controles regionales.</string>
 
+    <!-- Resolución asistida por navegador. -->
     <string name="browser_resolver_intro">Resolución asistida por navegador: usa la página normalmente e inicia la reproducción. La aplicación observa solicitudes multimedia normales; no automatiza controles de acceso.</string>
     <string name="browser_loading">Cargando página…</string>
     <string name="browser_page_loaded">Página cargada. Inicia la reproducción en esta vista. La aplicación observará las solicitudes multimedia normales.</string>
@@ -19,11 +22,41 @@
     <string name="browser_no_stream_button">Aún no se detectó una transmisión</string>
     <string name="browser_no_media">Aún no se detectó una solicitud multimedia compatible.</string>
     <string name="browser_candidate_title">Solicitudes multimedia detectadas</string>
+    <string name="browser_candidate_explanation">Las opciones se ordenan, no se bloquean. La recomendada es solo la mejor estimación técnica de la aplicación.</string>
+    <string name="browser_recommended_prefix">Recomendada:</string>
     <string name="browser_stream_title">Transmisión del navegador</string>
     <string name="browser_type_direct">Medio directo</string>
     <string name="browser_source_network">red</string>
     <string name="browser_source_page">página</string>
     <string name="browser_source_performance">recurso del navegador</string>
     <string name="media_host_fallback">servidor multimedia</string>
+
+    <!-- Controles de calidad del reproductor. -->
+    <string name="video_quality">Calidad de vídeo</string>
+    <string name="quality_auto_prefer_720">Automática — preferir 720p</string>
+    <string name="quality_auto">Calidad: Automática</string>
+    <string name="quality_auto_limit">Calidad: Automática ≤ %1$dp</string>
+    <string name="quality_value">Calidad: %1$dp</string>
+    <string name="quality_stream">Calidad: transmisión</string>
+    <string name="quality_detecting">Calidad: detectando…</string>
+    <string name="quality_loading">Calidad: cargando…</string>
+    <string name="playing_quality">Reproduciendo en %1$dp</string>
+    <string name="quality_changed">Calidad cambiada</string>
+    <string name="quality_change_failed">No se pudo cambiar la calidad</string>
+    <string name="browser_quality_unavailable">Esta transmisión detectada por el navegador no expone calidades de vídeo seleccionables a Media3.</string>
+    <string name="original_webpage_unavailable">La URL de la página web original no está disponible.</string>
+
+    <!-- Diagnóstico de reproducción. -->
+    <string name="player_diagnostics">Diagnóstico</string>
+    <string name="diagnostics_title">Diagnóstico de reproducción</string>
+    <string name="playback_error_button">Error de reproducción</string>
+    <string name="playback_failed_tap_diagnostics">Falló la reproducción. Toca Error de reproducción para ver o copiar los detalles técnicos.</string>
+    <string name="copy_diagnostics">Copiar</string>
+    <string name="diagnostics_copied">Diagnóstico copiado</string>
+    <string name="no_diagnostics_yet">Aún no hay diagnóstico de reproducción disponible.</string>
+    <string name="seek_preview">Vista previa de búsqueda</string>
+
+    <!-- Acciones compartidas de diálogos. -->
     <string name="cancel">Cancelar</string>
+    <string name="close">Cerrar</string>
 </resources>
