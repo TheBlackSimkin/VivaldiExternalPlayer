@@ -1,30 +1,85 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!--
+        English user-facing text for Vivaldi External Player.
+
+        IMPORTANT:
+        Android string resources have their own escaping rules in addition
+        to normal XML rules. Apostrophes inside Android strings should be
+        escaped with a backslash, for example: app\'s.
+    -->
+
     <!-- Main screen. -->
     <string name="main_intro">Share a video page from Vivaldi, or paste its URL below. Only non-DRM streams are supported.</string>
+
     <string name="url_hint">https://…</string>
+
     <string name="resolve_and_play">Resolve and play</string>
+
     <string name="open_browser_assisted_resolver">Open browser-assisted resolver</string>
+
     <string name="status_complete_url">Paste or share a complete web address.</string>
+
     <string name="status_resolving">Resolving video — 720p preferred…</string>
+
     <string name="status_direct_failed">Direct resolver failed.</string>
+
     <string name="status_opening_browser_fallback">Opening the browser-assisted resolver automatically…</string>
-    <string name="status_browser_fallback_explanation">Browser-assisted mode observes normal media requests made by this app&apos;s WebView. It does not automate challenges, DRM, subscriptions, authentication, or regional access controls.</string>
+
+    <!--
+        This explanation is intentionally visible after direct resolution fails.
+        It tells the user what the fallback does and, equally importantly,
+        what it does NOT try to bypass.
+
+        NOTE:
+        app\'s uses Android's required apostrophe escaping.
+    -->
+    <string name="status_browser_fallback_explanation">Browser-assisted mode observes normal media requests made by this app\'s WebView. It does not automate challenges, DRM, subscriptions, authentication, or regional access controls.</string>
+
 
     <!-- Browser-assisted resolver. -->
+
+    <!--
+        The embedded WebView is user-driven. The user interacts with the webpage
+        normally, while the application watches for normal media requests which
+        may be playable by Media3.
+    -->
     <string name="browser_resolver_intro">Browser-assisted resolver: interact with the page normally and start playback. The app observes normal media requests; it does not automate access controls.</string>
+
     <string name="browser_loading">Loading page…</string>
+
     <string name="browser_page_loaded">Page loaded. Start playback in this browser view. The app will observe normal media requests.</string>
+
+    <!-- %1$d is replaced at runtime by the number of media candidates detected. -->
     <string name="browser_play_detected_count">Play detected stream (%1$d)</string>
+
+    <!--
+        This appears when one or more plausible HLS, DASH, MP4, WebM,
+        or direct media URLs have been detected.
+    -->
     <string name="browser_detected_status">Detected %1$d possible media request(s). Start playback in the page if needed, then tap Play detected stream.</string>
+
     <string name="browser_no_stream_button">No stream detected yet</string>
+
     <string name="browser_no_media">No supported media request has been detected yet.</string>
+
+    <!-- Title of the dialog shown when more than one possible media URL exists. -->
     <string name="browser_candidate_title">Detected media requests</string>
+
+    <!-- Generic title used when playback came from the browser-assisted resolver. -->
     <string name="browser_stream_title">Browser stream</string>
+
+    <!-- Labels used to explain how each candidate was discovered. -->
     <string name="browser_type_direct">Direct media</string>
+
     <string name="browser_source_network">network</string>
+
     <string name="browser_source_page">page</string>
+
     <string name="browser_source_performance">browser resource</string>
+
     <string name="media_host_fallback">media host</string>
+
     <string name="cancel">Cancel</string>
+
 </resources>
