@@ -28,44 +28,56 @@ import org.json.JSONObject
 import java.util.Locale
 
 /**
- * User-visible browser fallback used when yt-dlp cannot resolve the page directly.
+ * Browser-assisted resolver.
  *
- * Important design boundary:
- * - this is a real Android WebView;
- * - the user loads/interacts with the page normally;
- * - requests are OBSERVED, not replaced;
- * - Vivaldi cookies/passwords are not imported;
- * - no DRM license handling is configured here.
+ * WHY THIS ACTIVITY EXISTS
+ * ------------------------
+ * Some websites cannot be resolved reliably by a standalone yt-dlp request,
+ * but they do work inside a normal browser engine.
  *
- * The purpose is to discover an ordinary non-DRM media URL which the page itself
- * already asked the browser to use, then hand that URL to Media3.
+ * Instead of attempting to defeat an access-control mechanism, this Activity
+ * loads the page in a normal Android WebView and observes the ordinary media
+ * resources which the page itself uses.
+ *
+ * IMPORTANT PROJECT BOUNDARIES
+ * ----------------------------
+ * - We do not import Vivaldi passwords or cookies.
+ * - We do not solve anti-bot challenges automatically.
+ * - We do not configure DRM license acquisition.
+ * - We do not inspect or classify video imagery.
+ * - We work only with technical media metadata such as URLs, manifests,
+ *   declared resolutions, request headers and Media3 playback results.
  */
 class BrowserResolverActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_URL = "browser_resolver_url"
 
-        /** Keep the chooser small enough to remain usable on a phone. */
-        private const val MAX_CANDIDATES = 16
+        /**
+         * Prevent an extremely busy page from producing an unusably large
+         * candidate dialog.
+         */
+        private const val MAX_CANDIDATES = 20
 
         /**
-         * The page probe is deliberately slow and lightweight. It is not trying
-         * to scrape the page continuously; it only catches media URLs which may
-         * appear after JavaScript initializes a player.
+         * Modern JavaScript video players often create their <video> element or
+         * manifest request after the normal page-load callback has finished.
+         *
+         * A slow periodic probe catches those later changes.
          */
         private const val PAGE_PROBE_INTERVAL_MS = 1_250L
     }
 
     /**
-     * A possible media stream discovered by network observation or by examining
-     * normal browser/page state.
+     * One technically plausible media resource.
      *
-     * `firstSeenOrder` is important. In HLS, a player normally requests the
-     * master playlist before its child video/audio playlists. The Bitmovin test
-     * showed exactly this pattern: the oldest HLS candidate was the full stream,
-     * while later HLS requests were audio-only or video-only renditions.
+     * declaredHeight:
+     *     Optional quality metadata exposed directly by the webpage/player
+     *     configuration. It lets us rank 720p before 1080p when possible.
      *
-     * We use that fact only as a ranking hint. We do not hide alternatives.
+     * firstSeenOrder:
+     *     Useful for HLS/DASH because a master manifest is commonly requested
+     *     before its child audio/video renditions.
      */
     private data class StreamCandidate(
         val url: String,
@@ -73,14 +85,22 @@ class BrowserResolverActivity : AppCompatActivity() {
         val typeLabel: String,
         val requestHeaders: Map<String, String>,
         val discoveredBy: DiscoverySource,
+        val declaredHeight: Int? = null,
         val firstSeenOrder: Long = 0L
     )
 
-    /** Used only to make candidate descriptions understandable to the user. */
+    /**
+     * How the app learned about a candidate.
+     *
+     * PAGE_CONFIG is new in Batch 3. It means the already-loaded webpage exposed
+     * technical player configuration containing a media URL and possibly a
+     * declared resolution.
+     */
     private enum class DiscoverySource {
         NETWORK,
         PAGE,
-        PERFORMANCE
+        PERFORMANCE,
+        PAGE_CONFIG
     }
 
     private lateinit var webView: WebView
@@ -89,15 +109,33 @@ class BrowserResolverActivity : AppCompatActivity() {
     private lateinit var playDetectedButton: Button
     private lateinit var originalUrl: String
 
-    /** Keep WebView's genuine user agent so Media3 can reuse it for the media request. */
+    /**
+     * The most recent normal page URL loaded inside this WebView.
+     *
+     * This is deliberately stored separately from webView.url because
+     * shouldInterceptRequest can run on a background thread, where reading a
+     * WebView property directly would not be appropriate.
+     */
+    @Volatile
+    private var currentPageUrl: String = ""
+
+    /**
+     * Use the WebView's REAL User-Agent for handoff requests. Do not invent a
+     * Vivaldi/Chrome identity here.
+     */
     private var webViewUserAgent: String = ""
 
-    /** `shouldInterceptRequest` can run off the UI thread, so candidate access is synchronized. */
+    /**
+     * Media requests can arrive from several threads, so protect the candidate
+     * collection with a lock.
+     */
     private val candidateLock = Any()
     private val candidates = mutableListOf<StreamCandidate>()
     private var nextCandidateOrder = 1L
 
-    /** Main-thread timer which periodically checks page-visible media sources. */
+    /**
+     * Periodic JavaScript probe executed only while this Activity is visible.
+     */
     private val probeHandler = Handler(Looper.getMainLooper())
 
     private val probeRunnable = object : Runnable {
@@ -113,16 +151,22 @@ class BrowserResolverActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         originalUrl = intent.getStringExtra(EXTRA_URL).orEmpty().trim()
+
         if (!isHttpUrl(originalUrl)) {
             finish()
             return
         }
 
-        /*
-         * Service workers can fetch manifests/segments without those requests
-         * passing through the ordinary WebViewClient callback. Observing both
-         * places improves coverage while still returning null so WebView handles
-         * every request normally.
+        currentPageUrl = originalUrl
+
+        /**
+         * A Service Worker can load an HLS/DASH manifest without going through
+         * the ordinary WebViewClient request callback.
+         *
+         * We therefore observe BOTH service-worker and WebView requests.
+         *
+         * Returning null is important: it means Android continues processing
+         * the request normally. We are observing it, not replacing it.
          */
         ServiceWorkerController.getInstance().setServiceWorkerClient(
             object : ServiceWorkerClient() {
@@ -148,9 +192,9 @@ class BrowserResolverActivity : AppCompatActivity() {
             showCandidateChooser()
         }
 
-        /*
-         * Back first navigates inside the embedded browser. Only when there is
-         * no browser history left does it close this Activity.
+        /**
+         * The Android Back button navigates inside the temporary browser first.
+         * When there is no more WebView history, it closes this Activity.
          */
         onBackPressedDispatcher.addCallback(
             this,
@@ -170,44 +214,52 @@ class BrowserResolverActivity : AppCompatActivity() {
         webView.loadUrl(originalUrl)
     }
 
+    /**
+     * Configure the embedded browser.
+     *
+     * JavaScript and DOM storage are required by most modern video players.
+     * File/content access and automatic popup windows are unnecessary here.
+     */
     @SuppressLint("SetJavaScriptEnabled")
     private fun configureWebView() {
         val settings = webView.settings
 
-        /* Modern video pages usually require JavaScript and DOM storage. */
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
 
-        /* The user must intentionally start media; the app does not auto-play it. */
+        /**
+         * The webpage is not allowed to silently auto-play through our resolver.
+         * The user starts its player normally.
+         */
         settings.mediaPlaybackRequiresUserGesture = true
 
-        /* Reduce unwanted popup/custom-scheme behavior inside the resolver. */
         settings.javaScriptCanOpenWindowsAutomatically = false
         settings.setSupportMultipleWindows(false)
         settings.allowFileAccess = false
         settings.allowContentAccess = false
+
+        /**
+         * HTTPS pages should not silently load insecure HTTP media.
+         */
         settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             settings.safeBrowsingEnabled = true
         }
 
-        /*
-         * Do NOT replace this with a forged Vivaldi/Chrome UA during this phase.
-         * We intentionally use WebView's real UA and real browser engine.
-         */
         webViewUserAgent = settings.userAgentString.orEmpty()
 
         val cookieManager = CookieManager.getInstance()
         cookieManager.setAcceptCookie(true)
 
-        /*
-         * A video CDN may be a different host from the page. Third-party cookies
-         * here belong ONLY to this app's WebView session, not to Vivaldi.
+        /**
+         * Some legitimate video CDNs are third-party relative to the webpage.
+         * These cookies belong only to this app's WebView session.
          */
         cookieManager.setAcceptThirdPartyCookies(webView, true)
 
         webView.webViewClient = object : WebViewClient() {
+
             override fun shouldInterceptRequest(
                 view: WebView,
                 request: WebResourceRequest
@@ -222,14 +274,39 @@ class BrowserResolverActivity : AppCompatActivity() {
             ): Boolean {
                 val scheme = request.url.scheme?.lowercase(Locale.US)
 
-                // Keep normal web navigation; block custom app schemes from escaping this Activity.
+                /**
+                 * Keep normal web navigation inside this WebView.
+                 * Custom application schemes are not launched from here.
+                 */
                 return scheme != "http" && scheme != "https"
             }
 
-            override fun onPageFinished(view: WebView, url: String) {
+            override fun onPageStarted(
+                view: WebView,
+                url: String,
+                favicon: android.graphics.Bitmap?
+            ) {
+                super.onPageStarted(view, url, favicon)
+
+                if (isHttpUrl(url)) {
+                    currentPageUrl = url
+                }
+            }
+
+            override fun onPageFinished(
+                view: WebView,
+                url: String
+            ) {
                 super.onPageFinished(view, url)
 
-                // JavaScript players may create the real media element only after page load.
+                if (isHttpUrl(url)) {
+                    currentPageUrl = url
+                }
+
+                /**
+                 * JavaScript players may not create their actual media element
+                 * until page initialization has finished.
+                 */
                 probePageForMedia()
 
                 if (candidateCount() == 0) {
@@ -239,39 +316,57 @@ class BrowserResolverActivity : AppCompatActivity() {
         }
 
         webView.webChromeClient = object : WebChromeClient() {
-            override fun onProgressChanged(view: WebView, newProgress: Int) {
+            override fun onProgressChanged(
+                view: WebView,
+                newProgress: Int
+            ) {
                 super.onProgressChanged(view, newProgress)
+
                 progress.progress = newProgress
-                progress.visibility = if (newProgress >= 100) View.GONE else View.VISIBLE
+                progress.visibility =
+                    if (newProgress >= 100) View.GONE else View.VISIBLE
             }
         }
     }
 
     /**
-     * Observe GET requests made by WebView. We intentionally ignore non-GET
-     * requests and non-web schemes because they cannot be handed directly to
-     * Media3 as a normal media URL.
+     * Observe a normal GET request made by WebView.
+     *
+     * Individual HLS/DASH media segments are intentionally NOT candidates;
+     * Media3 needs a complete file or a manifest.
      */
     private fun captureNetworkRequest(request: WebResourceRequest) {
         if (!request.method.equals("GET", ignoreCase = true)) {
             return
         }
 
-        val uri = request.url
-        val scheme = uri.scheme?.lowercase(Locale.US)
+        val url = request.url.toString()
+        val scheme = request.url.scheme?.lowercase(Locale.US)
+
         if (scheme != "https" && scheme != "http") {
             return
         }
 
+        if (
+            shouldIgnoreCandidate(
+                url = url,
+                discoveredBy = DiscoverySource.NETWORK,
+                mimeHint = null,
+                allowUnknownDirect = false
+            )
+        ) {
+            return
+        }
+
         val classification = classifyMediaUrl(
-            url = uri.toString(),
+            url = url,
             mimeHint = null,
             allowUnknownDirect = false
         ) ?: return
 
         addCandidate(
             StreamCandidate(
-                url = uri.toString(),
+                url = url,
                 mimeType = classification.second,
                 typeLabel = classification.first,
                 requestHeaders = request.requestHeaders.toMap(),
@@ -281,16 +376,21 @@ class BrowserResolverActivity : AppCompatActivity() {
     }
 
     /**
-     * JavaScript-side observation complements `shouldInterceptRequest`.
+     * Inspect NORMAL browser/page state for media URLs.
      *
-     * Why this helps:
-     * - a page can expose a direct `<video src>` URL without a helpful extension;
-     * - a JavaScript player may request a manifest after page load;
-     * - the browser Performance API can retain resource URLs which were easy to
-     *   miss in a fast network callback.
+     * This does not click anything, submit forms, solve challenges, fetch extra
+     * pages, or inspect video imagery.
      *
-     * The script only READS normal page/browser state. It does not click, submit,
-     * alter DOM content, solve a challenge, or fetch a new URL itself.
+     * Four technical signals are read:
+     *
+     * 1. <video> elements.
+     * 2. <source> elements.
+     * 3. Browser Performance API resource entries.
+     * 4. Technical player configuration already exposed as normal JavaScript
+     *    objects on the loaded page.
+     *
+     * The fourth signal is particularly useful when a page has several quality
+     * URLs available before the selected video begins downloading.
      */
     private fun probePageForMedia() {
         if (!::webView.isInitialized) {
@@ -301,8 +401,23 @@ class BrowserResolverActivity : AppCompatActivity() {
             (function() {
                 const found = [];
 
-                function add(url, mime, source, allowUnknown) {
+                function normalizeQuality(value) {
+                    const parsed = parseInt(value, 10);
+                    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+                }
+
+                function add(url, mime, source, allowUnknown, quality) {
                     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
+                        return;
+                    }
+
+                    /*
+                     * Some player configurations expose an intermediate JSON
+                     * endpoint rather than the final media file. That endpoint
+                     * itself is not a Media3-playable stream, so do not offer
+                     * it as a candidate.
+                     */
+                    if (/\/video\/get_media(?:\?|$)/i.test(url)) {
                         return;
                     }
 
@@ -310,61 +425,183 @@ class BrowserResolverActivity : AppCompatActivity() {
                         url: url,
                         mime: (typeof mime === 'string') ? mime : '',
                         source: source,
-                        allowUnknown: !!allowUnknown
+                        allowUnknown: !!allowUnknown,
+                        quality: normalizeQuality(quality)
                     });
                 }
 
-                // Strong signal: URLs actually attached to VIDEO/SOURCE elements.
+                /*
+                 * Strong signal:
+                 * media URL attached directly to a VIDEO element.
+                 */
                 document.querySelectorAll('video').forEach(function(video) {
-                    add(video.currentSrc || video.src, video.type || '', 'page', true);
+                    add(
+                        video.currentSrc || video.src,
+                        video.type || '',
+                        'page',
+                        true,
+                        0
+                    );
                 });
 
+                /*
+                 * Explicit SOURCE children are also strong page signals.
+                 */
                 document.querySelectorAll('source').forEach(function(source) {
-                    add(source.src, source.type || '', 'page', true);
+                    add(
+                        source.src,
+                        source.type || '',
+                        'page',
+                        true,
+                        0
+                    );
                 });
 
-                // Secondary signal: media/manifest-looking resources loaded by the page.
+                /*
+                 * Secondary signal:
+                 * media-looking resources remembered by the browser's
+                 * Performance API.
+                 */
                 try {
                     performance.getEntriesByType('resource').forEach(function(entry) {
                         const url = entry.name || '';
                         const initiator = String(entry.initiatorType || '').toLowerCase();
+
                         const looksLikeMedia =
                             /\.(m3u8|mpd|mp4|webm)(\?|$)/i.test(url) ||
                             /(?:manifest|playlist|format=m3u8|format=mpd)/i.test(url) ||
                             initiator === 'video';
 
                         if (looksLikeMedia) {
-                            add(url, '', 'performance', initiator === 'video');
+                            add(
+                                url,
+                                '',
+                                'performance',
+                                initiator === 'video',
+                                0
+                            );
                         }
                     });
                 } catch (ignored) {
-                    // Some pages restrict Performance API details. Network observation still works.
+                    /*
+                     * Some pages limit Performance API visibility.
+                     * Network observation still remains available.
+                     */
                 }
 
-                // Keep the payload bounded even on pages with a large resource history.
-                return found.slice(-80);
+                /*
+                 * Batch 3:
+                 * inspect technical player configuration which is already
+                 * present as ordinary JavaScript data on the loaded page.
+                 *
+                 * We do NOT use eval, execute unknown strings, or inspect media
+                 * frames. We only read object fields which contain URLs and
+                 * declared quality values.
+                 *
+                 * Some players expose configuration objects whose names follow
+                 * the "flashvars_<number>" convention. If one exists, its
+                 * mediaDefinitions array may describe normal media resources.
+                 */
+                try {
+                    Object.keys(window).forEach(function(key) {
+                        if (!/^flashvars_\d+$/i.test(key)) {
+                            return;
+                        }
+
+                        let config;
+
+                        try {
+                            config = window[key];
+                        } catch (ignoredProperty) {
+                            return;
+                        }
+
+                        if (!config || typeof config !== 'object') {
+                            return;
+                        }
+
+                        const definitions = config.mediaDefinitions;
+
+                        if (!Array.isArray(definitions)) {
+                            return;
+                        }
+
+                        definitions.forEach(function(definition) {
+                            if (!definition || typeof definition !== 'object') {
+                                return;
+                            }
+
+                            add(
+                                definition.videoUrl,
+                                '',
+                                'config',
+                                true,
+                                definition.quality
+                            );
+                        });
+                    });
+                } catch (ignoredConfig) {
+                    /*
+                     * Player configuration discovery is optional. A page which
+                     * does not expose it still works through the other signals.
+                     */
+                }
+
+                /*
+                 * Keep the JavaScript -> Kotlin payload bounded.
+                 */
+                return found.slice(-100);
             })();
         """.trimIndent()
 
         webView.evaluateJavascript(script) { result ->
-            if (result.isNullOrBlank() || result == "null" || isFinishing || isDestroyed) {
+            if (
+                result.isNullOrBlank() ||
+                result == "null" ||
+                isFinishing ||
+                isDestroyed
+            ) {
                 return@evaluateJavascript
             }
 
             runCatching {
                 JSONArray(result)
             }.onSuccess { array ->
+
                 for (index in 0 until array.length()) {
                     val item = array.optJSONObject(index) ?: continue
+
                     val url = item.optString("url").trim()
-                    val mime = item.optString("mime").trim().takeIf { it.isNotBlank() }
-                    val allowUnknown = item.optBoolean("allowUnknown", false)
+                    val mime = item
+                        .optString("mime")
+                        .trim()
+                        .takeIf { it.isNotBlank() }
+
+                    val allowUnknown =
+                        item.optBoolean("allowUnknown", false)
+
                     val source = when (item.optString("source")) {
                         "performance" -> DiscoverySource.PERFORMANCE
+                        "config" -> DiscoverySource.PAGE_CONFIG
                         else -> DiscoverySource.PAGE
                     }
 
+                    val declaredHeight = item
+                        .optInt("quality", 0)
+                        .takeIf { it > 0 }
+
                     if (!isHttpUrl(url)) {
+                        continue
+                    }
+
+                    if (
+                        shouldIgnoreCandidate(
+                            url = url,
+                            discoveredBy = source,
+                            mimeHint = mime,
+                            allowUnknownDirect = allowUnknown
+                        )
+                    ) {
                         continue
                     }
 
@@ -380,7 +617,8 @@ class BrowserResolverActivity : AppCompatActivity() {
                             mimeType = classification.second,
                             typeLabel = classification.first,
                             requestHeaders = emptyMap(),
-                            discoveredBy = source
+                            discoveredBy = source,
+                            declaredHeight = declaredHeight
                         )
                     )
                 }
@@ -389,10 +627,167 @@ class BrowserResolverActivity : AppCompatActivity() {
     }
 
     /**
-     * Recognize transferable top-level media resources.
+     * Batch 3 false-positive filtering.
      *
-     * We intentionally DO NOT add individual HLS/DASH segments (`.ts`, `.m4s`),
-     * because Media3 needs the manifest or complete progressive file instead.
+     * The previous PH test revealed a very specific bug:
+     * the webpage URL itself was returned by a VIDEO element and labelled
+     * "video/mp4". Media3 then attempted to parse the HTML page as an MP4.
+     *
+     * Candidate validation must therefore consider the URL itself, not blindly
+     * trust an element's MIME hint.
+     */
+    private fun shouldIgnoreCandidate(
+        url: String,
+        discoveredBy: DiscoverySource,
+        mimeHint: String?,
+        allowUnknownDirect: Boolean
+    ): Boolean {
+        val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return true
+
+        val scheme = uri.scheme?.lowercase(Locale.US)
+
+        if (scheme != "http" && scheme != "https") {
+            return true
+        }
+
+        /**
+         * Never offer the document currently being viewed as if it were media.
+         *
+         * We compare path + query as well as the complete URL so localization
+         * redirects such as one site host changing to another locale host do not
+         * fool the check.
+         */
+        if (
+            sameDocumentLocation(url, originalUrl) ||
+            sameDocumentLocation(url, currentPageUrl)
+        ) {
+            return true
+        }
+
+        val path = uri.path.orEmpty().lowercase(Locale.US)
+
+        /**
+         * PAGE/PERFORMANCE observations are less authoritative than actual
+         * network/config metadata. A URL ending in a traditional web-document
+         * extension should not become a media candidate merely because a DOM
+         * element claimed "video/mp4".
+         *
+         * We do not apply this blanket rule to PAGE_CONFIG because some real
+         * media systems legitimately use dynamic endpoints.
+         */
+        if (
+            discoveredBy != DiscoverySource.PAGE_CONFIG &&
+            discoveredBy != DiscoverySource.NETWORK &&
+            isTraditionalDocumentPath(path)
+        ) {
+            return true
+        }
+
+        /**
+         * Media3 supports Ogg containers containing Vorbis, Opus or FLAC audio,
+         * but an old Ogg/Theora-style video source is not a useful Android video
+         * candidate for this project.
+         *
+         * Archive gave us exactly such a false path during testing.
+         *
+         * AVI is likewise not one of our desired Android video containers.
+         */
+        if (allowUnknownDirect) {
+            val mime = mimeHint.orEmpty().lowercase(Locale.US)
+
+            if (
+                path.endsWith(".ogv") ||
+                path.endsWith(".avi") ||
+                (
+                    path.endsWith(".ogg") &&
+                    (
+                        mime.startsWith("video/") ||
+                        discoveredBy == DiscoverySource.PAGE
+                    )
+                ) ||
+                mime == "video/ogg" ||
+                mime == "video/x-msvideo"
+            ) {
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Compare two URLs as browser documents.
+     *
+     * Host differences are intentionally ignored AFTER the path/query match.
+     * This handles ordinary localization redirects without hard-coding a site.
+     */
+    private fun sameDocumentLocation(
+        first: String,
+        second: String
+    ): Boolean {
+        if (!isHttpUrl(first) || !isHttpUrl(second)) {
+            return false
+        }
+
+        val firstUri = runCatching { Uri.parse(first) }.getOrNull() ?: return false
+        val secondUri = runCatching { Uri.parse(second) }.getOrNull() ?: return false
+
+        val firstPath = firstUri.path.orEmpty()
+        val secondPath = secondUri.path.orEmpty()
+
+        if (firstPath != secondPath) {
+            return false
+        }
+
+        /**
+         * An empty path such as "/" is too generic to compare host-independently.
+         */
+        if (firstPath.isBlank() || firstPath == "/") {
+            return normalizeFullUrl(first) == normalizeFullUrl(second)
+        }
+
+        return firstUri.encodedQuery.orEmpty() ==
+            secondUri.encodedQuery.orEmpty()
+    }
+
+    /** Remove fragments and cosmetic trailing slash differences. */
+    private fun normalizeFullUrl(value: String): String {
+        val uri = runCatching { Uri.parse(value) }.getOrNull() ?: return value
+
+        val normalizedPath = uri.path.orEmpty().trimEnd('/')
+
+        return buildString {
+            append(uri.scheme?.lowercase(Locale.US).orEmpty())
+            append("://")
+            append(uri.host?.lowercase(Locale.US).orEmpty())
+            append(normalizedPath)
+
+            if (!uri.encodedQuery.isNullOrBlank()) {
+                append('?')
+                append(uri.encodedQuery)
+            }
+        }
+    }
+
+    /** Traditional webpage/script extensions which should not masquerade as video. */
+    private fun isTraditionalDocumentPath(path: String): Boolean =
+        listOf(
+            ".html",
+            ".htm",
+            ".php",
+            ".asp",
+            ".aspx",
+            ".jsp",
+            ".cfm"
+        ).any { extension ->
+            path.endsWith(extension)
+        }
+
+    /**
+     * Recognize top-level media resources.
+     *
+     * Individual HLS/DASH segments such as .ts and .m4s are intentionally
+     * excluded.
      */
     private fun classifyMediaUrl(
         url: String,
@@ -400,17 +795,20 @@ class BrowserResolverActivity : AppCompatActivity() {
         allowUnknownDirect: Boolean
     ): Pair<String, String?>? {
         val uri = runCatching { Uri.parse(url) }.getOrNull() ?: return null
+
         val full = url.lowercase(Locale.US)
         val path = uri.path.orEmpty().lowercase(Locale.US)
         val query = uri.encodedQuery.orEmpty().lowercase(Locale.US)
         val mime = mimeHint.orEmpty().lowercase(Locale.US)
 
         return when {
+
             mime.contains("mpegurl") ||
                 path.endsWith(".m3u8") ||
                 full.contains(".m3u8?") ||
                 query.contains("format=m3u8") ||
                 query.contains("type=application%2fx-mpegurl") -> {
+
                 "HLS" to "application/x-mpegURL"
             }
 
@@ -418,6 +816,7 @@ class BrowserResolverActivity : AppCompatActivity() {
                 path.endsWith(".mpd") ||
                 full.contains(".mpd?") ||
                 query.contains("format=mpd") -> {
+
                 "DASH" to "application/dash+xml"
             }
 
@@ -428,6 +827,7 @@ class BrowserResolverActivity : AppCompatActivity() {
                 query.contains("mime=video/mp4") ||
                 query.contains("type=video%2fmp4") ||
                 query.contains("type=video/mp4") -> {
+
                 "MP4" to "video/mp4"
             }
 
@@ -436,13 +836,16 @@ class BrowserResolverActivity : AppCompatActivity() {
                 full.contains(".webm?") ||
                 query.contains("mime=video%2fwebm") ||
                 query.contains("mime=video/webm") -> {
+
                 "WebM" to "video/webm"
             }
 
-            /*
-             * A URL currently attached to a VIDEO element is itself a strong
-             * signal even when the CDN uses an extensionless progressive URL.
-             * Leave MIME null and let Media3 attempt normal type inference.
+            /**
+             * An extensionless URL currently attached to a VIDEO element or
+             * explicitly provided by player configuration may still be a real
+             * progressive media resource.
+             *
+             * Leave MIME unknown and let Media3 perform normal sniffing.
              */
             allowUnknownDirect -> {
                 "DIRECT" to mimeHint
@@ -453,33 +856,48 @@ class BrowserResolverActivity : AppCompatActivity() {
     }
 
     /**
-     * De-duplicate candidates while PRESERVING first-seen order.
+     * Add or improve one candidate.
      *
-     * The old implementation moved a duplicate to the front every time it was
-     * seen. That destroyed useful HLS request order. We now keep the original
-     * order but still upgrade a candidate when a later network observation gives
-     * us better request headers.
+     * Preserve the FIRST-SEEN order. Batch 1 moved duplicates to the front,
+     * destroying valuable HLS master/child ordering.
      */
     private fun addCandidate(candidate: StreamCandidate) {
         val count = synchronized(candidateLock) {
-            val existingIndex = candidates.indexOfFirst { it.url == candidate.url }
+
+            val existingIndex =
+                candidates.indexOfFirst { it.url == candidate.url }
 
             if (existingIndex >= 0) {
                 val existing = candidates[existingIndex]
 
+                /**
+                 * Network observations are valuable because they contain the
+                 * request headers actually used by WebView.
+                 *
+                 * Page configuration is valuable because it may contain the
+                 * declared resolution.
+                 *
+                 * Merge the best information from both observations.
+                 */
                 val merged = existing.copy(
                     mimeType = candidate.mimeType ?: existing.mimeType,
                     typeLabel = candidate.typeLabel,
-                    requestHeaders = if (candidate.requestHeaders.isNotEmpty()) {
-                        candidate.requestHeaders
-                    } else {
-                        existing.requestHeaders
-                    },
-                    discoveredBy = if (candidate.requestHeaders.isNotEmpty()) {
-                        candidate.discoveredBy
-                    } else {
-                        existing.discoveredBy
-                    }
+
+                    requestHeaders =
+                        if (candidate.requestHeaders.isNotEmpty()) {
+                            candidate.requestHeaders
+                        } else {
+                            existing.requestHeaders
+                        },
+
+                    discoveredBy =
+                        preferredDiscoverySource(
+                            existing.discoveredBy,
+                            candidate.discoveredBy
+                        ),
+
+                    declaredHeight =
+                        candidate.declaredHeight ?: existing.declaredHeight
                 )
 
                 candidates[existingIndex] = merged
@@ -505,39 +923,67 @@ class BrowserResolverActivity : AppCompatActivity() {
 
             playDetectedButton.visibility = View.VISIBLE
             playDetectedButton.isEnabled = true
-            playDetectedButton.text = getString(R.string.browser_play_detected_count, count)
-            status.text = getString(R.string.browser_detected_status, count)
+
+            playDetectedButton.text =
+                getString(
+                    R.string.browser_play_detected_count,
+                    count
+                )
+
+            status.text =
+                getString(
+                    R.string.browser_detected_status,
+                    count
+                )
         }
     }
 
-    private fun candidateCount(): Int = synchronized(candidateLock) {
-        candidates.size
-    }
-
     /**
-     * Return candidates in a useful order rather than raw network order.
-     *
-     * This is ranking, not blocking. Every detected candidate remains available.
-     * The score only tries to put a likely complete stream near the top.
+     * Retain the strongest explanation of where a duplicated URL came from.
      */
-    private fun candidateSnapshot(): List<StreamCandidate> = synchronized(candidateLock) {
-        candidates
-            .toList()
-            .sortedWith(
-                compareByDescending<StreamCandidate> { candidateScore(it) }
-                    .thenBy { it.firstSeenOrder }
-            )
+    private fun preferredDiscoverySource(
+        first: DiscoverySource,
+        second: DiscoverySource
+    ): DiscoverySource {
+        fun score(source: DiscoverySource): Int =
+            when (source) {
+                DiscoverySource.PAGE_CONFIG -> 4
+                DiscoverySource.PAGE -> 3
+                DiscoverySource.NETWORK -> 2
+                DiscoverySource.PERFORMANCE -> 1
+            }
+
+        return if (score(second) > score(first)) second else first
     }
 
+    private fun candidateCount(): Int =
+        synchronized(candidateLock) {
+            candidates.size
+        }
+
     /**
-     * Generic ranking hints learned from the safe Bitmovin test and target tests.
+     * Return candidates ranked by usefulness.
      *
-     * - Adaptive manifests are generally more useful than one progressive asset.
-     * - A URL exposed by the actual page's VIDEO element is a strong signal.
-     * - Same-site media is slightly preferred.
-     * - Obvious advertising infrastructure is demoted, never hidden.
-     * - Among otherwise-equal HLS candidates, first-seen wins because a master
-     *   playlist is normally requested before its child renditions.
+     * Nothing is silently deleted here. The manual chooser remains our safety
+     * valve whenever the app's technical guess is wrong.
+     */
+    private fun candidateSnapshot(): List<StreamCandidate> =
+        synchronized(candidateLock) {
+            candidates
+                .toList()
+                .sortedWith(
+                    compareByDescending<StreamCandidate> {
+                        candidateScore(it)
+                    }.thenBy {
+                        it.firstSeenOrder
+                    }
+                )
+        }
+
+    /**
+     * Generic technical candidate ranking.
+     *
+     * No video content is inspected.
      */
     private fun candidateScore(candidate: StreamCandidate): Int {
         var score = when (candidate.typeLabel) {
@@ -548,24 +994,54 @@ class BrowserResolverActivity : AppCompatActivity() {
             else -> 35
         }
 
+        /**
+         * Technical player configuration is a particularly strong signal
+         * because the webpage itself declared the resource as part of its
+         * player setup.
+         */
         score += when (candidate.discoveredBy) {
+            DiscoverySource.PAGE_CONFIG -> 55
             DiscoverySource.PAGE -> 30
             DiscoverySource.PERFORMANCE -> 10
             DiscoverySource.NETWORK -> 0
         }
 
-        val candidateUri = runCatching { Uri.parse(candidate.url) }.getOrNull()
-        val candidateHost = candidateUri?.host.orEmpty().lowercase(Locale.US)
-        val originalHost = runCatching { Uri.parse(originalUrl).host }
-            .getOrNull()
-            .orEmpty()
-            .lowercase(Locale.US)
+        /**
+         * Apply the project's quality preference to known page-config qualities:
+         *
+         * 720p > 1080p > highest quality below 1080p.
+         */
+        candidate.declaredHeight?.let { height ->
+            score += qualityPreferenceScore(height)
+        }
 
-        if (hostsLookRelated(candidateHost, originalHost)) {
+        val candidateUri =
+            runCatching { Uri.parse(candidate.url) }.getOrNull()
+
+        val candidateHost =
+            candidateUri
+                ?.host
+                .orEmpty()
+                .lowercase(Locale.US)
+
+        val pageHost =
+            runCatching {
+                Uri.parse(currentPageUrl.ifBlank { originalUrl }).host
+            }
+                .getOrNull()
+                .orEmpty()
+                .lowercase(Locale.US)
+
+        if (hostsLookRelated(candidateHost, pageHost)) {
             score += 15
         }
 
-        val path = candidateUri?.path.orEmpty().lowercase(Locale.US)
+        val path =
+            candidateUri
+                ?.path
+                .orEmpty()
+                .lowercase(Locale.US)
+
         if (
             path.contains("master") ||
             path.contains("manifest") ||
@@ -574,6 +1050,12 @@ class BrowserResolverActivity : AppCompatActivity() {
             score += 20
         }
 
+        /**
+         * Advertising candidates are demoted, not removed.
+         *
+         * This keeps debugging transparent and avoids hard-coding the assumption
+         * that every unfamiliar CDN is an advertisement.
+         */
         if (looksLikeAdvertisingHost(candidateHost)) {
             score -= 100
         }
@@ -581,13 +1063,38 @@ class BrowserResolverActivity : AppCompatActivity() {
         return score
     }
 
-    /** A deliberately small same-site heuristic; this is not a public-suffix parser. */
-    private fun hostsLookRelated(first: String, second: String): Boolean {
+    /**
+     * Convert a known resolution into a ranking bonus.
+     *
+     * 720 receives the strongest bonus, then 1080.
+     * Lower resolutions are ordered naturally by height.
+     */
+    private fun qualityPreferenceScore(height: Int): Int =
+        when {
+            height == 720 -> 50
+            height == 1080 -> 45
+            height < 1080 -> 20 + (height / 100).coerceAtMost(10)
+            else -> 5
+        }
+
+    /**
+     * Lightweight relationship check.
+     *
+     * This is intentionally not presented as a full public-suffix/domain parser.
+     */
+    private fun hostsLookRelated(
+        first: String,
+        second: String
+    ): Boolean {
         if (first.isBlank() || second.isBlank()) {
             return false
         }
 
-        if (first == second || first.endsWith(".$second") || second.endsWith(".$first")) {
+        if (
+            first == second ||
+            first.endsWith(".$second") ||
+            second.endsWith(".$first")
+        ) {
             return true
         }
 
@@ -598,13 +1105,14 @@ class BrowserResolverActivity : AppCompatActivity() {
             return false
         }
 
-        return firstParts.takeLast(2) == secondParts.takeLast(2)
+        return firstParts.takeLast(2) ==
+            secondParts.takeLast(2)
     }
 
     /**
-     * Demote only hosts whose names strongly resemble common advertising
-     * infrastructure. We do NOT reject them because a site may use unexpected
-     * hostnames, and the manual chooser must remain a diagnostic escape hatch.
+     * Generic ad-host demotion markers.
+     *
+     * A candidate is never rejected only because of these strings.
      */
     private fun looksLikeAdvertisingHost(host: String): Boolean {
         val markers = listOf(
@@ -617,10 +1125,16 @@ class BrowserResolverActivity : AppCompatActivity() {
             "advertising"
         )
 
-        return markers.any { marker -> host.contains(marker) }
+        return markers.any { marker ->
+            host.contains(marker)
+        }
     }
 
-    /** Show a chooser when a page requested several possible manifests/files. */
+    /**
+     * Display candidates in ranked order.
+     *
+     * The first entry is only "Recommended", never silently selected.
+     */
     private fun showCandidateChooser() {
         val snapshot = candidateSnapshot()
 
@@ -635,29 +1149,49 @@ class BrowserResolverActivity : AppCompatActivity() {
         }
 
         val labels = snapshot.mapIndexed { index, candidate ->
-            val host = runCatching { Uri.parse(candidate.url).host }
-                .getOrNull()
-                ?: getString(R.string.media_host_fallback)
 
-            val source = when (candidate.discoveredBy) {
-                DiscoverySource.NETWORK -> getString(R.string.browser_source_network)
-                DiscoverySource.PAGE -> getString(R.string.browser_source_page)
-                DiscoverySource.PERFORMANCE -> getString(R.string.browser_source_performance)
-            }
+            val host =
+                runCatching {
+                    Uri.parse(candidate.url).host
+                }
+                    .getOrNull()
+                    ?: getString(R.string.media_host_fallback)
 
-            val type = if (candidate.typeLabel == "DIRECT") {
-                getString(R.string.browser_type_direct)
-            } else {
-                candidate.typeLabel
-            }
+            val source =
+                when (candidate.discoveredBy) {
+                    DiscoverySource.NETWORK ->
+                        getString(R.string.browser_source_network)
 
-            val prefix = if (index == 0) {
-                getString(R.string.browser_recommended_prefix)
-            } else {
-                "${index + 1}."
-            }
+                    DiscoverySource.PAGE ->
+                        getString(R.string.browser_source_page)
 
-            "$prefix $type • $host • $source"
+                    DiscoverySource.PERFORMANCE ->
+                        getString(R.string.browser_source_performance)
+
+                    DiscoverySource.PAGE_CONFIG ->
+                        getString(R.string.browser_source_config)
+                }
+
+            val type =
+                if (candidate.typeLabel == "DIRECT") {
+                    getString(R.string.browser_type_direct)
+                } else {
+                    candidate.typeLabel
+                }
+
+            val quality =
+                candidate.declaredHeight
+                    ?.let { height -> " • ${height}p" }
+                    .orEmpty()
+
+            val prefix =
+                if (index == 0) {
+                    getString(R.string.browser_recommended_prefix)
+                } else {
+                    "${index + 1}."
+                }
+
+            "$prefix $type$quality • $host • $source"
         }.toTypedArray()
 
         AlertDialog.Builder(this)
@@ -671,115 +1205,208 @@ class BrowserResolverActivity : AppCompatActivity() {
     }
 
     /**
-     * Convert a detected browser request into the same small JSON contract used
-     * by the yt-dlp resolver. PlayerActivity therefore does not need site logic.
+     * Convert one candidate into the same JSON contract used by resolver.py.
      */
     private fun launchCandidate(candidate: StreamCandidate) {
         val headers = linkedMapOf<String, String>()
 
-        // Prefer headers which came from the actual WebView request.
+        /**
+         * Prefer values captured from the real browser request.
+         */
         findHeader(candidate.requestHeaders, "User-Agent")
             ?.takeIf { it.isNotBlank() }
-            ?.let { headers["User-Agent"] = it }
+            ?.let {
+                headers["User-Agent"] = it
+            }
 
-        if (!headers.containsKey("User-Agent") && webViewUserAgent.isNotBlank()) {
+        if (
+            !headers.containsKey("User-Agent") &&
+            webViewUserAgent.isNotBlank()
+        ) {
             headers["User-Agent"] = webViewUserAgent
         }
 
         findHeader(candidate.requestHeaders, "Referer")
             ?.takeIf { it.isNotBlank() }
-            ?.let { headers["Referer"] = it }
+            ?.let {
+                headers["Referer"] = it
+            }
+
+        /**
+         * Use the current page URL rather than blindly using the URL originally
+         * shared from Vivaldi. The user may have navigated inside the WebView.
+         */
+        val pageUrl =
+            currentPageUrl.takeIf { isHttpUrl(it) }
+                ?: originalUrl
 
         if (!headers.containsKey("Referer")) {
-            headers["Referer"] = originalUrl
+            headers["Referer"] = pageUrl
         }
 
         findHeader(candidate.requestHeaders, "Origin")
             ?.takeIf { it.isNotBlank() }
-            ?.let { headers["Origin"] = it }
+            ?.let {
+                headers["Origin"] = it
+            }
+
+        /**
+         * Adaptive manifests and technical page-config candidates sometimes
+         * expect the same normal Origin context the browser page used.
+         *
+         * We derive it from the current webpage itself.
+         */
+        if (
+            !headers.containsKey("Origin") &&
+            (
+                candidate.typeLabel == "HLS" ||
+                candidate.typeLabel == "DASH" ||
+                candidate.discoveredBy == DiscoverySource.PAGE_CONFIG
+            )
+        ) {
+            pageOrigin(pageUrl)?.let { origin ->
+                headers["Origin"] = origin
+            }
+        }
 
         findHeader(candidate.requestHeaders, "Accept")
             ?.takeIf { it.isNotBlank() }
-            ?.let { headers["Accept"] = it }
+            ?.let {
+                headers["Accept"] = it
+            }
 
         findHeader(candidate.requestHeaders, "Accept-Language")
             ?.takeIf { it.isNotBlank() }
-            ?.let { headers["Accept-Language"] = it }
+            ?.let {
+                headers["Accept-Language"] = it
+            }
 
-        /*
-         * Only this app's WebView cookies are used. There is no attempt to read
-         * or export cookies from Vivaldi.
+        /**
+         * Only cookies belonging to this app's own WebView session are reused.
          */
-        CookieManager.getInstance().getCookie(candidate.url)
+        CookieManager
+            .getInstance()
+            .getCookie(candidate.url)
             ?.takeIf { it.isNotBlank() }
-            ?.let { headers["Cookie"] = it }
+            ?.let {
+                headers["Cookie"] = it
+            }
 
         val headerJson = JSONObject()
+
         headers.forEach { (key, value) ->
             headerJson.put(key, value)
         }
 
-        val protocol = when (candidate.typeLabel) {
-            "HLS" -> "m3u8_native"
-            "DASH" -> "dash"
-            else -> "https"
-        }
+        val protocol =
+            when (candidate.typeLabel) {
+                "HLS" -> "m3u8_native"
+                "DASH" -> "dash"
+                else -> "https"
+            }
 
-        val extension = when (candidate.typeLabel) {
-            "MP4" -> "mp4"
-            "WebM" -> "webm"
-            "HLS" -> "m3u8"
-            "DASH" -> "mpd"
-            else -> JSONObject.NULL
-        }
+        val extension: Any =
+            when (candidate.typeLabel) {
+                "MP4" -> "mp4"
+                "WebM" -> "webm"
+                "HLS" -> "m3u8"
+                "DASH" -> "mpd"
+                else -> JSONObject.NULL
+            }
 
         val media = JSONObject()
             .put("url", candidate.url)
-            .put("mime_type", candidate.mimeType ?: JSONObject.NULL)
+            .put(
+                "mime_type",
+                candidate.mimeType ?: JSONObject.NULL
+            )
             .put("protocol", protocol)
             .put("ext", extension)
             .put("container", JSONObject.NULL)
-            .put("height", JSONObject.NULL)
+            .put(
+                "height",
+                candidate.declaredHeight ?: JSONObject.NULL
+            )
             .put("width", JSONObject.NULL)
-            .put("format_id", "browser-${candidate.typeLabel.lowercase(Locale.US)}")
+            .put(
+                "format_id",
+                "browser-${candidate.typeLabel.lowercase(Locale.US)}"
+            )
             .put("vcodec", JSONObject.NULL)
             .put("acodec", JSONObject.NULL)
             .put("headers", headerJson)
 
         val root = JSONObject()
             .put("mode", "single")
-            .put("title", getString(R.string.browser_stream_title))
-            .put("webpage_url", originalUrl)
+            .put(
+                "title",
+                getString(R.string.browser_stream_title)
+            )
+            .put("webpage_url", pageUrl)
             .put("requested_quality", "browser")
             .put("resolver_mode", "browser")
             .put("media", media)
 
         startActivity(
             Intent(this, PlayerActivity::class.java)
-                .putExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA, root.toString())
+                .putExtra(
+                    PlayerActivity.EXTRA_RESOLVED_MEDIA,
+                    root.toString()
+                )
         )
     }
 
-    /** Header names are case-insensitive in HTTP. */
-    private fun findHeader(headers: Map<String, String>, wantedName: String): String? =
+    /** Return `scheme://host[:port]` for a normal webpage URL. */
+    private fun pageOrigin(value: String): String? {
+        val uri =
+            runCatching { Uri.parse(value) }.getOrNull()
+                ?: return null
+
+        val scheme = uri.scheme ?: return null
+        val host = uri.host ?: return null
+        val port = uri.port
+
+        return if (port > 0) {
+            "$scheme://$host:$port"
+        } else {
+            "$scheme://$host"
+        }
+    }
+
+    /** HTTP header names are case-insensitive. */
+    private fun findHeader(
+        headers: Map<String, String>,
+        wantedName: String
+    ): String? =
         headers.entries.firstOrNull {
-            it.key.equals(wantedName, ignoreCase = true)
+            it.key.equals(
+                wantedName,
+                ignoreCase = true
+            )
         }?.value
 
     private fun isHttpUrl(value: String): Boolean =
-        value.startsWith("https://", ignoreCase = true) ||
-            value.startsWith("http://", ignoreCase = true)
+        value.startsWith(
+            "https://",
+            ignoreCase = true
+        ) ||
+            value.startsWith(
+                "http://",
+                ignoreCase = true
+            )
 
     override fun onResume() {
         super.onResume()
 
-        // Start/restart the lightweight page probe when the resolver is visible.
         probeHandler.removeCallbacks(probeRunnable)
         probeHandler.post(probeRunnable)
     }
 
     override fun onPause() {
-        // Do not keep evaluating page JavaScript while this Activity is hidden by the player.
+        /**
+         * Do not continue evaluating page JavaScript while PlayerActivity is on
+         * top of this Activity.
+         */
         probeHandler.removeCallbacks(probeRunnable)
         super.onPause()
     }
@@ -787,8 +1414,13 @@ class BrowserResolverActivity : AppCompatActivity() {
     override fun onDestroy() {
         probeHandler.removeCallbacksAndMessages(null)
 
-        // ServiceWorkerController is process-wide, so remove our observer when leaving.
-        ServiceWorkerController.getInstance().setServiceWorkerClient(null)
+        /**
+         * ServiceWorkerController is process-wide, so remove our observer when
+         * this resolver Activity disappears.
+         */
+        ServiceWorkerController
+            .getInstance()
+            .setServiceWorkerClient(null)
 
         if (::webView.isInitialized) {
             webView.stopLoading()
