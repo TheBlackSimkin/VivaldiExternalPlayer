@@ -57,6 +57,33 @@ data class ResolvedMedia(
     val primarySource: StreamSource?
         get() = video ?: single
 
+    /**
+     * Serialize the resolver-independent model back to its JSON contract.
+     *
+     * Tab sessions use this after a quality switch so a tab can restore the
+     * exact currently selected source without re-running the resolver.
+     */
+    fun toJson(): String {
+        val root = JSONObject()
+            .put("mode", mode)
+            .put("title", title)
+            .put("webpage_url", webpageUrl)
+            .put("requested_quality", requestedQuality)
+            .put("resolver_mode", resolverMode)
+
+        single?.let { root.put("media", it.toJsonObject()) }
+        video?.let { root.put("video", it.toJsonObject()) }
+        audio?.let { root.put("audio", it.toJsonObject()) }
+
+        if (browserVariants.isNotEmpty()) {
+            val array = JSONArray()
+            browserVariants.forEach { array.put(it.toJsonObject()) }
+            root.put("browser_variants", array)
+        }
+
+        return root.toString()
+    }
+
     companion object {
 
         /** Parse the JSON returned either by resolver.py or BrowserResolverActivity. */
@@ -136,4 +163,23 @@ data class ResolvedMedia(
                 optInt(key)
             }
     }
+}
+
+/** Convert one source back into the shared resolver JSON contract. */
+private fun StreamSource.toJsonObject(): JSONObject {
+    val headerJson = JSONObject()
+    headers.forEach { (key, value) -> headerJson.put(key, value) }
+
+    return JSONObject()
+        .put("url", url)
+        .put("mime_type", mimeType ?: JSONObject.NULL)
+        .put("headers", headerJson)
+        .put("height", height ?: JSONObject.NULL)
+        .put("width", width ?: JSONObject.NULL)
+        .put("protocol", protocol ?: JSONObject.NULL)
+        .put("ext", extension ?: JSONObject.NULL)
+        .put("container", container ?: JSONObject.NULL)
+        .put("format_id", formatId ?: JSONObject.NULL)
+        .put("vcodec", videoCodec ?: JSONObject.NULL)
+        .put("acodec", audioCodec ?: JSONObject.NULL)
 }
