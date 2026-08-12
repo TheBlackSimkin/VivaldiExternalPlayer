@@ -4,7 +4,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:name="com.chaquo.python.android.PyApplication"
+        android:name=".TabbedPlayerApplication"
         android:allowBackup="false"
         android:label="External Video Player"
         android:supportsRtl="true"
