@@ -91,28 +91,35 @@ Manual URL paste remains useful for debugging.
 Use as a safe proxy for noisy pages with multiple players, playlists,
 advertising examples, and many candidate resources.
 
-Latest result reported by user:
+Older result before Batch 4:
 
-- 20 possible videos were displayed (this exposed the old hard 20-candidate
-  behavior).
+- 20 possible videos were displayed, exposing the old hard 20-candidate limit.
 - At least one candidate played.
-- Audio was not a useful validation signal on that page/test.
-- Do not use Cloudinary alone to validate complete audio+video selection.
+- Audio was not a useful validation signal in that test.
+
+Batch 4 Cloudinary stress test is still pending.
 
 ### Bitmovin HLS/fMP4 demo
 
 `https://bitmovin.com/demos/hls-fmp4/`
 
-Use as the strongest safe proxy for master-vs-child HLS selection and complete
-video+audio detection.
+Batch 4 result: **PASS**.
 
-Latest result reported by user:
+User reported:
 
-- 5 possible videos detected.
-- A manually selected candidate played with correct audio+video.
-- The recommended candidate was NOT the correct candidate.
+- automatic playback: YES;
+- video: YES;
+- audio: YES;
+- no manual interaction was required;
+- a brief browser-resolver screen was visible before the automatic redirect.
 
-This is the key regression Batch 4 must fix.
+Interpretation:
+
+- Batch 4 fixed the previous top-level-vs-child HLS ranking failure;
+- the transient browser-resolver screen is a UX polish issue, not a selection
+  failure;
+- do not risk the working selection logic merely to remove that flicker until
+  resolver reliability testing is complete.
 
 ## 6. Current architecture
 
@@ -142,22 +149,17 @@ Observes:
 - Performance API resource URLs;
 - `mediaDefinitions`-style technical player configuration when exposed.
 
-Batch 3 already fixed webpage-as-video false positives and carried declared
-quality metadata.
+Batch 4 behavior:
 
-Batch 4 implementation changes:
-
-- adds a real automatic first attempt after candidate discovery becomes quiet;
-- makes the manual list a fallback named "Choose another video";
-- replaces technical candidate labels with plain-language descriptions;
+- automatic best-candidate first attempt after candidate discovery becomes quiet;
+- manual list is fallback only and is labeled "Choose another video";
+- plain-language candidate descriptions;
 - stores up to 80 candidates instead of deleting the oldest item at 20;
-- manual chooser shows only the strongest 20 if a page is extremely noisy;
-- no longer gives a generic bonus to every path containing `playlist`;
-- gives first-seen order real ranking weight for HLS/DASH so a top-level master
-  can beat later child renditions;
-- softly demotes obvious audio-only/video-only child paths;
-- preserves page-config family IDs so sibling quality URLs can be passed to the
-  player together.
+- manual chooser shows only the strongest 20 on extremely noisy pages;
+- removed the generic `playlist` ranking bonus;
+- first-seen HLS/DASH ordering has meaningful ranking weight;
+- obvious audio-only/video-only child paths are softly demoted, not removed;
+- page-config family IDs group sibling quality URLs.
 
 No media imagery is inspected.
 
@@ -170,17 +172,22 @@ No media imagery is inspected.
 - Frame-extractor seek previews.
 - Playback diagnostics.
 
-Batch 4 implementation changes:
+Batch 4 behavior:
 
-- supports browser quality switching between sibling URLs (for example separate
-  720p and 1080p page-config streams), preserving playback position;
-- keeps existing adaptive HLS/DASH quality switching unchanged when a real
-  master manifest exposes multiple Media3 tracks;
-- updates Diagnostics after `STATE_READY` with explicit `Video: yes/no`,
-  `Audio: yes/no`, and available qualities instead of leaving a successful
-  player at `waiting for playback result`.
+- browser sibling quality URLs can be switched while preserving approximate
+  playback position;
+- existing adaptive HLS/DASH quality switching remains unchanged;
+- Diagnostics update after STATE_READY with explicit video/audio/quality results.
 
-## 7. Verified real-target results before Batch 4
+## 7. Verified Batch 4 results
+
+### Build gate
+
+GitHub Actions clean build **#48** passed from the final cleaned repository state.
+
+- Build debug APK: PASS.
+- Upload APK: PASS.
+- Artifact: `VivaldiExternalPlayer-debug-apk`.
 
 ### Vivaldi Share
 
@@ -189,52 +196,69 @@ PASS:
 - app appears in Share;
 - correct URL is received automatically.
 
+### Bitmovin safe proxy
+
+PASS:
+
+- automatic selection: YES;
+- video: YES;
+- audio: YES;
+- correct complete stream chosen automatically;
+- brief browser-resolver transition remains a UX polish item.
+
 ### Pornhub (PH)
 
-Latest user test:
+Batch 4 result: **PASS**.
 
-- URL tested:
-  `https://www.pornhub.com/view_video.php?viewkey=68913ce2533cb`
-- 6 possible videos detected.
-- First/Recommended candidate played correctly.
-- Source was HLS at `em-h.phncdn.com` with declared 720p.
-- Playback worked, but quality could not be changed.
+User reported:
+
+- automatic playback: YES;
+- video: YES;
+- audio: YES;
+- multiple quality options available: YES;
+- quality change: YES.
 
 Interpretation:
 
-- primary stream discovery is now working;
-- the remaining PH issue is quality switching when page configuration exposes
-  separate quality URLs rather than one multi-quality master manifest.
+- automatic primary-stream selection still works;
+- the Batch 4 sibling-quality handoff fixed the earlier inability to switch
+  quality on the tested PH page.
 
 ### HentaiHaven (HH)
 
-Latest user test:
+Batch 4 result: **PASS**.
 
-- URL tested:
-  `https://hentaihaven.xxx/watch/nuki-nuki-zupposism/episode-1/`
-- 6 possible videos detected.
-- First/Recommended candidate worked as expected.
-- HLS host: `octopusmanifest.org`.
-- Audio/video and quality behavior were correct.
+User reported:
 
-HH is the strongest real-target regression baseline and must not be broken.
+- automatic playback: YES;
+- video: YES;
+- audio: YES;
+- quality options: YES;
+- quality change: YES;
+- no additional problems reported.
 
-## 8. Batch 4 QA order
+Interpretation:
 
-Build gate first, then:
+- Batch 4 preserved the existing HH adaptive behavior;
+- HH remains a strong regression baseline.
 
-1. Bitmovin safe proxy — automatic first candidate must be complete video+audio.
-2. PH — automatic first attempt should play the same working main video, and
-   Quality should expose sibling qualities if the page provides them.
-3. HH — automatic first attempt must remain correct; existing quality behavior
-   must remain intact.
-4. Cloudinary — verify noisy-page handling and that the app does not present the
-   manual list as the normal workflow.
+## 8. Batch 4 QA status and next test
+
+Completed:
+
+1. Build gate — PASS.
+2. Bitmovin — PASS.
+3. PH — PASS, including quality switching.
+4. HH — PASS, including quality switching.
+
+Remaining resolver stress test:
+
+5. Cloudinary — verify noisy-page handling, automatic first attempt, and that the
+   app does not require the user to browse a long manual candidate list.
 
 For every QA request, ChatGPT must provide:
 
-- one detailed code block containing exactly what to test, Expected, and Result
-  fields;
+- one detailed code block containing what to test, **EXPECTED**, and **RESULT**;
 - a second short code block which the user can copy, fill in, and send back.
 
 Keep the reply block compact.
@@ -258,17 +282,14 @@ Public repository:
 
 `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
 
-Direct GitHub reading succeeded on 2026-08-11. The repository showed 47 commits
-at that check. Continue verifying direct access on every user turn as requested.
-
-After Batch 4 is merged, the GitHub `main` branch is the project source of truth.
-Use an uploaded ZIP only if direct repository access fails or the user explicitly
-says the ZIP is newer.
+Direct GitHub access is currently working through the connected GitHub tool.
+The `main` branch is the project source of truth.
 
 ## 11. Backlog after resolver reliability
 
-1. Playback-speed control.
-2. App-level volume/mute.
-3. Return to existing Vivaldi task/tab.
-4. Persistent APK signing for GitHub Actions.
-5. Brave evaluation only after Vivaldi is reliable.
+1. Polish the brief browser-resolver transition/flicker before automatic playback.
+2. Playback-speed control.
+3. App-level volume/mute.
+4. Return to existing Vivaldi task/tab.
+5. Persistent APK signing for GitHub Actions.
+6. Brave evaluation only after Vivaldi is reliable.
