@@ -49,6 +49,12 @@
     <string name="browser_detected_status">Detected %1$d possible media request(s).</string>
     <string name="media_host_fallback">media host</string>
 
+    <!-- Multi-video tabs. -->
+    <string name="video_tabs">Video tabs</string>
+    <string name="tabs_button_count">Tabs: %1$d</string>
+    <string name="tab_active_title">▶ %1$s</string>
+    <string name="close_tab_named">Close tab: %1$s</string>
+
     <!-- Player quality controls. -->
     <string name="video_quality">Video quality</string>
     <string name="quality_auto_prefer_720">Auto — prefer 720p</string>
