@@ -18,6 +18,27 @@ accessible non-DRM media stream, and plays it in AndroidX Media3 / ExoPlayer.
 - English and Spanish user-facing strings.
 - Copyable playback diagnostics.
 
+Batch 4 has passed the main validation set: Bitmovin, PH, and HH all report
+automatic playback with video+audio, and PH/HH quality switching works. Further
+Cloudinary testing was intentionally skipped and is not a required gate.
+
+## Planned player UX
+
+The next major direction is a tabbed multi-video player:
+
+- every video shared from Vivaldi becomes an independent app tab;
+- the user can switch between and close video tabs similarly to browser tabs;
+- each tab shows the original video/page title using locally available metadata;
+- each open tab preserves its own playback position and media selection;
+- resolution internals should be hidden behind a simple "Opening video…" state;
+- Media3 buffering should show a simple visible "Buffering…" indicator;
+- the current brief browser-resolver screen/flicker should be removed without
+  changing the working resolver-selection logic;
+- the prototype launcher icon should be replaced with a polished custom Android
+  adaptive icon.
+
+See `PROJECT_STATE.md` for the exact requirements and development priorities.
+
 ## Important boundary
 
 The app is not intended to bypass DRM, authentication, subscriptions, regional
@@ -38,8 +59,12 @@ See `BUILD_APK.md` for the GitHub Actions build workflow.
 
 ## Current backlog
 
-- Resolver/candidate-selection regression testing is still in progress.
-- Playback-speed control is pending.
-- App-level volume/mute is pending.
-- Dedicated return to the existing Vivaldi task/tab is pending.
-- Frame previews depend on the selected remote stream supporting seeking.
+- Multi-video tab/session system.
+- Per-tab original video/page title.
+- Transparent opening/buffering UI and resolver-transition cleanup.
+- Custom adaptive launcher icon.
+- Playback-speed control.
+- App-level volume/mute.
+- Dedicated return to the existing Vivaldi task/tab.
+- Persistent APK signing for GitHub Actions.
+- Brave evaluation after Vivaldi behavior is mature.
