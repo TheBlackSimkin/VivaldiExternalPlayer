@@ -8,31 +8,45 @@
     <string name="resolve_and_play">Resolve and play</string>
     <string name="open_browser_assisted_resolver">Open browser-assisted resolver</string>
     <string name="status_complete_url">Paste or share a complete web address.</string>
-    <string name="status_resolving">Resolving video — 720p preferred…</string>
-    <string name="status_direct_failed">Direct resolver failed.</string>
-    <string name="status_opening_browser_fallback">Opening the browser-assisted resolver automatically…</string>
-    <string name="status_browser_fallback_explanation">Browser-assisted mode observes normal media requests made by this app\'s WebView. It does not automate challenges, DRM, subscriptions, authentication, or regional access controls.</string>
+    <string name="status_resolving">Finding the video — 720p preferred…</string>
+    <string name="status_direct_failed">The fast resolver could not open this page.</string>
+    <string name="status_opening_browser_fallback">Trying the browser method automatically…</string>
+    <string name="status_browser_fallback_explanation">The browser method observes normal media requests made by this app. It does not automate challenges, DRM, subscriptions, sign-in, or regional access controls.</string>
 
     <!-- Browser-assisted resolver. -->
-    <string name="browser_resolver_intro">Browser-assisted resolver: interact with the page normally and start playback. The app observes technical media information only; it does not analyze video content or automate access controls.</string>
+    <string name="browser_resolver_intro">The app will try the best video it finds automatically. Use the list only if the first result is wrong. Start the video on this page only if detection needs it.</string>
     <string name="browser_loading">Loading page…</string>
-    <string name="browser_page_loaded">Page loaded. Start playback in this browser view if needed. The app will observe normal technical media information.</string>
-    <string name="browser_play_detected_count">Play detected stream (%1$d)</string>
-    <string name="browser_detected_status">Detected %1$d possible media request(s). Start playback in the page if needed, then tap Play detected stream.</string>
-    <string name="browser_no_stream_button">No stream detected yet</string>
-    <string name="browser_no_media">No supported media request has been detected yet.</string>
-    <string name="browser_candidate_title">Detected media requests</string>
-    <string name="browser_candidate_explanation">Candidates are ranked, not blocked. The recommended entry is only the app\'s best technical guess.</string>
-    <string name="browser_recommended_prefix">Recommended:</string>
-    <string name="browser_stream_title">Browser stream</string>
-    <string name="browser_type_direct">Direct media</string>
+    <string name="browser_page_loaded">Page loaded. If nothing happens automatically, start the video on this page once so the app can detect it.</string>
+    <string name="browser_choose_options_count">Choose another video (%1$d)</string>
+    <string name="browser_auto_trying_status">Found %1$d video option(s). The app will try the best match automatically.</string>
+    <string name="browser_auto_tried_status">Found %1$d video option(s). The best match was tried. Use “Choose another video” only if it was wrong.</string>
+    <string name="browser_no_stream_button">No video detected yet</string>
+    <string name="browser_no_media">No supported video has been detected yet.</string>
+    <string name="browser_candidate_title">Choose another video</string>
+    <string name="browser_candidate_explanation">Try the first option unless you already know it was wrong. The descriptions are simplified; technical details remain available in Playback diagnostics.</string>
+    <string name="browser_candidate_explanation_limited">Showing the %1$d most likely of %2$d detected options. Try the first option unless you already know it was wrong.</string>
+    <string name="browser_best_match_prefix">Best match —</string>
+    <string name="browser_option_number">Option %1$d —</string>
+    <string name="browser_stream_title">Browser video</string>
+    <string name="browser_type_direct">Direct video</string>
 
-    <!-- How a browser candidate was discovered. -->
+    <!-- Plain-language descriptions for the manual fallback list. -->
+    <string name="browser_candidate_video_quality">Video • %1$dp</string>
+    <string name="browser_candidate_adaptive_video">Video • quality can be chosen automatically</string>
+    <string name="browser_candidate_direct_video">Video file • quality not listed</string>
+    <string name="browser_candidate_audio_only">Audio only • probably not the video you want</string>
+    <string name="browser_candidate_video_only">Video without obvious audio • probably incomplete</string>
+    <string name="browser_candidate_video_only_quality">Video without obvious audio • %1$dp • probably incomplete</string>
+    <string name="browser_candidate_unknown">Possible video • details unknown</string>
+
+    <!-- Legacy technical discovery labels retained for diagnostics/backwards compatibility. -->
     <string name="browser_source_network">network</string>
     <string name="browser_source_page">page</string>
     <string name="browser_source_performance">browser resource</string>
     <string name="browser_source_config">player config</string>
-
+    <string name="browser_recommended_prefix">Recommended:</string>
+    <string name="browser_play_detected_count">Play detected stream (%1$d)</string>
+    <string name="browser_detected_status">Detected %1$d possible media request(s).</string>
     <string name="media_host_fallback">media host</string>
 
     <!-- Player quality controls. -->
@@ -41,13 +55,13 @@
     <string name="quality_auto">Quality: Auto</string>
     <string name="quality_auto_limit">Quality: Auto ≤ %1$dp</string>
     <string name="quality_value">Quality: %1$dp</string>
-    <string name="quality_stream">Quality: stream</string>
+    <string name="quality_stream">Quality: one option</string>
     <string name="quality_detecting">Quality: detecting…</string>
     <string name="quality_loading">Quality: loading…</string>
     <string name="playing_quality">Playing %1$dp</string>
     <string name="quality_changed">Quality changed</string>
     <string name="quality_change_failed">Could not change quality</string>
-    <string name="browser_quality_unavailable">This detected browser stream does not expose selectable video qualities to Media3.</string>
+    <string name="browser_quality_unavailable">This video only exposes one usable quality.</string>
     <string name="original_webpage_unavailable">The original webpage URL is unavailable.</string>
 
     <!-- Playback diagnostics. -->
