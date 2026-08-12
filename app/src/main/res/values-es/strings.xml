@@ -49,6 +49,12 @@
     <string name="browser_detected_status">Se detectaron %1$d posible(s) solicitud(es) multimedia.</string>
     <string name="media_host_fallback">servidor multimedia</string>
 
+    <!-- Pestañas de vídeo. -->
+    <string name="video_tabs">Pestañas de vídeo</string>
+    <string name="tabs_button_count">Pestañas: %1$d</string>
+    <string name="tab_active_title">▶ %1$s</string>
+    <string name="close_tab_named">Cerrar pestaña: %1$s</string>
+
     <!-- Controles de calidad del reproductor. -->
     <string name="video_quality">Calidad de vídeo</string>
     <string name="quality_auto_prefer_720">Automática — preferir 720p</string>
