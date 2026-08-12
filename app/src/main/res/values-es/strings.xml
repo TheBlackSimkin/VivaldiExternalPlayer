@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Android selects these translations automatically when the phone uses Spanish. -->
+    <!-- Android uses these translations automatically when the phone uses Spanish. -->
 
     <!-- Pantalla principal. -->
     <string name="main_intro">Comparte una página de vídeo desde Vivaldi o pega su URL abajo. Solo se admiten transmisiones sin DRM.</string>
@@ -14,9 +14,9 @@
     <string name="status_browser_fallback_explanation">El modo asistido por navegador observa solicitudes multimedia normales hechas por el WebView de esta aplicación. No automatiza desafíos, DRM, suscripciones, autenticación ni controles regionales.</string>
 
     <!-- Resolución asistida por navegador. -->
-    <string name="browser_resolver_intro">Resolución asistida por navegador: usa la página normalmente e inicia la reproducción. La aplicación observa solicitudes multimedia normales; no automatiza controles de acceso.</string>
+    <string name="browser_resolver_intro">Resolución asistida por navegador: usa la página normalmente e inicia la reproducción. La aplicación observa solo información técnica multimedia; no analiza el contenido del vídeo ni automatiza controles de acceso.</string>
     <string name="browser_loading">Cargando página…</string>
-    <string name="browser_page_loaded">Página cargada. Inicia la reproducción en esta vista. La aplicación observará las solicitudes multimedia normales.</string>
+    <string name="browser_page_loaded">Página cargada. Inicia la reproducción en esta vista si hace falta. La aplicación observará información técnica multimedia normal.</string>
     <string name="browser_play_detected_count">Reproducir transmisión detectada (%1$d)</string>
     <string name="browser_detected_status">Se detectaron %1$d posible(s) solicitud(es) multimedia. Inicia la reproducción en la página si hace falta y luego toca Reproducir transmisión detectada.</string>
     <string name="browser_no_stream_button">Aún no se detectó una transmisión</string>
@@ -26,9 +26,13 @@
     <string name="browser_recommended_prefix">Recomendada:</string>
     <string name="browser_stream_title">Transmisión del navegador</string>
     <string name="browser_type_direct">Medio directo</string>
+
+    <!-- Cómo se descubrió cada candidato. -->
     <string name="browser_source_network">red</string>
     <string name="browser_source_page">página</string>
     <string name="browser_source_performance">recurso del navegador</string>
+    <string name="browser_source_config">configuración del reproductor</string>
+
     <string name="media_host_fallback">servidor multimedia</string>
 
     <!-- Controles de calidad del reproductor. -->
