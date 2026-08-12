@@ -103,6 +103,9 @@ class PlayerActivity : AppCompatActivity() {
     private var browserAutoTargetHeight: Int? = null
     private var browserManualHeight: Int? = null
 
+    /** Last track snapshot used to turn Diagnostics into a real playback result. */
+    private var lastObservedTracks: Tracks? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -164,7 +167,18 @@ class PlayerActivity : AppCompatActivity() {
                 }
 
                 override fun onTracksChanged(tracks: Tracks) {
+                    lastObservedTracks = tracks
                     handleTracksChanged(tracks)
+
+                    if (player?.playbackState == Player.STATE_READY) {
+                        updateReadyDiagnostics()
+                    }
+                }
+
+                override fun onPlaybackStateChanged(playbackState: Int) {
+                    if (playbackState == Player.STATE_READY) {
+                        updateReadyDiagnostics()
+                    }
                 }
             }
         )
@@ -236,6 +250,7 @@ class PlayerActivity : AppCompatActivity() {
         diagnosticsButton.text = getString(R.string.player_diagnostics)
 
         browserVideoTracks = emptyList()
+        lastObservedTracks = null
         browserAutoPolicyApplied = false
         browserAutoTargetHeight = null
         browserManualHeight = null
@@ -259,13 +274,17 @@ class PlayerActivity : AppCompatActivity() {
 
         browserVideoTracks = collectBrowserVideoTracks(tracks)
 
-        if (browserVideoTracks.isEmpty()) {
-            qualityButton.text = getString(R.string.quality_stream)
-            qualityButton.isEnabled = false
-            return
-        }
+        val adaptiveHeights = browserVideoTracks
+            .map { it.height }
+            .distinct()
 
-        if (!browserAutoPolicyApplied) {
+        /*
+         * Only apply a Media3 adaptive override when this one source actually
+         * exposes several track heights. If it exposes one height but the page
+         * supplied sibling URLs (for example separate 720p/1080p streams), the
+         * Quality button is handled by browserVariants instead.
+         */
+        if (adaptiveHeights.size > 1 && !browserAutoPolicyApplied) {
             browserAutoPolicyApplied = true
             applyBrowserAutoPolicy()
         } else {
@@ -409,20 +428,36 @@ class PlayerActivity : AppCompatActivity() {
      * so changing quality does NOT send the webpage back through yt-dlp.
      */
     private fun showBrowserQualityDialog() {
-        val heights = browserVideoTracks
+        val adaptiveHeights = browserVideoTracks
             .map { it.height }
             .distinct()
             .sortedDescending()
 
-        if (heights.isEmpty()) {
-            Toast.makeText(
-                this,
-                R.string.browser_quality_unavailable,
-                Toast.LENGTH_LONG
-            ).show()
+        if (adaptiveHeights.size > 1) {
+            showAdaptiveBrowserQualityDialog(adaptiveHeights)
             return
         }
 
+        val variants = browserVariantSources()
+        val variantHeights = variants
+            .mapNotNull { it.height }
+            .distinct()
+            .sortedDescending()
+
+        if (variantHeights.size > 1) {
+            showBrowserVariantQualityDialog(variants, variantHeights)
+            return
+        }
+
+        Toast.makeText(
+            this,
+            R.string.browser_quality_unavailable,
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    /** Quality chooser for a real adaptive HLS/DASH master manifest. */
+    private fun showAdaptiveBrowserQualityDialog(heights: List<Int>) {
         val labels = mutableListOf(getString(R.string.quality_auto_prefer_720))
         labels += heights.map { height -> "${height}p" }
 
@@ -454,6 +489,98 @@ class PlayerActivity : AppCompatActivity() {
             }
             .setNegativeButton(R.string.cancel, null)
             .show()
+    }
+
+    /**
+     * Quality chooser for players which expose one complete URL per quality.
+     * Switching source preserves the current playback position and play/pause
+     * state, so it behaves like a normal quality change to the user.
+     */
+    private fun showBrowserVariantQualityDialog(
+        variants: List<StreamSource>,
+        heights: List<Int>
+    ) {
+        val labels = mutableListOf(getString(R.string.quality_auto_prefer_720))
+        labels += heights.map { height -> "${height}p" }
+
+        val currentHeight = currentResolved?.displayedHeight
+        val checkedIndex = currentHeight
+            ?.let { selected -> heights.indexOf(selected).takeIf { it >= 0 }?.plus(1) }
+            ?: 0
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.video_quality)
+            .setSingleChoiceItems(labels.toTypedArray(), checkedIndex) { dialog, which ->
+                dialog.dismiss()
+
+                val targetHeight = if (which == 0) {
+                    preferredHeight(heights)
+                } else {
+                    heights[which - 1]
+                } ?: return@setSingleChoiceItems
+
+                val source = variants
+                    .filter { it.height == targetHeight }
+                    .maxByOrNull { source -> source.width ?: 0 }
+                    ?: return@setSingleChoiceItems
+
+                switchBrowserVariant(source)
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /** Return unique declared-quality sibling URLs from the browser resolver. */
+    private fun browserVariantSources(): List<StreamSource> {
+        val resolved = currentResolved ?: return emptyList()
+
+        return resolved.browserVariants
+            .filter { it.height != null && it.height > 0 }
+            .distinctBy { it.height }
+    }
+
+    /** Apply the project-wide 720 -> 1080 -> best-below-1080 policy. */
+    private fun preferredHeight(heights: List<Int>): Int? = when {
+        720 in heights -> 720
+        1080 in heights -> 1080
+        heights.any { it < 1080 } -> heights.filter { it < 1080 }.maxOrNull()
+        else -> heights.minOrNull()
+    }
+
+    /** Replace one browser quality URL while keeping the current playback place. */
+    private fun switchBrowserVariant(source: StreamSource) {
+        val resolved = currentResolved ?: return
+        val exoPlayer = player ?: return
+
+        if (resolved.primarySource?.url == source.url) {
+            updateBrowserQualityButton()
+            return
+        }
+
+        val resumePosition = exoPlayer.currentPosition
+        val shouldResume = exoPlayer.playWhenReady
+
+        val replacement = resolved.copy(
+            mode = "single",
+            requestedQuality = source.height?.toString() ?: "browser",
+            single = source,
+            video = null,
+            audio = null
+        )
+
+        loadResolvedMedia(
+            resolved = replacement,
+            startPositionMs = resumePosition,
+            playWhenReady = shouldResume
+        )
+
+        source.height?.let { height ->
+            Toast.makeText(
+                this,
+                getString(R.string.playing_quality, height),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     /** Existing yt-dlp quality picker, now fully localized. */
@@ -574,27 +701,46 @@ class PlayerActivity : AppCompatActivity() {
 
     /** Browser quality UI after Media3 has parsed the manifest/track list. */
     private fun updateBrowserQualityButton() {
-        if (browserVideoTracks.isEmpty()) {
-            qualityButton.text = getString(R.string.quality_stream)
-            qualityButton.isEnabled = false
+        val distinctAdaptiveHeights = browserVideoTracks
+            .map { it.height }
+            .distinct()
+
+        if (distinctAdaptiveHeights.size > 1) {
+            qualityButton.isEnabled = true
+
+            qualityButton.text = when {
+                browserManualHeight != null ->
+                    getString(R.string.quality_value, browserManualHeight!!)
+
+                browserAutoTargetHeight != null ->
+                    getString(R.string.quality_auto_limit, browserAutoTargetHeight!!)
+
+                else -> getString(R.string.quality_auto)
+            }
             return
         }
 
-        val distinctHeights = browserVideoTracks.map { it.height }.distinct()
-        qualityButton.isEnabled = distinctHeights.size > 1
+        val variantHeights = browserVariantSources()
+            .mapNotNull { it.height }
+            .distinct()
 
-        qualityButton.text = when {
-            browserManualHeight != null ->
-                getString(R.string.quality_value, browserManualHeight!!)
-
-            browserAutoTargetHeight != null ->
-                getString(R.string.quality_auto_limit, browserAutoTargetHeight!!)
-
-            distinctHeights.size == 1 ->
-                getString(R.string.quality_value, distinctHeights.first())
-
-            else -> getString(R.string.quality_auto)
+        if (variantHeights.size > 1) {
+            qualityButton.isEnabled = true
+            qualityButton.text = currentResolved?.displayedHeight
+                ?.takeIf { it > 0 }
+                ?.let { getString(R.string.quality_value, it) }
+                ?: getString(R.string.quality_auto)
+            return
         }
+
+        val onlyHeight = distinctAdaptiveHeights.firstOrNull()
+            ?: currentResolved?.displayedHeight
+
+        qualityButton.isEnabled = false
+        qualityButton.text = onlyHeight
+            ?.takeIf { it > 0 }
+            ?.let { getString(R.string.quality_value, it) }
+            ?: getString(R.string.quality_stream)
     }
 
     /**
@@ -681,6 +827,70 @@ class PlayerActivity : AppCompatActivity() {
             appendLine("Format ID: ${source?.formatId ?: "unknown"}")
             appendLine("Video codec: ${source?.videoCodec ?: "unknown"}")
             appendLine("Audio codec: ${source?.audioCodec ?: "unknown"}")
+            appendLine("Declared size: ${source?.width ?: "?"}x${source?.height ?: "?"}")
+        }.trim()
+    }
+
+    /**
+     * Replace the old "waiting for playback result" report once Media3 is ready.
+     * This gives QA a direct yes/no answer for video, audio and available sizes.
+     */
+    private fun updateReadyDiagnostics() {
+        val resolved = currentResolved ?: return
+        val source = resolved.primarySource
+        val uri = source?.url?.let { runCatching { Uri.parse(it) }.getOrNull() }
+        val tracks = lastObservedTracks
+
+        val hasVideo = tracks?.groups?.any { group ->
+            group.type == C.TRACK_TYPE_VIDEO &&
+                (0 until group.length).any { index -> group.isTrackSupported(index) }
+        } == true
+
+        val hasAudio = tracks?.groups?.any { group ->
+            group.type == C.TRACK_TYPE_AUDIO &&
+                (0 until group.length).any { index -> group.isTrackSupported(index) }
+        } == true
+
+        val heights = tracks?.groups
+            ?.filter { group -> group.type == C.TRACK_TYPE_VIDEO }
+            ?.flatMap { group ->
+                (0 until group.length).mapNotNull { index ->
+                    group.getTrackFormat(index).height.takeIf { it > 0 }
+                }
+            }
+            ?.distinct()
+            ?.sortedDescending()
+            .orEmpty()
+
+        val siblingHeights = resolved.browserVariants
+            .mapNotNull { it.height }
+            .filter { it > 0 }
+            .distinct()
+            .sortedDescending()
+
+        val availableHeights = (heights + siblingHeights)
+            .distinct()
+            .sortedDescending()
+
+        lastDiagnostics = buildString {
+            appendLine(getString(R.string.diagnostics_title))
+            appendLine("------------------------------")
+            appendLine("Status: playback ready")
+            appendLine("Video: ${if (hasVideo) "yes" else "no"}")
+            appendLine("Audio: ${if (hasAudio) "yes" else "no"}")
+            appendLine(
+                "Available qualities: ${
+                    if (availableHeights.isEmpty()) "unknown"
+                    else availableHeights.joinToString(", ") { "${it}p" }
+                }"
+            )
+            appendLine("Resolver: ${resolved.resolverMode}")
+            appendLine("Mode: ${resolved.mode}")
+            appendLine("Source host: ${uri?.host ?: "unknown"}")
+            appendLine("Source path: ${uri?.path ?: "unknown"}")
+            appendLine("MIME: ${source?.mimeType ?: "unknown"}")
+            appendLine("Protocol: ${source?.protocol ?: "unknown"}")
+            appendLine("Extension: ${source?.extension ?: "unknown"}")
             appendLine("Declared size: ${source?.width ?: "?"}x${source?.height ?: "?"}")
         }.trim()
     }

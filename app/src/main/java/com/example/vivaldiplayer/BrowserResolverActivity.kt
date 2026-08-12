@@ -57,7 +57,17 @@ class BrowserResolverActivity : AppCompatActivity() {
          * Prevent an extremely busy page from producing an unusably large
          * candidate dialog.
          */
-        private const val MAX_CANDIDATES = 20
+        private const val MAX_STORED_CANDIDATES = 80
+
+        /** Only the strongest options are shown in the manual fallback list. */
+        private const val MAX_CHOOSER_CANDIDATES = 20
+
+        /**
+         * After the page is loaded, wait for candidate discovery to become quiet
+         * before trying the best match automatically. This avoids launching the
+         * first advertisement or child rendition which happens to arrive early.
+         */
+        private const val AUTO_PLAY_DEBOUNCE_MS = 2_500L
 
         /**
          * Modern JavaScript video players often create their <video> element or
@@ -86,6 +96,7 @@ class BrowserResolverActivity : AppCompatActivity() {
         val requestHeaders: Map<String, String>,
         val discoveredBy: DiscoverySource,
         val declaredHeight: Int? = null,
+        val familyId: String? = null,
         val firstSeenOrder: Long = 0L
     )
 
@@ -132,6 +143,24 @@ class BrowserResolverActivity : AppCompatActivity() {
     private val candidateLock = Any()
     private val candidates = mutableListOf<StreamCandidate>()
     private var nextCandidateOrder = 1L
+
+    /** True after the normal page-load callback has completed at least once. */
+    private var pageFinishedOnce = false
+
+    /**
+     * The browser resolver gets one automatic best-match attempt per visit.
+     * Returning from PlayerActivity never creates an auto-launch loop.
+     */
+    private var automaticAttemptStarted = false
+
+    /**
+     * Candidate discovery is noisy for a short time. Each meaningful change
+     * reschedules this runnable so automatic playback starts only after the list
+     * has been stable for a moment.
+     */
+    private val autoPlayRunnable = Runnable {
+        tryRecommendedCandidateAutomatically()
+    }
 
     /**
      * Periodic JavaScript probe executed only while this Activity is visible.
@@ -189,6 +218,12 @@ class BrowserResolverActivity : AppCompatActivity() {
         configureWebView()
 
         playDetectedButton.setOnClickListener {
+            /*
+             * The list is deliberately a fallback. If the user opens it, do not
+             * auto-launch another candidate behind the dialog.
+             */
+            automaticAttemptStarted = true
+            probeHandler.removeCallbacks(autoPlayRunnable)
             showCandidateChooser()
         }
 
@@ -307,10 +342,13 @@ class BrowserResolverActivity : AppCompatActivity() {
                  * JavaScript players may not create their actual media element
                  * until page initialization has finished.
                  */
+                pageFinishedOnce = true
                 probePageForMedia()
 
                 if (candidateCount() == 0) {
                     status.text = getString(R.string.browser_page_loaded)
+                } else {
+                    scheduleAutomaticAttempt()
                 }
             }
         }
@@ -406,7 +444,7 @@ class BrowserResolverActivity : AppCompatActivity() {
                     return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
                 }
 
-                function add(url, mime, source, allowUnknown, quality) {
+                function add(url, mime, source, allowUnknown, quality, family) {
                     if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) {
                         return;
                     }
@@ -426,7 +464,8 @@ class BrowserResolverActivity : AppCompatActivity() {
                         mime: (typeof mime === 'string') ? mime : '',
                         source: source,
                         allowUnknown: !!allowUnknown,
-                        quality: normalizeQuality(quality)
+                        quality: normalizeQuality(quality),
+                        family: (typeof family === 'string') ? family : ''
                     });
                 }
 
@@ -434,13 +473,14 @@ class BrowserResolverActivity : AppCompatActivity() {
                  * Strong signal:
                  * media URL attached directly to a VIDEO element.
                  */
-                document.querySelectorAll('video').forEach(function(video) {
+                document.querySelectorAll('video').forEach(function(video, index) {
                     add(
                         video.currentSrc || video.src,
                         video.type || '',
                         'page',
                         true,
-                        0
+                        0,
+                        'video:' + index
                     );
                 });
 
@@ -453,7 +493,8 @@ class BrowserResolverActivity : AppCompatActivity() {
                         source.type || '',
                         'page',
                         true,
-                        0
+                        0,
+                        ''
                     );
                 });
 
@@ -478,7 +519,8 @@ class BrowserResolverActivity : AppCompatActivity() {
                                 '',
                                 'performance',
                                 initiator === 'video',
-                                0
+                                0,
+                                ''
                             );
                         }
                     });
@@ -536,7 +578,8 @@ class BrowserResolverActivity : AppCompatActivity() {
                                 '',
                                 'config',
                                 true,
-                                definition.quality
+                                definition.quality,
+                                'config:' + key
                             );
                         });
                     });
@@ -590,6 +633,11 @@ class BrowserResolverActivity : AppCompatActivity() {
                         .optInt("quality", 0)
                         .takeIf { it > 0 }
 
+                    val familyId = item
+                        .optString("family")
+                        .trim()
+                        .takeIf { it.isNotBlank() }
+
                     if (!isHttpUrl(url)) {
                         continue
                     }
@@ -618,7 +666,8 @@ class BrowserResolverActivity : AppCompatActivity() {
                             typeLabel = classification.first,
                             requestHeaders = emptyMap(),
                             discoveredBy = source,
-                            declaredHeight = declaredHeight
+                            declaredHeight = declaredHeight,
+                            familyId = familyId
                         )
                     )
                 }
@@ -862,6 +911,8 @@ class BrowserResolverActivity : AppCompatActivity() {
      * destroying valuable HLS master/child ordering.
      */
     private fun addCandidate(candidate: StreamCandidate) {
+        var materialChange = false
+
         val count = synchronized(candidateLock) {
 
             val existingIndex =
@@ -872,12 +923,9 @@ class BrowserResolverActivity : AppCompatActivity() {
 
                 /**
                  * Network observations are valuable because they contain the
-                 * request headers actually used by WebView.
-                 *
-                 * Page configuration is valuable because it may contain the
-                 * declared resolution.
-                 *
-                 * Merge the best information from both observations.
+                 * request headers actually used by WebView. Page configuration
+                 * is valuable because it may contain declared quality/family
+                 * metadata. Merge those signals without changing first-seen order.
                  */
                 val merged = existing.copy(
                     mimeType = candidate.mimeType ?: existing.mimeType,
@@ -897,20 +945,35 @@ class BrowserResolverActivity : AppCompatActivity() {
                         ),
 
                     declaredHeight =
-                        candidate.declaredHeight ?: existing.declaredHeight
+                        candidate.declaredHeight ?: existing.declaredHeight,
+
+                    familyId = candidate.familyId ?: existing.familyId
                 )
 
-                candidates[existingIndex] = merged
+                if (merged != existing) {
+                    candidates[existingIndex] = merged
+                    materialChange = true
+                }
             } else {
                 candidates.add(
                     candidate.copy(
                         firstSeenOrder = nextCandidateOrder++
                     )
                 )
+                materialChange = true
             }
 
-            while (candidates.size > MAX_CANDIDATES) {
-                candidates.removeAt(0)
+            /*
+             * Busy pages can expose many media-looking resources. Never delete
+             * the oldest item merely because it arrived first: that destroyed
+             * likely top-level HLS manifests in earlier builds. If a hard memory
+             * cap is reached, discard the currently weakest technical candidate.
+             */
+            while (candidates.size > MAX_STORED_CANDIDATES) {
+                val weakest = candidates.indices.minByOrNull { index ->
+                    candidateScore(candidates[index])
+                } ?: 0
+                candidates.removeAt(weakest)
             }
 
             candidates.size
@@ -923,19 +986,53 @@ class BrowserResolverActivity : AppCompatActivity() {
 
             playDetectedButton.visibility = View.VISIBLE
             playDetectedButton.isEnabled = true
-
             playDetectedButton.text =
-                getString(
-                    R.string.browser_play_detected_count,
-                    count
-                )
+                getString(R.string.browser_choose_options_count, count)
 
-            status.text =
-                getString(
-                    R.string.browser_detected_status,
-                    count
-                )
+            status.text = if (automaticAttemptStarted) {
+                getString(R.string.browser_auto_tried_status, count)
+            } else {
+                getString(R.string.browser_auto_trying_status, count)
+            }
+
+            if (materialChange && pageFinishedOnce && !automaticAttemptStarted) {
+                scheduleAutomaticAttempt()
+            }
         }
+    }
+
+    /** Debounce the normal automatic first attempt while discovery settles. */
+    private fun scheduleAutomaticAttempt() {
+        if (automaticAttemptStarted || candidateCount() == 0) {
+            return
+        }
+
+        probeHandler.removeCallbacks(autoPlayRunnable)
+        probeHandler.postDelayed(autoPlayRunnable, AUTO_PLAY_DEBOUNCE_MS)
+    }
+
+    /**
+     * Normal browser-assisted path: try the strongest candidate automatically.
+     * The manual list remains available only if this best guess is wrong.
+     */
+    private fun tryRecommendedCandidateAutomatically() {
+        if (automaticAttemptStarted || isFinishing || isDestroyed) {
+            return
+        }
+
+        val best = candidateSnapshot().firstOrNull() ?: return
+        automaticAttemptStarted = true
+
+        status.text = getString(
+            R.string.browser_auto_tried_status,
+            candidateCount()
+        )
+        playDetectedButton.text = getString(
+            R.string.browser_choose_options_count,
+            candidateCount()
+        )
+
+        launchCandidate(best)
     }
 
     /**
@@ -987,30 +1084,25 @@ class BrowserResolverActivity : AppCompatActivity() {
      */
     private fun candidateScore(candidate: StreamCandidate): Int {
         var score = when (candidate.typeLabel) {
-            "HLS" -> 80
-            "DASH" -> 75
-            "MP4" -> 50
-            "WebM" -> 45
+            "HLS" -> 90
+            "DASH" -> 85
+            "MP4" -> 55
+            "WebM" -> 50
             else -> 35
         }
 
         /**
-         * Technical player configuration is a particularly strong signal
-         * because the webpage itself declared the resource as part of its
-         * player setup.
+         * A URL explicitly declared by the page's player configuration is our
+         * strongest generic signal. A DOM video element is also useful, while a
+         * Performance entry alone is weaker.
          */
         score += when (candidate.discoveredBy) {
-            DiscoverySource.PAGE_CONFIG -> 55
-            DiscoverySource.PAGE -> 30
+            DiscoverySource.PAGE_CONFIG -> 80
+            DiscoverySource.PAGE -> 35
+            DiscoverySource.NETWORK -> 20
             DiscoverySource.PERFORMANCE -> 10
-            DiscoverySource.NETWORK -> 0
         }
 
-        /**
-         * Apply the project's quality preference to known page-config qualities:
-         *
-         * 720p > 1080p > highest quality below 1080p.
-         */
         candidate.declaredHeight?.let { height ->
             score += qualityPreferenceScore(height)
         }
@@ -1042,26 +1134,51 @@ class BrowserResolverActivity : AppCompatActivity() {
                 .orEmpty()
                 .lowercase(Locale.US)
 
-        if (
-            path.contains("master") ||
-            path.contains("manifest") ||
-            path.contains("playlist")
-        ) {
-            score += 20
+        /**
+         * Earlier code rewarded every path containing "playlist". Child audio
+         * and video renditions often use that word too, which is exactly how a
+         * Bitmovin child could outrank its top-level HLS. Reward only stronger
+         * master/manifest hints, and otherwise trust first-seen adaptive order.
+         */
+        if (path.contains("master")) {
+            score += 35
+        } else if (path.contains("manifest")) {
+            score += 10
         }
 
-        /**
-         * Advertising candidates are demoted, not removed.
-         *
-         * This keeps debugging transparent and avoids hard-coding the assumption
-         * that every unfamiliar CDN is an advertisement.
+        if (candidate.typeLabel == "HLS" || candidate.typeLabel == "DASH") {
+            val orderBonus = (42 - ((candidate.firstSeenOrder - 1L) * 4L))
+                .coerceIn(0L, 42L)
+                .toInt()
+            score += orderBonus
+        }
+
+        /*
+         * These are deliberately soft hints, not filters. They make obvious
+         * audio-only/video-only child renditions less likely to be the automatic
+         * first attempt while keeping them visible in the fallback list.
          */
+        if (looksLikeAudioOnlyPath(path)) {
+            score -= 70
+        } else if (looksLikeVideoOnlyPath(path)) {
+            score -= 25
+        }
+
+        /** Advertising candidates are demoted, never silently removed. */
         if (looksLikeAdvertisingHost(candidateHost)) {
-            score -= 100
+            score -= 150
         }
 
         return score
     }
+
+    private fun looksLikeAudioOnlyPath(path: String): Boolean =
+        Regex("(^|[/_.-])(audio|aac|opus|mp3)([/_.-]|$)").containsMatchIn(path) &&
+            !Regex("(^|[/_.-])video([/_.-]|$)").containsMatchIn(path)
+
+    private fun looksLikeVideoOnlyPath(path: String): Boolean =
+        Regex("(^|[/_.-])video([/_.-]|$)").containsMatchIn(path) &&
+            !Regex("(^|[/_.-])audio([/_.-]|$)").containsMatchIn(path)
 
     /**
      * Convert a known resolution into a ranking bonus.
@@ -1131,71 +1248,47 @@ class BrowserResolverActivity : AppCompatActivity() {
     }
 
     /**
-     * Display candidates in ranked order.
-     *
-     * The first entry is only "Recommended", never silently selected.
+     * Manual fallback list shown only when the user asks for another video.
+     * Normal browser-assisted playback already tried the strongest candidate.
      */
     private fun showCandidateChooser() {
-        val snapshot = candidateSnapshot()
+        val fullSnapshot = candidateSnapshot()
 
-        if (snapshot.isEmpty()) {
+        if (fullSnapshot.isEmpty()) {
             status.text = getString(R.string.browser_no_media)
             return
         }
 
-        if (snapshot.size == 1) {
-            launchCandidate(snapshot.first())
+        if (fullSnapshot.size == 1) {
+            launchCandidate(fullSnapshot.first())
             return
         }
 
+        val snapshot = fullSnapshot.take(MAX_CHOOSER_CANDIDATES)
+
         val labels = snapshot.mapIndexed { index, candidate ->
+            val prefix = if (index == 0) {
+                getString(R.string.browser_best_match_prefix)
+            } else {
+                getString(R.string.browser_option_number, index + 1)
+            }
 
-            val host =
-                runCatching {
-                    Uri.parse(candidate.url).host
-                }
-                    .getOrNull()
-                    ?: getString(R.string.media_host_fallback)
-
-            val source =
-                when (candidate.discoveredBy) {
-                    DiscoverySource.NETWORK ->
-                        getString(R.string.browser_source_network)
-
-                    DiscoverySource.PAGE ->
-                        getString(R.string.browser_source_page)
-
-                    DiscoverySource.PERFORMANCE ->
-                        getString(R.string.browser_source_performance)
-
-                    DiscoverySource.PAGE_CONFIG ->
-                        getString(R.string.browser_source_config)
-                }
-
-            val type =
-                if (candidate.typeLabel == "DIRECT") {
-                    getString(R.string.browser_type_direct)
-                } else {
-                    candidate.typeLabel
-                }
-
-            val quality =
-                candidate.declaredHeight
-                    ?.let { height -> " • ${height}p" }
-                    .orEmpty()
-
-            val prefix =
-                if (index == 0) {
-                    getString(R.string.browser_recommended_prefix)
-                } else {
-                    "${index + 1}."
-                }
-
-            "$prefix $type$quality • $host • $source"
+            "$prefix ${friendlyCandidateDescription(candidate)}"
         }.toTypedArray()
+
+        val explanation = if (fullSnapshot.size > MAX_CHOOSER_CANDIDATES) {
+            getString(
+                R.string.browser_candidate_explanation_limited,
+                MAX_CHOOSER_CANDIDATES,
+                fullSnapshot.size
+            )
+        } else {
+            getString(R.string.browser_candidate_explanation)
+        }
 
         AlertDialog.Builder(this)
             .setTitle(R.string.browser_candidate_title)
+            .setMessage(explanation)
             .setItems(labels) { dialog, which ->
                 dialog.dismiss()
                 launchCandidate(snapshot[which])
@@ -1204,94 +1297,123 @@ class BrowserResolverActivity : AppCompatActivity() {
             .show()
     }
 
+    /** Plain-language candidate text. Technical host/source details stay in Diagnostics. */
+    private fun friendlyCandidateDescription(candidate: StreamCandidate): String {
+        val path = runCatching { Uri.parse(candidate.url).path.orEmpty() }
+            .getOrDefault("")
+            .lowercase(Locale.US)
+
+        val quality = candidate.declaredHeight
+
+        return when {
+            looksLikeAudioOnlyPath(path) ->
+                getString(R.string.browser_candidate_audio_only)
+
+            looksLikeVideoOnlyPath(path) ->
+                if (quality != null) {
+                    getString(R.string.browser_candidate_video_only_quality, quality)
+                } else {
+                    getString(R.string.browser_candidate_video_only)
+                }
+
+            quality != null ->
+                getString(R.string.browser_candidate_video_quality, quality)
+
+            candidate.typeLabel == "HLS" || candidate.typeLabel == "DASH" ->
+                getString(R.string.browser_candidate_adaptive_video)
+
+            candidate.typeLabel == "MP4" ||
+                candidate.typeLabel == "WebM" ||
+                candidate.typeLabel == "DIRECT" ->
+                getString(R.string.browser_candidate_direct_video)
+
+            else -> getString(R.string.browser_candidate_unknown)
+        }
+    }
+
     /**
      * Convert one candidate into the same JSON contract used by resolver.py.
      */
     private fun launchCandidate(candidate: StreamCandidate) {
-        val headers = linkedMapOf<String, String>()
-
-        /**
-         * Prefer values captured from the real browser request.
-         */
-        findHeader(candidate.requestHeaders, "User-Agent")
-            ?.takeIf { it.isNotBlank() }
-            ?.let {
-                headers["User-Agent"] = it
-            }
-
-        if (
-            !headers.containsKey("User-Agent") &&
-            webViewUserAgent.isNotBlank()
-        ) {
-            headers["User-Agent"] = webViewUserAgent
-        }
-
-        findHeader(candidate.requestHeaders, "Referer")
-            ?.takeIf { it.isNotBlank() }
-            ?.let {
-                headers["Referer"] = it
-            }
-
-        /**
-         * Use the current page URL rather than blindly using the URL originally
-         * shared from Vivaldi. The user may have navigated inside the WebView.
-         */
         val pageUrl =
             currentPageUrl.takeIf { isHttpUrl(it) }
                 ?: originalUrl
 
-        if (!headers.containsKey("Referer")) {
-            headers["Referer"] = pageUrl
-        }
-
-        findHeader(candidate.requestHeaders, "Origin")
-            ?.takeIf { it.isNotBlank() }
-            ?.let {
-                headers["Origin"] = it
-            }
-
-        /**
-         * Adaptive manifests and technical page-config candidates sometimes
-         * expect the same normal Origin context the browser page used.
-         *
-         * We derive it from the current webpage itself.
-         */
-        if (
-            !headers.containsKey("Origin") &&
-            (
-                candidate.typeLabel == "HLS" ||
-                candidate.typeLabel == "DASH" ||
-                candidate.discoveredBy == DiscoverySource.PAGE_CONFIG
+        val root = JSONObject()
+            .put("mode", "single")
+            .put(
+                "title",
+                getString(R.string.browser_stream_title)
             )
-        ) {
-            pageOrigin(pageUrl)?.let { origin ->
-                headers["Origin"] = origin
+            .put("webpage_url", pageUrl)
+            .put("requested_quality", "browser")
+            .put("resolver_mode", "browser")
+            .put("media", candidateToMediaJson(candidate, pageUrl))
+
+        /*
+         * Some players publish one complete stream URL per quality. PAGE_CONFIG
+         * gives those URLs the same familyId, so pass the siblings to
+         * PlayerActivity. Media3 can then switch quality even when the selected
+         * 720p URL itself contains only one rendition.
+         */
+        val variants = browserVariantsFor(candidate)
+        if (variants.size > 1) {
+            val array = JSONArray()
+            variants.forEach { variant ->
+                array.put(candidateToMediaJson(variant, pageUrl))
             }
+            root.put("browser_variants", array)
         }
 
-        findHeader(candidate.requestHeaders, "Accept")
-            ?.takeIf { it.isNotBlank() }
-            ?.let {
-                headers["Accept"] = it
-            }
+        startActivity(
+            Intent(this, PlayerActivity::class.java)
+                .putExtra(
+                    PlayerActivity.EXTRA_RESOLVED_MEDIA,
+                    root.toString()
+                )
+        )
+    }
 
-        findHeader(candidate.requestHeaders, "Accept-Language")
-            ?.takeIf { it.isNotBlank() }
-            ?.let {
-                headers["Accept-Language"] = it
-            }
+    /** Return declared-quality siblings belonging to the same page-player family. */
+    private fun browserVariantsFor(candidate: StreamCandidate): List<StreamCandidate> {
+        val family = candidate.familyId ?: return emptyList()
 
-        /**
-         * Only cookies belonging to this app's own WebView session are reused.
-         */
-        CookieManager
-            .getInstance()
-            .getCookie(candidate.url)
-            ?.takeIf { it.isNotBlank() }
-            ?.let {
-                headers["Cookie"] = it
-            }
+        return synchronized(candidateLock) {
+            candidates
+                .filter { other ->
+                    other.familyId == family &&
+                        other.declaredHeight != null &&
+                        (
+                            other.typeLabel == "HLS" ||
+                                other.typeLabel == "DASH" ||
+                                other.typeLabel == "MP4" ||
+                                other.typeLabel == "WebM" ||
+                                other.typeLabel == "DIRECT"
+                            )
+                }
+                .distinctBy { other -> other.declaredHeight }
+                .sortedWith(
+                    compareBy<StreamCandidate> { other ->
+                        qualitySortBucket(other.declaredHeight ?: 0)
+                    }.thenByDescending { other -> other.declaredHeight ?: 0 }
+                )
+        }
+    }
 
+    /** Keep the project's 720 -> 1080 -> lower ordering for sibling variants. */
+    private fun qualitySortBucket(height: Int): Int = when {
+        height == 720 -> 0
+        height == 1080 -> 1
+        height < 1080 -> 2
+        else -> 3
+    }
+
+    /** Convert one browser candidate into the media-source JSON contract. */
+    private fun candidateToMediaJson(
+        candidate: StreamCandidate,
+        pageUrl: String
+    ): JSONObject {
+        val headers = buildHeadersForCandidate(candidate, pageUrl)
         val headerJson = JSONObject()
 
         headers.forEach { (key, value) ->
@@ -1314,7 +1436,7 @@ class BrowserResolverActivity : AppCompatActivity() {
                 else -> JSONObject.NULL
             }
 
-        val media = JSONObject()
+        return JSONObject()
             .put("url", candidate.url)
             .put(
                 "mime_type",
@@ -1335,25 +1457,63 @@ class BrowserResolverActivity : AppCompatActivity() {
             .put("vcodec", JSONObject.NULL)
             .put("acodec", JSONObject.NULL)
             .put("headers", headerJson)
+    }
 
-        val root = JSONObject()
-            .put("mode", "single")
-            .put(
-                "title",
-                getString(R.string.browser_stream_title)
-            )
-            .put("webpage_url", pageUrl)
-            .put("requested_quality", "browser")
-            .put("resolver_mode", "browser")
-            .put("media", media)
+    /** Build the normal request context Media3 should reuse for one candidate. */
+    private fun buildHeadersForCandidate(
+        candidate: StreamCandidate,
+        pageUrl: String
+    ): Map<String, String> {
+        val headers = linkedMapOf<String, String>()
 
-        startActivity(
-            Intent(this, PlayerActivity::class.java)
-                .putExtra(
-                    PlayerActivity.EXTRA_RESOLVED_MEDIA,
-                    root.toString()
+        findHeader(candidate.requestHeaders, "User-Agent")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { headers["User-Agent"] = it }
+
+        if (!headers.containsKey("User-Agent") && webViewUserAgent.isNotBlank()) {
+            headers["User-Agent"] = webViewUserAgent
+        }
+
+        findHeader(candidate.requestHeaders, "Referer")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { headers["Referer"] = it }
+
+        if (!headers.containsKey("Referer")) {
+            headers["Referer"] = pageUrl
+        }
+
+        findHeader(candidate.requestHeaders, "Origin")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { headers["Origin"] = it }
+
+        if (
+            !headers.containsKey("Origin") &&
+            (
+                candidate.typeLabel == "HLS" ||
+                    candidate.typeLabel == "DASH" ||
+                    candidate.discoveredBy == DiscoverySource.PAGE_CONFIG
                 )
-        )
+        ) {
+            pageOrigin(pageUrl)?.let { origin ->
+                headers["Origin"] = origin
+            }
+        }
+
+        findHeader(candidate.requestHeaders, "Accept")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { headers["Accept"] = it }
+
+        findHeader(candidate.requestHeaders, "Accept-Language")
+            ?.takeIf { it.isNotBlank() }
+            ?.let { headers["Accept-Language"] = it }
+
+        CookieManager
+            .getInstance()
+            .getCookie(candidate.url)
+            ?.takeIf { it.isNotBlank() }
+            ?.let { headers["Cookie"] = it }
+
+        return headers
     }
 
     /** Return `scheme://host[:port]` for a normal webpage URL. */
@@ -1408,6 +1568,7 @@ class BrowserResolverActivity : AppCompatActivity() {
          * top of this Activity.
          */
         probeHandler.removeCallbacks(probeRunnable)
+        probeHandler.removeCallbacks(autoPlayRunnable)
         super.onPause()
     }
 
