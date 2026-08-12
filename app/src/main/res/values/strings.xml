@@ -14,9 +14,9 @@
     <string name="status_browser_fallback_explanation">Browser-assisted mode observes normal media requests made by this app\'s WebView. It does not automate challenges, DRM, subscriptions, authentication, or regional access controls.</string>
 
     <!-- Browser-assisted resolver. -->
-    <string name="browser_resolver_intro">Browser-assisted resolver: interact with the page normally and start playback. The app observes normal media requests; it does not automate access controls.</string>
+    <string name="browser_resolver_intro">Browser-assisted resolver: interact with the page normally and start playback. The app observes technical media information only; it does not analyze video content or automate access controls.</string>
     <string name="browser_loading">Loading page…</string>
-    <string name="browser_page_loaded">Page loaded. Start playback in this browser view. The app will observe normal media requests.</string>
+    <string name="browser_page_loaded">Page loaded. Start playback in this browser view if needed. The app will observe normal technical media information.</string>
     <string name="browser_play_detected_count">Play detected stream (%1$d)</string>
     <string name="browser_detected_status">Detected %1$d possible media request(s). Start playback in the page if needed, then tap Play detected stream.</string>
     <string name="browser_no_stream_button">No stream detected yet</string>
@@ -26,9 +26,13 @@
     <string name="browser_recommended_prefix">Recommended:</string>
     <string name="browser_stream_title">Browser stream</string>
     <string name="browser_type_direct">Direct media</string>
+
+    <!-- How a browser candidate was discovered. -->
     <string name="browser_source_network">network</string>
     <string name="browser_source_page">page</string>
     <string name="browser_source_performance">browser resource</string>
+    <string name="browser_source_config">player config</string>
+
     <string name="media_host_fallback">media host</string>
 
     <!-- Player quality controls. -->
