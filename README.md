@@ -1,20 +1,28 @@
 # Vivaldi External Player — Android prototype
 
-This Android app receives a shared page URL from Vivaldi, resolves an accessible non-DRM media stream with yt-dlp, and plays it in AndroidX Media3.
+This Android app receives a shared webpage URL from Vivaldi, resolves an
+accessible non-DRM media stream, and plays it in AndroidX Media3 / ExoPlayer.
 
-## Intended features
+## Current behavior
 
-- Android Share target for `text/plain`
-- Best available stream up to 1080p
-- Separate video/audio playback when the selected format uses separate streams
-- HLS, DASH, and progressive playback
-- Visible extracted-frame preview while dragging the timeline
-- Double-tap left/right for −10/+10 seconds
-- No playback-history database or disk media cache
+- Android Share target for `text/plain`.
+- Direct yt-dlp resolution first, then automatic browser-assisted fallback.
+- Browser-assisted mode automatically tries its best detected video; manual
+  candidate selection is a fallback, not the normal workflow.
+- Quality preference: 720p, then 1080p, then best available below 1080p.
+- HLS, DASH, progressive playback, and yt-dlp separate video/audio merging.
+- Quality selection for adaptive Media3 tracks and page players which expose
+  separate URLs per quality.
+- Visible extracted-frame preview while dragging the timeline where supported.
+- Double-tap left/right for -10/+10 seconds.
+- English and Spanish user-facing strings.
+- Copyable playback diagnostics.
 
 ## Important boundary
 
-The app is not intended to bypass DRM, authentication, subscriptions, regional restrictions, or other access controls. Use it only for media you are authorized to access.
+The app is not intended to bypass DRM, authentication, subscriptions, regional
+restrictions, anti-bot challenges, or other access controls. Use it only for
+media you are authorized to access.
 
 ## Build configuration
 
@@ -26,12 +34,12 @@ The app is not intended to bypass DRM, authentication, subscriptions, regional r
 - Chaquopy 17.0 / Python 3.13
 - Media3 1.10.1
 
-See `BUILD_APK.md` for a no-code cloud build workflow.
+See `BUILD_APK.md` for the GitHub Actions build workflow.
 
-## Prototype limitations
+## Current backlog
 
-- The project has not been compiled or device-tested in the ChatGPT execution environment because that environment has no Android SDK or Gradle distribution.
-- No manual quality chooser yet; it automatically caps selection at 1080p.
-- Browser cookies are not imported, so login-only or age/session-gated pages may fail.
-- HentaiHaven is handled only through yt-dlp's available generic/embedded extraction paths and may fail after site changes.
-- Frame previews depend on the selected remote stream supporting seeking; some adaptive streams may be slow or unsupported.
+- Resolver/candidate-selection regression testing is still in progress.
+- Playback-speed control is pending.
+- App-level volume/mute is pending.
+- Dedicated return to the existing Vivaldi task/tab is pending.
+- Frame previews depend on the selected remote stream supporting seeking.

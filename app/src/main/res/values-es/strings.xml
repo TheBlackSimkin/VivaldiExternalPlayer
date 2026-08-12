@@ -8,31 +8,45 @@
     <string name="resolve_and_play">Resolver y reproducir</string>
     <string name="open_browser_assisted_resolver">Abrir resolución asistida por navegador</string>
     <string name="status_complete_url">Pega o comparte una dirección web completa.</string>
-    <string name="status_resolving">Resolviendo vídeo — se prefiere 720p…</string>
-    <string name="status_direct_failed">Falló la resolución directa.</string>
-    <string name="status_opening_browser_fallback">Abriendo automáticamente la resolución asistida por navegador…</string>
-    <string name="status_browser_fallback_explanation">El modo asistido por navegador observa solicitudes multimedia normales hechas por el WebView de esta aplicación. No automatiza desafíos, DRM, suscripciones, autenticación ni controles regionales.</string>
+    <string name="status_resolving">Buscando el vídeo — se prefiere 720p…</string>
+    <string name="status_direct_failed">El método rápido no pudo abrir esta página.</string>
+    <string name="status_opening_browser_fallback">Probando automáticamente el método del navegador…</string>
+    <string name="status_browser_fallback_explanation">El método del navegador observa solicitudes multimedia normales hechas por esta aplicación. No automatiza desafíos, DRM, suscripciones, inicio de sesión ni controles regionales.</string>
 
     <!-- Resolución asistida por navegador. -->
-    <string name="browser_resolver_intro">Resolución asistida por navegador: usa la página normalmente e inicia la reproducción. La aplicación observa solo información técnica multimedia; no analiza el contenido del vídeo ni automatiza controles de acceso.</string>
+    <string name="browser_resolver_intro">La aplicación probará automáticamente el mejor vídeo que encuentre. Usa la lista solo si el primer resultado es incorrecto. Inicia el vídeo en esta página únicamente si hace falta para detectarlo.</string>
     <string name="browser_loading">Cargando página…</string>
-    <string name="browser_page_loaded">Página cargada. Inicia la reproducción en esta vista si hace falta. La aplicación observará información técnica multimedia normal.</string>
-    <string name="browser_play_detected_count">Reproducir transmisión detectada (%1$d)</string>
-    <string name="browser_detected_status">Se detectaron %1$d posible(s) solicitud(es) multimedia. Inicia la reproducción en la página si hace falta y luego toca Reproducir transmisión detectada.</string>
-    <string name="browser_no_stream_button">Aún no se detectó una transmisión</string>
-    <string name="browser_no_media">Aún no se detectó una solicitud multimedia compatible.</string>
-    <string name="browser_candidate_title">Solicitudes multimedia detectadas</string>
-    <string name="browser_candidate_explanation">Las opciones se ordenan, no se bloquean. La recomendada es solo la mejor estimación técnica de la aplicación.</string>
-    <string name="browser_recommended_prefix">Recomendada:</string>
-    <string name="browser_stream_title">Transmisión del navegador</string>
-    <string name="browser_type_direct">Medio directo</string>
+    <string name="browser_page_loaded">Página cargada. Si no ocurre nada automáticamente, inicia el vídeo una vez en esta página para que la aplicación pueda detectarlo.</string>
+    <string name="browser_choose_options_count">Elegir otro vídeo (%1$d)</string>
+    <string name="browser_auto_trying_status">Se encontraron %1$d opción(es) de vídeo. La aplicación probará automáticamente la mejor.</string>
+    <string name="browser_auto_tried_status">Se encontraron %1$d opción(es) de vídeo. Ya se probó la mejor. Usa “Elegir otro vídeo” solo si fue incorrecta.</string>
+    <string name="browser_no_stream_button">Aún no se detectó un vídeo</string>
+    <string name="browser_no_media">Aún no se detectó un vídeo compatible.</string>
+    <string name="browser_candidate_title">Elegir otro vídeo</string>
+    <string name="browser_candidate_explanation">Prueba la primera opción salvo que ya sepas que fue incorrecta. Las descripciones están simplificadas; los detalles técnicos siguen disponibles en Diagnóstico de reproducción.</string>
+    <string name="browser_candidate_explanation_limited">Se muestran las %1$d opciones más probables de %2$d detectadas. Prueba la primera salvo que ya sepas que fue incorrecta.</string>
+    <string name="browser_best_match_prefix">Mejor opción —</string>
+    <string name="browser_option_number">Opción %1$d —</string>
+    <string name="browser_stream_title">Vídeo del navegador</string>
+    <string name="browser_type_direct">Vídeo directo</string>
 
-    <!-- Cómo se descubrió cada candidato. -->
+    <!-- Descripciones sencillas para la lista de respaldo manual. -->
+    <string name="browser_candidate_video_quality">Vídeo • %1$dp</string>
+    <string name="browser_candidate_adaptive_video">Vídeo • la calidad puede elegirse automáticamente</string>
+    <string name="browser_candidate_direct_video">Archivo de vídeo • calidad no indicada</string>
+    <string name="browser_candidate_audio_only">Solo audio • probablemente no es el vídeo que buscas</string>
+    <string name="browser_candidate_video_only">Vídeo sin audio evidente • probablemente incompleto</string>
+    <string name="browser_candidate_video_only_quality">Vídeo sin audio evidente • %1$dp • probablemente incompleto</string>
+    <string name="browser_candidate_unknown">Posible vídeo • detalles desconocidos</string>
+
+    <!-- Etiquetas técnicas antiguas conservadas para diagnóstico/compatibilidad. -->
     <string name="browser_source_network">red</string>
     <string name="browser_source_page">página</string>
     <string name="browser_source_performance">recurso del navegador</string>
     <string name="browser_source_config">configuración del reproductor</string>
-
+    <string name="browser_recommended_prefix">Recomendada:</string>
+    <string name="browser_play_detected_count">Reproducir transmisión detectada (%1$d)</string>
+    <string name="browser_detected_status">Se detectaron %1$d posible(s) solicitud(es) multimedia.</string>
     <string name="media_host_fallback">servidor multimedia</string>
 
     <!-- Controles de calidad del reproductor. -->
@@ -41,13 +55,13 @@
     <string name="quality_auto">Calidad: Automática</string>
     <string name="quality_auto_limit">Calidad: Automática ≤ %1$dp</string>
     <string name="quality_value">Calidad: %1$dp</string>
-    <string name="quality_stream">Calidad: transmisión</string>
+    <string name="quality_stream">Calidad: una opción</string>
     <string name="quality_detecting">Calidad: detectando…</string>
     <string name="quality_loading">Calidad: cargando…</string>
     <string name="playing_quality">Reproduciendo en %1$dp</string>
     <string name="quality_changed">Calidad cambiada</string>
     <string name="quality_change_failed">No se pudo cambiar la calidad</string>
-    <string name="browser_quality_unavailable">Esta transmisión detectada por el navegador no expone calidades de vídeo seleccionables a Media3.</string>
+    <string name="browser_quality_unavailable">Este vídeo solo expone una calidad utilizable.</string>
     <string name="original_webpage_unavailable">La URL de la página web original no está disponible.</string>
 
     <!-- Diagnóstico de reproducción. -->

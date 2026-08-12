@@ -1,153 +1,120 @@
 # Vivaldi External Player — Project State
 
-> Operational memory for this project.
->
-> Update this file whenever requirements, architecture, tests, failures,
-> decisions, safe test proxies, or next steps materially change.
+> Operational memory/source of truth for temporary chats.
+> Update this file whenever requirements, tests, architecture, failures, or next
+> steps materially change.
 
-## 1. Purpose
+## 1. Purpose and environment
 
 Vivaldi External Player is a personal Android application which receives a
-normal webpage URL from a mobile browser, discovers an accessible non-DRM media
-stream when possible, and plays it through AndroidX Media3 / ExoPlayer.
+normal webpage URL, discovers an accessible non-DRM media stream when possible,
+and plays it through AndroidX Media3 / ExoPlayer.
 
 Primary environment:
 
-- Android 13 target device.
-- Vivaldi Mobile Browser for Phase 1.
-- Brave may be considered later.
-- Relevant user-facing UI should support English and Spanish.
+- Android phone for playback testing.
+- Vivaldi Mobile Browser is the Phase 1 browser.
+- Windows and Vivaldi UI are normally Spanish.
+- Conversation with ChatGPT should remain English.
+- The app must remain bilingual (English + Spanish user-facing UI).
 
 Primary real-world targets:
 
-- Pornhub
-- HentaiHaven
+- Pornhub (PH)
+- HentaiHaven (HH)
 
-Only the user performs media-content testing on those real targets.
+The user performs all real-target media-content testing. ChatGPT may analyze
+only technical playback information such as URLs, manifests, containers,
+codecs, resolutions, request metadata, candidate ranking, and playback status.
 
-ChatGPT works only with the technical playback layer: URLs, manifests,
-containers, codecs, resolutions, request metadata, errors, candidate ranking
-and whether playback technically succeeds.
+## 2. Boundaries
 
-## 2. Content/testing boundary
+Do not:
 
-ChatGPT must NOT:
-
-- inspect or analyze adult video imagery;
-- describe or classify adult media content;
-- use real target videos as visual test material.
-
-The user alone performs PH/HH playback verification.
-
-When ChatGPT needs a directly inspectable test environment, use safe/SFW proxy
-sites selected for similar technical behavior.
-
-This rule must be preserved across temporary chats.
-
-## 3. Access/control boundaries
-
-The app is not intended to:
-
+- inspect, classify, or describe adult video imagery;
 - bypass DRM or obtain DRM keys;
-- bypass subscriptions/paywalls;
-- defeat authentication requirements;
-- bypass regional restrictions;
+- bypass subscriptions/paywalls, authentication, or regional restrictions;
 - deliberately automate anti-bot challenges;
-- import Vivaldi passwords/private credentials;
-- inspect media content semantically.
-
-The intended target use is logged out and limited to media which the user can
-already access normally in the browser.
+- import Vivaldi passwords/private credentials.
 
 The browser-assisted resolver may observe normal technical state and requests
 made by its own WebView.
 
-## 4. Required playback behavior
+## 3. Required playback behavior
 
 Quality policy:
 
 1. Exact 720p when available.
 2. Otherwise 1080p.
-3. Otherwise the highest available quality below 1080p.
+3. Otherwise highest available quality below 1080p.
 
-Other requirements:
+Required/desired behavior:
 
-- Double tap left: seek backward 10 seconds.
-- Double tap right: seek forward 10 seconds.
+- Share from Vivaldi directly into the app.
+- Automatic first playback attempt; do not make manual candidate selection the
+  normal workflow.
+- Manual candidate list remains only as fallback/debugging when the automatic
+  choice is wrong.
+- Candidate descriptions shown to the user should be plain language, not host,
+  protocol, or discovery-source jargon.
+- Double tap left/right = -10/+10 seconds.
 - Efficient buffering.
-- Seek-bar thumbnail preview where technically possible.
-- Normal play/pause/seeking.
-- Quality controls.
-- Playback-speed control — pending.
+- Timeline thumbnail preview where technically supported.
+- Quality control for both adaptive manifests and pages exposing separate URLs
+  per quality.
+- Playback speed control — pending.
 - App-level volume/mute — pending.
 - Normal portrait/landscape rotation.
-- Dedicated Return to existing Vivaldi task/tab — pending.
+- Return to the existing Vivaldi task/tab — pending.
 
-## 5. Preferred final workflow
+## 4. Preferred workflow
 
-1. User is viewing the original page in Vivaldi.
-2. User chooses Android Share.
-3. User selects External Video Player.
-4. App discovers the correct stream.
-5. Video opens in the custom player.
-6. Return-to-browser should reveal the existing Vivaldi task/tab.
+1. User opens a page in Vivaldi.
+2. Android Share -> External Video Player.
+3. yt-dlp direct resolution is attempted first.
+4. If direct resolution fails, browser-assisted mode opens automatically.
+5. Browser-assisted mode detects candidate streams and automatically tries the
+   best match after discovery stabilizes.
+6. If that choice is wrong, the user may go back and choose another detected
+   video from a simplified fallback list.
+7. Player opens with 720p preferred and quality controls when alternatives are
+   available.
 
 Manual URL paste remains useful for debugging.
 
-## 6. Safe proxy sites
+## 5. Safe proxy sites
 
-### PH technical proxy — Cloudinary legacy Video Player demo
-
-Primary URL:
+### Cloudinary video-player demo
 
 `https://cloudinary.github.io/video-player-demo/player.html`
 
-Why this is now the preferred PH proxy:
+Use as a safe proxy for noisy pages with multiple players, playlists,
+advertising examples, and many candidate resources.
 
-- safe/SFW material;
-- JavaScript-configured players;
-- multiple players/videos on one page;
-- progressive sources;
-- adaptive HLS;
-- playlists;
-- advertising examples;
-- enough candidate noise to test main-video-vs-ad selection safely.
+Latest result reported by user:
 
-Use it to develop:
+- 20 possible videos were displayed (this exposed the old hard 20-candidate
+  behavior).
+- At least one candidate played.
+- Audio was not a useful validation signal on that page/test.
+- Do not use Cloudinary alone to validate complete audio+video selection.
 
-- false-candidate filtering;
-- multiple-video identification;
-- advertisement demotion;
-- page/player configuration discovery;
-- candidate ranking;
-- later click reduction.
-
-Archive.org is no longer the primary PH proxy.
-
-### HH technical proxy — Bitmovin HLS/fMP4 demo
-
-Primary URL:
+### Bitmovin HLS/fMP4 demo
 
 `https://bitmovin.com/demos/hls-fmp4/`
 
-Why:
+Use as the strongest safe proxy for master-vs-child HLS selection and complete
+video+audio detection.
 
-- safe/SFW material;
-- JavaScript player;
-- HLS/fMP4;
-- top-level/master playlist plus child rendition requests;
-- adaptive quality tracks;
-- previously reproduced audio-only, video-only and complete-stream candidates.
+Latest result reported by user:
 
-Use it to develop:
+- 5 possible videos detected.
+- A manually selected candidate played with correct audio+video.
+- The recommended candidate was NOT the correct candidate.
 
-- master-vs-child HLS ranking;
-- full video+audio stream selection;
-- adaptive quality discovery;
-- 720p preference;
-- buffering behavior.
+This is the key regression Batch 4 must fix.
 
-## 7. Current architecture
+## 6. Current architecture
 
 ### MainActivity
 
@@ -160,9 +127,9 @@ Use it to develop:
 ### resolver.py
 
 - Runs yt-dlp through Chaquopy.
-- Does not download files.
+- Does not download media files.
 - Rejects media marked DRM by yt-dlp.
-- Prefers Media3-friendly MP4/M4A and WebM combinations.
+- Prefers Media3-friendly MP4/M4A/WebM combinations.
 - Uses project quality policy.
 
 ### BrowserResolverActivity
@@ -171,42 +138,49 @@ Observes:
 
 - WebView requests;
 - Service Worker requests;
-- page `<video>` elements;
-- page `<source>` elements;
-- Performance API resource URLs.
+- page `<video>` / `<source>` elements;
+- Performance API resource URLs;
+- `mediaDefinitions`-style technical player configuration when exposed.
 
-Batch 2:
+Batch 3 already fixed webpage-as-video false positives and carried declared
+quality metadata.
 
-- preserved first-seen order;
-- ranked adaptive manifests;
-- demoted obvious ad hosts;
-- transferred WebView headers/cookies.
+Batch 4 implementation changes:
 
-Batch 3 adds:
-
-- reject the current/original webpage itself as a media candidate;
-- reject traditional webpage URLs falsely labelled as video;
-- reject known-unhelpful legacy video candidates such as Ogg video/AVI;
-- read technical mediaDefinitions-style player configuration already exposed
-  in the loaded page;
-- carry declared quality metadata into candidate ranking;
-- prefer 720p, then 1080p, then lower qualities;
-- use current-page Referer/Origin context for page-config/adaptive streams.
+- adds a real automatic first attempt after candidate discovery becomes quiet;
+- makes the manual list a fallback named "Choose another video";
+- replaces technical candidate labels with plain-language descriptions;
+- stores up to 80 candidates instead of deleting the oldest item at 20;
+- manual chooser shows only the strongest 20 if a page is extremely noisy;
+- no longer gives a generic bonus to every path containing `playlist`;
+- gives first-seen order real ranking weight for HLS/DASH so a top-level master
+  can beat later child renditions;
+- softly demotes obvious audio-only/video-only child paths;
+- preserves page-config family IDs so sibling quality URLs can be passed to the
+  player together.
 
 No media imagery is inspected.
 
 ### PlayerActivity
 
 - Media3 ExoPlayer.
-- progressive/HLS/DASH support;
-- merged separate video/audio support;
-- FLAG_SECURE;
-- frame-extractor seek previews;
-- Media3 playback diagnostics;
-- browser adaptive quality discovery;
-- browser track selection.
+- Progressive/HLS/DASH playback.
+- Merged separate video/audio support for yt-dlp.
+- Adaptive quality track selection.
+- Frame-extractor seek previews.
+- Playback diagnostics.
 
-## 8. Verified results
+Batch 4 implementation changes:
+
+- supports browser quality switching between sibling URLs (for example separate
+  720p and 1080p page-config streams), preserving playback position;
+- keeps existing adaptive HLS/DASH quality switching unchanged when a real
+  master manifest exposes multiple Media3 tracks;
+- updates Diagnostics after `STATE_READY` with explicit `Video: yes/no`,
+  `Audio: yes/no`, and available qualities instead of leaving a successful
+  player at `waiting for playback result`.
+
+## 7. Verified real-target results before Batch 4
 
 ### Vivaldi Share
 
@@ -215,487 +189,86 @@ PASS:
 - app appears in Share;
 - correct URL is received automatically.
 
-### HentaiHaven
+### Pornhub (PH)
 
-Current strongest real-target success.
+Latest user test:
 
-Batch 2 result:
-
-- seven candidates observed;
-- Recommended candidate was the correct complete stream;
-- external playback worked;
-- full video+audio worked;
-- quality button became functional;
-- selectable quality options were available.
-
-This is the regression baseline.
-
-Do not inspect HH media content. User performs this test.
-
-### Pornhub
-
-Batch 2 diagnostics identified the blank preferred candidate.
-
-The candidate shown as MP4 was actually:
-
-- resolver: browser;
-- host: site host;
-- path: `/view_video.php`;
-- MIME: video/mp4;
-- Media3 error:
-  `ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED (3003)`.
+- URL tested:
+  `https://www.pornhub.com/view_video.php?viewkey=68913ce2533cb`
+- 6 possible videos detected.
+- First/Recommended candidate played correctly.
+- Source was HLS at `em-h.phncdn.com` with declared 720p.
+- Playback worked, but quality could not be changed.
 
 Interpretation:
 
-The webpage document itself was falsely classified as MP4 because a page video
-element supplied the page URL together with a video MIME hint.
+- primary stream discovery is now working;
+- the remaining PH issue is quality switching when page configuration exposes
+  separate quality URLs rather than one multi-quality master manifest.
 
-A separate advertising candidate played correctly.
+### HentaiHaven (HH)
 
-Therefore PH is no longer an unknown black-screen problem. The immediate bug is
-false candidate discovery plus correct technical player-media discovery.
+Latest user test:
 
-Batch 3 directly addresses this.
+- URL tested:
+  `https://hentaihaven.xxx/watch/nuki-nuki-zupposism/episode-1/`
+- 6 possible videos detected.
+- First/Recommended candidate worked as expected.
+- HLS host: `octopusmanifest.org`.
+- Audio/video and quality behavior were correct.
 
-Do not inspect PH media content. User performs this test.
+HH is the strongest real-target regression baseline and must not be broken.
 
-### Archive BigBuckBunny
+## 8. Batch 4 QA order
 
-Batch 2 browser candidate:
+Build gate first, then:
 
-- `.ogg`;
-- Media3 `ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED (3003)`.
+1. Bitmovin safe proxy — automatic first candidate must be complete video+audio.
+2. PH — automatic first attempt should play the same working main video, and
+   Quality should expose sibling qualities if the page provides them.
+3. HH — automatic first attempt must remain correct; existing quality behavior
+   must remain intact.
+4. Cloudinary — verify noisy-page handling and that the app does not present the
+   manual list as the normal workflow.
 
-Archive is retained only as a legacy-container regression test.
+For every QA request, ChatGPT must provide:
 
-It is no longer a primary proxy because it is less representative of the target
-web-player architecture than Cloudinary/Bitmovin.
+- one detailed code block containing exactly what to test, Expected, and Result
+  fields;
+- a second short code block which the user can copy, fill in, and send back.
 
-## 9. Batch 3 — prepared, build pending
+Keep the reply block compact.
 
-Files changed:
+## 9. Development workflow and communication
 
-- `BrowserResolverActivity.kt`
-- English `strings.xml`
-- Spanish `strings.xml`
-- `PROJECT_STATE.md`
+- Conversation language: English.
+- Windows/Vivaldi UI: Spanish; give Spanish UI labels when relevant.
+- App UI: bilingual English/Spanish.
+- Explain decisions in plain English; the user is not an advanced developer.
+- Source code should contain abundant English comments.
+- When asking the user to replace a source file manually, provide the FULL file,
+  not an isolated patch.
+- Keep this file and `CHAT_BOOTSTRAP.md` current.
+- Before every assistant response, verify whether the public GitHub repository
+  can still be read directly and state the result briefly.
 
-Goals:
+## 10. GitHub
 
-1. Eliminate webpage-as-video false positives.
-2. Eliminate known unsuitable legacy page-video candidates.
-3. Discover technical page-player configuration where available.
-4. Preserve declared quality metadata.
-5. Rank exact 720p before 1080p before lower qualities.
-6. Preserve HH/Bitmovin HLS behavior.
-7. Keep all visual/content testing on safe proxies or on the user's own device.
-
-## 10. Batch 3 QA after green build
-
-Safe tests first:
-
-1. Cloudinary PH proxy.
-2. Bitmovin HH proxy.
-
-Only after those:
-
-3. User performs PH technical playback test.
-4. User performs HH regression test.
-
-ChatGPT should receive only:
-
-- candidate list;
-- candidate type;
-- host;
-- declared quality;
-- diagnostics;
-- playback yes/no;
-- audio/video yes/no;
-- quality options.
-
-No adult video imagery is needed.
-
-## 11. Immediate backlog after correct PH stream discovery
-
-1. Reduce excessive number of taps.
-2. Avoid forcing user to manually search a whole webpage for its main player.
-3. Handle multiple actual videos, ads, previews and embedded players.
-4. Automatic primary-video selection when confidence is high.
-5. Keep manual candidate chooser as fallback.
-6. Add playback-speed control.
-7. Add app-level volume/mute.
-8. Add Return to existing Vivaldi task/tab.
-9. Configure persistent APK signing for GitHub Actions.
-10. Evaluate Brave only after Vivaldi is reliable.
-
-## 12. Development workflow
-
-- User is not an advanced developer.
-- Explain decisions plainly.
-- Source files should contain abundant English comments.
-- When changing a source file in chat, provide the FULL replacement file.
-- Keep PROJECT_STATE.md and CHAT_BOOTSTRAP.md current.
-- Project is intentionally developed in temporary chats.
-
-## 13. GitHub access
-
-Repository:
+Public repository:
 
 `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
 
-As of 2026-08-11, ChatGPT's web fetch still returns a cache miss.
-
-Latest uploaded ZIP plus subsequent in-chat full-file replacements remain the
-working source of truth.
-
-Continue checking GitHub after each user message until direct access succeeds.# Vivaldi External Player — Project State
-
-> Operational memory for this project.
->
-> Update this file whenever requirements, architecture, tests, failures,
-> decisions, safe test proxies, or next steps materially change.
-
-## 1. Purpose
-
-Vivaldi External Player is a personal Android application which receives a
-normal webpage URL from a mobile browser, discovers an accessible non-DRM media
-stream when possible, and plays it through AndroidX Media3 / ExoPlayer.
-
-Primary environment:
-
-- Android 13 target device.
-- Vivaldi Mobile Browser for Phase 1.
-- Brave may be considered later.
-- Relevant user-facing UI should support English and Spanish.
-
-Primary real-world targets:
-
-- Pornhub
-- HentaiHaven
-
-Only the user performs media-content testing on those real targets.
-
-ChatGPT works only with the technical playback layer: URLs, manifests,
-containers, codecs, resolutions, request metadata, errors, candidate ranking
-and whether playback technically succeeds.
-
-## 2. Content/testing boundary
-
-ChatGPT must NOT:
-
-- inspect or analyze adult video imagery;
-- describe or classify adult media content;
-- use real target videos as visual test material.
-
-The user alone performs PH/HH playback verification.
-
-When ChatGPT needs a directly inspectable test environment, use safe/SFW proxy
-sites selected for similar technical behavior.
-
-This rule must be preserved across temporary chats.
-
-## 3. Access/control boundaries
-
-The app is not intended to:
-
-- bypass DRM or obtain DRM keys;
-- bypass subscriptions/paywalls;
-- defeat authentication requirements;
-- bypass regional restrictions;
-- deliberately automate anti-bot challenges;
-- import Vivaldi passwords/private credentials;
-- inspect media content semantically.
-
-The intended target use is logged out and limited to media which the user can
-already access normally in the browser.
-
-The browser-assisted resolver may observe normal technical state and requests
-made by its own WebView.
-
-## 4. Required playback behavior
-
-Quality policy:
-
-1. Exact 720p when available.
-2. Otherwise 1080p.
-3. Otherwise the highest available quality below 1080p.
-
-Other requirements:
-
-- Double tap left: seek backward 10 seconds.
-- Double tap right: seek forward 10 seconds.
-- Efficient buffering.
-- Seek-bar thumbnail preview where technically possible.
-- Normal play/pause/seeking.
-- Quality controls.
-- Playback-speed control — pending.
-- App-level volume/mute — pending.
-- Normal portrait/landscape rotation.
-- Dedicated Return to existing Vivaldi task/tab — pending.
-
-## 5. Preferred final workflow
-
-1. User is viewing the original page in Vivaldi.
-2. User chooses Android Share.
-3. User selects External Video Player.
-4. App discovers the correct stream.
-5. Video opens in the custom player.
-6. Return-to-browser should reveal the existing Vivaldi task/tab.
-
-Manual URL paste remains useful for debugging.
-
-## 6. Safe proxy sites
-
-### PH technical proxy — Cloudinary legacy Video Player demo
-
-Primary URL:
-
-`https://cloudinary.github.io/video-player-demo/player.html`
-
-Why this is now the preferred PH proxy:
-
-- safe/SFW material;
-- JavaScript-configured players;
-- multiple players/videos on one page;
-- progressive sources;
-- adaptive HLS;
-- playlists;
-- advertising examples;
-- enough candidate noise to test main-video-vs-ad selection safely.
-
-Use it to develop:
-
-- false-candidate filtering;
-- multiple-video identification;
-- advertisement demotion;
-- page/player configuration discovery;
-- candidate ranking;
-- later click reduction.
-
-Archive.org is no longer the primary PH proxy.
-
-### HH technical proxy — Bitmovin HLS/fMP4 demo
-
-Primary URL:
-
-`https://bitmovin.com/demos/hls-fmp4/`
-
-Why:
-
-- safe/SFW material;
-- JavaScript player;
-- HLS/fMP4;
-- top-level/master playlist plus child rendition requests;
-- adaptive quality tracks;
-- previously reproduced audio-only, video-only and complete-stream candidates.
-
-Use it to develop:
-
-- master-vs-child HLS ranking;
-- full video+audio stream selection;
-- adaptive quality discovery;
-- 720p preference;
-- buffering behavior.
-
-## 7. Current architecture
-
-### MainActivity
-
-- Accepts ACTION_SEND / text/plain.
-- Extracts HTTP(S) URL from browser share.
-- Supports manual URL paste.
-- Attempts yt-dlp first.
-- Automatically opens browser-assisted fallback after direct failure.
-
-### resolver.py
-
-- Runs yt-dlp through Chaquopy.
-- Does not download files.
-- Rejects media marked DRM by yt-dlp.
-- Prefers Media3-friendly MP4/M4A and WebM combinations.
-- Uses project quality policy.
-
-### BrowserResolverActivity
-
-Observes:
-
-- WebView requests;
-- Service Worker requests;
-- page `<video>` elements;
-- page `<source>` elements;
-- Performance API resource URLs.
-
-Batch 2:
-
-- preserved first-seen order;
-- ranked adaptive manifests;
-- demoted obvious ad hosts;
-- transferred WebView headers/cookies.
-
-Batch 3 adds:
-
-- reject the current/original webpage itself as a media candidate;
-- reject traditional webpage URLs falsely labelled as video;
-- reject known-unhelpful legacy video candidates such as Ogg video/AVI;
-- read technical mediaDefinitions-style player configuration already exposed
-  in the loaded page;
-- carry declared quality metadata into candidate ranking;
-- prefer 720p, then 1080p, then lower qualities;
-- use current-page Referer/Origin context for page-config/adaptive streams.
-
-No media imagery is inspected.
-
-### PlayerActivity
-
-- Media3 ExoPlayer.
-- progressive/HLS/DASH support;
-- merged separate video/audio support;
-- FLAG_SECURE;
-- frame-extractor seek previews;
-- Media3 playback diagnostics;
-- browser adaptive quality discovery;
-- browser track selection.
-
-## 8. Verified results
-
-### Vivaldi Share
-
-PASS:
-
-- app appears in Share;
-- correct URL is received automatically.
-
-### HentaiHaven
-
-Current strongest real-target success.
-
-Batch 2 result:
-
-- seven candidates observed;
-- Recommended candidate was the correct complete stream;
-- external playback worked;
-- full video+audio worked;
-- quality button became functional;
-- selectable quality options were available.
-
-This is the regression baseline.
-
-Do not inspect HH media content. User performs this test.
-
-### Pornhub
-
-Batch 2 diagnostics identified the blank preferred candidate.
-
-The candidate shown as MP4 was actually:
-
-- resolver: browser;
-- host: site host;
-- path: `/view_video.php`;
-- MIME: video/mp4;
-- Media3 error:
-  `ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED (3003)`.
-
-Interpretation:
-
-The webpage document itself was falsely classified as MP4 because a page video
-element supplied the page URL together with a video MIME hint.
-
-A separate advertising candidate played correctly.
-
-Therefore PH is no longer an unknown black-screen problem. The immediate bug is
-false candidate discovery plus correct technical player-media discovery.
-
-Batch 3 directly addresses this.
-
-Do not inspect PH media content. User performs this test.
-
-### Archive BigBuckBunny
-
-Batch 2 browser candidate:
-
-- `.ogg`;
-- Media3 `ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED (3003)`.
-
-Archive is retained only as a legacy-container regression test.
-
-It is no longer a primary proxy because it is less representative of the target
-web-player architecture than Cloudinary/Bitmovin.
-
-## 9. Batch 3 — prepared, build pending
-
-Files changed:
-
-- `BrowserResolverActivity.kt`
-- English `strings.xml`
-- Spanish `strings.xml`
-- `PROJECT_STATE.md`
-
-Goals:
-
-1. Eliminate webpage-as-video false positives.
-2. Eliminate known unsuitable legacy page-video candidates.
-3. Discover technical page-player configuration where available.
-4. Preserve declared quality metadata.
-5. Rank exact 720p before 1080p before lower qualities.
-6. Preserve HH/Bitmovin HLS behavior.
-7. Keep all visual/content testing on safe proxies or on the user's own device.
-
-## 10. Batch 3 QA after green build
-
-Safe tests first:
-
-1. Cloudinary PH proxy.
-2. Bitmovin HH proxy.
-
-Only after those:
-
-3. User performs PH technical playback test.
-4. User performs HH regression test.
-
-ChatGPT should receive only:
-
-- candidate list;
-- candidate type;
-- host;
-- declared quality;
-- diagnostics;
-- playback yes/no;
-- audio/video yes/no;
-- quality options.
-
-No adult video imagery is needed.
-
-## 11. Immediate backlog after correct PH stream discovery
-
-1. Reduce excessive number of taps.
-2. Avoid forcing user to manually search a whole webpage for its main player.
-3. Handle multiple actual videos, ads, previews and embedded players.
-4. Automatic primary-video selection when confidence is high.
-5. Keep manual candidate chooser as fallback.
-6. Add playback-speed control.
-7. Add app-level volume/mute.
-8. Add Return to existing Vivaldi task/tab.
-9. Configure persistent APK signing for GitHub Actions.
-10. Evaluate Brave only after Vivaldi is reliable.
-
-## 12. Development workflow
-
-- User is not an advanced developer.
-- Explain decisions plainly.
-- Source files should contain abundant English comments.
-- When changing a source file in chat, provide the FULL replacement file.
-- Keep PROJECT_STATE.md and CHAT_BOOTSTRAP.md current.
-- Project is intentionally developed in temporary chats.
-
-## 13. GitHub access
-
-Repository:
-
-`https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
-
-As of 2026-08-11, ChatGPT's web fetch still returns a cache miss.
-
-Latest uploaded ZIP plus subsequent in-chat full-file replacements remain the
-working source of truth.
-
-Continue checking GitHub after each user message until direct access succeeds.
+Direct GitHub reading succeeded on 2026-08-11. The repository showed 47 commits
+at that check. Continue verifying direct access on every user turn as requested.
+
+After Batch 4 is merged, the GitHub `main` branch is the project source of truth.
+Use an uploaded ZIP only if direct repository access fails or the user explicitly
+says the ZIP is newer.
+
+## 11. Backlog after resolver reliability
+
+1. Playback-speed control.
+2. App-level volume/mute.
+3. Return to existing Vivaldi task/tab.
+4. Persistent APK signing for GitHub Actions.
+5. Brave evaluation only after Vivaldi is reliable.

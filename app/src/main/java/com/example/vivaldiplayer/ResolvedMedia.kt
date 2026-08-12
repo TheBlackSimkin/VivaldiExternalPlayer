@@ -1,5 +1,6 @@
 package com.example.vivaldiplayer
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -7,8 +8,8 @@ import org.json.JSONObject
  *
  * The resolver intentionally passes technical metadata such as protocol,
  * container and codecs along with the URL. Playback does not require every
- * field, but these values are extremely useful when a phone reports "blank
- * player" and we need to understand what yt-dlp or the WebView actually chose.
+ * field, but these values are useful when a phone reports a playback problem
+ * and we need to understand which source was selected.
  */
 data class StreamSource(
     val url: String,
@@ -30,6 +31,11 @@ data class StreamSource(
  * `mode == "single"` means one source contains everything needed for playback.
  * `mode == "merged"` means video and audio arrived as separate URLs and Media3
  * must play them together with MergingMediaSource.
+ *
+ * `browserVariants` is used only by the browser-assisted resolver. Some web
+ * players expose one complete URL per quality instead of one adaptive master
+ * manifest. Keeping those sibling URLs lets the quality button switch between
+ * 360p/480p/720p/1080p without returning to the webpage.
  */
 data class ResolvedMedia(
     val mode: String,
@@ -39,10 +45,11 @@ data class ResolvedMedia(
     val resolverMode: String,
     val single: StreamSource?,
     val video: StreamSource?,
-    val audio: StreamSource?
+    val audio: StreamSource?,
+    val browserVariants: List<StreamSource> = emptyList()
 ) {
 
-    /** Height shown by the existing yt-dlp quality button when it is known. */
+    /** Height shown by the quality button when it is known. */
     val displayedHeight: Int?
         get() = video?.height ?: single?.height
 
@@ -69,7 +76,8 @@ data class ResolvedMedia(
                 resolverMode = root.optString("resolver_mode", "ytdlp"),
                 single = root.optJSONObject("media")?.toSource(),
                 video = root.optJSONObject("video")?.toSource(),
-                audio = root.optJSONObject("audio")?.toSource()
+                audio = root.optJSONObject("audio")?.toSource(),
+                browserVariants = root.optJSONArray("browser_variants").toSources()
             )
         }
 
@@ -99,6 +107,19 @@ data class ResolvedMedia(
                 videoCodec = nullableString("vcodec"),
                 audioCodec = nullableString("acodec")
             )
+        }
+
+        /** Parse an optional array of browser quality siblings. */
+        private fun JSONArray?.toSources(): List<StreamSource> {
+            if (this == null) {
+                return emptyList()
+            }
+
+            return buildList {
+                for (index in 0 until length()) {
+                    optJSONObject(index)?.let { add(it.toSource()) }
+                }
+            }
         }
 
         /** JSON uses both missing values and explicit nulls, so normalize both. */
