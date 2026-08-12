@@ -32,7 +32,7 @@ change.
 
 Whenever you give me a QA test, always provide two code blocks:
 
-1. A detailed block with the test steps, **Expected**, and a place for **Result**.
+1. A detailed block with test steps, **EXPECTED**, and **RESULT**.
 2. A separate compact block containing only the short answer format I should
    fill in and send back.
 
@@ -51,10 +51,14 @@ and plays it with Media3 / ExoPlayer.
 - Do not bypass subscriptions/paywalls, authentication, or regional controls.
 - Do not deliberately automate anti-bot challenges.
 - Intended target usage is logged out.
-- ChatGPT must never inspect, analyze, classify, summarize, or describe PH/HH video content itself.
-- I perform PH/HH playback tests on my own device and report only technical results.
-- ChatGPT may analyze technical URLs, manifests, containers, codecs, resolutions, request metadata, candidate ranking, and playback errors/status.
-- Use safe non-adult proxy pages such as Cloudinary and Bitmovin for direct inspection whenever practical.
+- ChatGPT must never inspect, analyze, classify, summarize, or describe PH/HH
+  video content itself.
+- I perform PH/HH playback tests on my own device and report only technical
+  results.
+- ChatGPT may analyze technical URLs, manifests, containers, codecs,
+  resolutions, request metadata, candidate ranking, and playback errors/status.
+- Use safe non-adult proxy pages such as Cloudinary and Bitmovin for direct
+  inspection whenever practical.
 
 ## Required workflow
 
@@ -82,65 +86,70 @@ Other requirements:
 - portrait/landscape rotation;
 - final Return to existing Vivaldi task/tab pending.
 
-## Latest test results before Batch 4
+## Current Batch 4 status
+
+GitHub Actions clean build **#48** passed from the final cleaned `main` branch.
+Batch 4 is now the source of truth in GitHub.
 
 ### Bitmovin safe proxy
 
 `https://bitmovin.com/demos/hls-fmp4/`
 
-- 5 candidates detected.
-- A manually chosen candidate played correct video+audio.
-- Recommended candidate was wrong.
+**PASS**:
 
-This is the key master-vs-child ranking regression.
+- automatic playback: YES;
+- video: YES;
+- audio: YES;
+- no manual candidate selection required.
+
+A brief browser-resolver screen can flash before automatic playback. Treat this
+as UX polish, not a selection failure.
+
+### Pornhub
+
+**PASS** on Batch 4:
+
+- automatic playback: YES;
+- video: YES;
+- audio: YES;
+- multiple quality options: YES;
+- quality switching: YES.
+
+This confirms Batch 4 fixed the earlier PH quality-switching problem.
+
+### HentaiHaven
+
+**PASS** on Batch 4:
+
+- automatic playback: YES;
+- video: YES;
+- audio: YES;
+- quality options: YES;
+- quality switching: YES;
+- no additional issues reported.
+
+This confirms Batch 4 preserved the previously working HH adaptive behavior.
 
 ### Cloudinary safe proxy
 
 `https://cloudinary.github.io/video-player-demo/player.html`
 
-- 20 candidates displayed.
-- At least one played.
-- Audio was not a useful validation signal in this test.
-- The exact count of 20 exposed the old hard candidate limit/deletion behavior.
+Older pre-Batch-4 result exposed the old 20-candidate limit. The Batch 4 noisy-
+page stress test is still pending and should be the next resolver QA.
 
-### Pornhub
-
-`https://www.pornhub.com/view_video.php?viewkey=68913ce2533cb`
-
-- 6 candidates.
-- First/Recommended worked.
-- HLS host `em-h.phncdn.com`.
-- Declared 720p.
-- Could not change quality.
-
-Batch 4 should preserve the working 720p selection and add switching between
-sibling page-config quality URLs when available.
-
-### HentaiHaven
-
-`https://hentaihaven.xxx/watch/nuki-nuki-zupposism/episode-1/`
-
-- 6 candidates.
-- First/Recommended worked correctly.
-- HLS host `octopusmanifest.org`.
-- Audio/video and quality behavior were correct.
-
-HH is the real-target regression baseline.
-
-## Batch 4 working direction
-
-Read `PROJECT_STATE.md` for full details. Current intended changes are:
+## Batch 4 implementation summary
 
 - automatic best-candidate first attempt;
 - manual candidate chooser only as fallback;
 - plain-language candidate descriptions;
-- preserve more candidates without deleting the oldest at 20;
-- give first-seen HLS/DASH ordering real ranking weight;
-- remove the old generic `playlist` ranking bonus;
+- preserve up to 80 candidates instead of deleting the oldest at 20;
+- show only the strongest 20 in the manual fallback list;
+- meaningful first-seen HLS/DASH ranking;
+- removed the generic `playlist` bonus;
 - soft-demote obvious audio-only/video-only child renditions;
-- group page-config quality siblings;
+- group page-config sibling quality URLs;
 - let PlayerActivity switch between sibling quality URLs;
-- update successful playback diagnostics with video/audio/quality results.
+- successful diagnostics report video/audio/quality state.
 
-Do not skip the GitHub Actions compile gate. If it fails, fix the build before
-asking for functional device tests.
+Do not change the working resolver-selection logic solely to remove the brief
+browser-resolver flicker until the remaining Cloudinary stress test is complete.
