@@ -32,7 +32,8 @@ The app should receive a browser-shared page URL, resolve an accessible **non-DR
 - Prefer Internet Archive for ordinary direct-resolution/player tests.
 - Prefer `https://bitmovin.com/demos/hls-fmp4/` for JavaScript/HLS browser-assisted tests.
 - Cloudflare Stream public examples may be used when useful for normal CDN testing.
-
+- ChatGPT must never inspect or analyze PH/HH video content. The user alone performs those playback tests. Use Cloudinary's safe video-player demo as the PH proxy and Bitmovin's HLS/fMP4 demo as the HH proxy. ChatGPT may analyze technical URLs, manifests, containers, codecs, resolutions, request metadata, candidate ranking and playback errors only but not PH and HH content as for to my compliant with OpenAI terms and conditions.
+- 
 ## Required player behavior
 
 - Quality preference: exact 720p first; if unavailable, 1080p; otherwise best available below 1080p.
