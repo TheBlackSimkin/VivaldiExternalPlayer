@@ -31,7 +31,7 @@ codecs, resolutions, request metadata, candidate ranking, and playback status.
 
 Do not:
 
-- inspect, classify, or describe adult video imagery;
+- inspect, classify, summarize, or describe adult video content;
 - bypass DRM or obtain DRM keys;
 - bypass subscriptions/paywalls, authentication, or regional restrictions;
 - deliberately automate anti-bot challenges;
@@ -39,6 +39,9 @@ Do not:
 
 The browser-assisted resolver may observe normal technical state and requests
 made by its own WebView.
+
+Video/page titles may be captured locally by the Android app for tab labels, but
+ChatGPT should not request, inspect, or analyze PH/HH title text as content.
 
 ## 3. Required playback behavior
 
@@ -67,7 +70,67 @@ Required/desired behavior:
 - Normal portrait/landscape rotation.
 - Return to the existing Vivaldi task/tab — pending.
 
-## 4. Preferred workflow
+## 4. Future multi-tab player requirements
+
+The external player should eventually behave like a small tabbed browser for
+videos moved from Vivaldi.
+
+Required tab behavior:
+
+1. Every video shared/moved from Vivaldi into Vivaldi External Player should
+   create an independent app video tab.
+2. Multiple video tabs may exist at the same time.
+3. The user must be able to open the tab switcher, select any video tab, and
+   close individual tabs, with interaction conceptually similar to Vivaldi's tab
+   UI.
+4. Each tab should preserve its own playback state while it remains open,
+   including at minimum the selected media item and playback position. Preserve
+   selected quality when practical.
+5. Closing one tab must not close unrelated tabs.
+6. When the active tab is closed, switch cleanly to another remaining tab or an
+   empty/home state if none remain.
+7. Persistence of tabs across a full app/process restart is not yet specified;
+   decide this separately during implementation rather than assuming it.
+
+### Tab titles
+
+Each tab must display the title of the original video/page rather than a generic
+label such as "Browser video".
+
+Title-source preference for implementation:
+
+1. resolver/yt-dlp video title when available;
+2. page metadata/title already available to the app during browser-assisted
+   resolution;
+3. a neutral fallback such as "Video" if no usable title is available.
+
+PH/HH title strings should remain local to the app and should not be sent to or
+inspected by ChatGPT during testing.
+
+## 5. Loading and buffering UX requirement
+
+Resolution/loading internals should be transparent to the user.
+
+The app should NOT normally expose technical stages such as yt-dlp attempts,
+WebView candidate discovery, manifest ranking, or individual network steps.
+
+Instead, show a small, polished user-facing state such as:
+
+- "Opening video…" while resolving/loading the source;
+- a visible progress/spinner indicator so the user knows the app is working;
+- "Buffering…" when Media3 is waiting for enough media to continue playback.
+
+Once playback is ready, the loading UI should disappear automatically.
+Technical diagnostics remain available only when explicitly opened or when an
+error requires useful troubleshooting information.
+
+The existing brief browser-resolver screen/flicker before automatic playback is
+therefore a UX problem to remove during this phase without changing the already
+working candidate-selection logic.
+
+## 6. Preferred workflow
+
+Current single-video workflow:
 
 1. User opens a page in Vivaldi.
 2. Android Share -> External Video Player.
@@ -80,24 +143,12 @@ Required/desired behavior:
 7. Player opens with 720p preferred and quality controls when alternatives are
    available.
 
+Future tabbed workflow should keep steps 3-7 internal and attach the resulting
+media session to the newly created video tab.
+
 Manual URL paste remains useful for debugging.
 
-## 5. Safe proxy sites
-
-### Cloudinary video-player demo
-
-`https://cloudinary.github.io/video-player-demo/player.html`
-
-Use as a safe proxy for noisy pages with multiple players, playlists,
-advertising examples, and many candidate resources.
-
-Older result before Batch 4:
-
-- 20 possible videos were displayed, exposing the old hard 20-candidate limit.
-- At least one candidate played.
-- Audio was not a useful validation signal in that test.
-
-Batch 4 Cloudinary stress test is still pending.
+## 7. Safe proxy sites and QA policy
 
 ### Bitmovin HLS/fMP4 demo
 
@@ -117,11 +168,20 @@ Interpretation:
 
 - Batch 4 fixed the previous top-level-vs-child HLS ranking failure;
 - the transient browser-resolver screen is a UX polish issue, not a selection
-  failure;
-- do not risk the working selection logic merely to remove that flicker until
-  resolver reliability testing is complete.
+  failure.
 
-## 6. Current architecture
+### Cloudinary video-player demo
+
+Historical safe proxy:
+
+`https://cloudinary.github.io/video-player-demo/player.html`
+
+Older testing exposed the old hard 20-candidate limit. The user explicitly chose
+on 2026-08-12 to **skip further Cloudinary testing**. It is no longer a required
+QA gate. Keep it only as an optional diagnostic proxy if a future resolver bug
+specifically needs a noisy multi-player page.
+
+## 8. Current architecture
 
 ### MainActivity
 
@@ -179,7 +239,11 @@ Batch 4 behavior:
 - existing adaptive HLS/DASH quality switching remains unchanged;
 - Diagnostics update after STATE_READY with explicit video/audio/quality results.
 
-## 7. Verified Batch 4 results
+Future architecture will need a tab/session layer above the current single
+PlayerActivity flow so several independent media sessions can be represented and
+switched without discarding their state.
+
+## 9. Verified Batch 4 results
 
 ### Build gate
 
@@ -242,19 +306,16 @@ Interpretation:
 - Batch 4 preserved the existing HH adaptive behavior;
 - HH remains a strong regression baseline.
 
-## 8. Batch 4 QA status and next test
+## 10. QA status
 
-Completed:
+Completed and accepted for Batch 4:
 
 1. Build gate — PASS.
 2. Bitmovin — PASS.
 3. PH — PASS, including quality switching.
 4. HH — PASS, including quality switching.
 
-Remaining resolver stress test:
-
-5. Cloudinary — verify noisy-page handling, automatic first attempt, and that the
-   app does not require the user to browse a long manual candidate list.
+Cloudinary is explicitly skipped and is not required before moving on.
 
 For every QA request, ChatGPT must provide:
 
@@ -263,7 +324,21 @@ For every QA request, ChatGPT must provide:
 
 Keep the reply block compact.
 
-## 9. Development workflow and communication
+## 11. App identity / launcher icon
+
+The prototype launcher icon should be replaced with a polished, recognizable
+custom icon for Vivaldi External Player.
+
+Requirements:
+
+- should read clearly at Android launcher size;
+- should look intentional and modern rather than like a development placeholder;
+- should fit the app's external-video-player identity without copying another
+  product's trademarked icon;
+- provide proper Android adaptive-icon assets and foreground/background variants
+  when implemented.
+
+## 12. Development workflow and communication
 
 - Conversation language: English.
 - Windows/Vivaldi UI: Spanish; give Spanish UI labels when relevant.
@@ -276,7 +351,7 @@ Keep the reply block compact.
 - Before every assistant response, verify whether the public GitHub repository
   can still be read directly and state the result briefly.
 
-## 10. GitHub
+## 13. GitHub
 
 Public repository:
 
@@ -285,11 +360,15 @@ Public repository:
 Direct GitHub access is currently working through the connected GitHub tool.
 The `main` branch is the project source of truth.
 
-## 11. Backlog after resolver reliability
+## 14. Current prioritized backlog
 
-1. Polish the brief browser-resolver transition/flicker before automatic playback.
-2. Playback-speed control.
-3. App-level volume/mute.
-4. Return to existing Vivaldi task/tab.
-5. Persistent APK signing for GitHub Actions.
-6. Brave evaluation only after Vivaldi is reliable.
+1. Multi-video tab/session system: create, select, and close independent video
+   tabs moved from Vivaldi.
+2. Per-tab original video/page title.
+3. Transparent loading/buffering UX and removal of the resolver-screen flicker.
+4. Polished custom Android launcher icon.
+5. Playback-speed control.
+6. App-level volume/mute.
+7. Return to existing Vivaldi task/tab.
+8. Persistent APK signing for GitHub Actions.
+9. Brave evaluation only after Vivaldi behavior is mature.
