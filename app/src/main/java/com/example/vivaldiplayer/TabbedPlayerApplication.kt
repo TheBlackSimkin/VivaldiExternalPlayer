@@ -12,25 +12,24 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
-import androidx.media3.common.Player
-import androidx.media3.ui.PlayerView
 import com.chaquo.python.android.PyApplication
+import java.util.Locale
 import java.util.WeakHashMap
 
 /**
- * Application-level coordinator for the first multi-video tab implementation.
+ * Application-level tab coordinator.
  *
- * Why this lives above PlayerActivity:
- * - Batch 4 PlayerActivity/resolver behavior is already validated on the real
- *   playback targets, so the tab layer should not rewrite that logic.
- * - Every PlayerActivity still owns exactly one ExoPlayer at a time.
- * - Switching tabs recreates playback from the stored resolved-media payload,
- *   then restores position and play/pause state.
- *
- * Tabs are intentionally process-local in this first implementation. Whether
- * tabs should survive a complete process/app restart remains a separate product
- * decision, exactly as requested in PROJECT_STATE.md.
+ * Responsibilities now include:
+ * - initialize the persistent tab store;
+ * - resume queued WorkManager preparation after process restart;
+ * - map each live PlayerActivity to one logical tab;
+ * - restore position/foreground play intent;
+ * - display a richer tab switcher with preparation state;
+ * - route unfinished tabs to background retry or foreground browser assistance;
+ * - preserve the validated one-ExoPlayer-at-a-time playback architecture.
  */
 class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCallbacks {
 
@@ -39,18 +38,16 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         private const val TAB_BUTTON_TAG = "vivaldi_external_player_tabs_button"
     }
 
-    /** Associate each live PlayerActivity instance with its logical video tab. */
     private val activityTabs = WeakHashMap<Activity, String>()
 
-    /**
-     * Browser-assisted resolution already has the real page title locally inside
-     * its WebView. Keep only the latest local value long enough to name the next
-     * video tab. The title is never uploaded or sent outside the app.
-     */
+    /** Last page title observed locally inside the resolver WebView. */
     private var lastBrowserPageTitle: String = ""
 
     override fun onCreate() {
         super.onCreate()
+
+        VideoTabStore.initialize(this)
+        TabPreparationManager.resumePending(this)
         registerActivityLifecycleCallbacks(this)
     }
 
@@ -61,24 +58,22 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         val originalJson = activity.intent.getStringExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA)
             ?: return
 
-        /*
-         * A newly created browser-assisted tab should prefer the page title that
-         * was already available in the resolver WebView. Existing tabs already
-         * carry their saved title in their stored JSON and must not be renamed.
-         */
-        val tabJson = if (suppliedTabId == null) {
-            withLocalBrowserTitle(originalJson)
-        } else {
-            originalJson
-        }
+        val tabJson = withLocalBrowserTitle(originalJson)
 
-        val tabId = suppliedTabId
-            ?.takeIf { VideoTabStore.get(it) != null }
-            ?: VideoTabStore.createTab(tabJson).id
+        val tabId = if (suppliedTabId != null && VideoTabStore.get(suppliedTabId) != null) {
+            /*
+             * A NEEDS_ATTENTION tab may have just completed through
+             * BrowserResolverActivity. Store that resolved payload in the SAME
+             * persistent tab instead of creating a duplicate.
+             */
+            VideoTabStore.markReady(suppliedTabId, tabJson)
+            suppliedTabId
+        } else {
+            VideoTabStore.createTab(tabJson).id
+        }
 
         activityTabs[activity] = tabId
 
-        // Add a small tab-switcher button without changing the validated player XML.
         activity.window.decorView.post {
             attachTabButton(activity)
         }
@@ -93,17 +88,15 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         updateTabButton(activity)
 
         /*
-         * PlayerActivity prepares its source during onCreate. Media3 accepts a
-         * seek before STATE_READY, so restoring here works for both progressive
-         * and adaptive sources without waiting for a second callback.
+         * PlayerActivity prepares during onCreate. Its explicit restore method
+         * accepts a seek before STATE_READY and also remembers whether playback
+         * should resume only while the Activity is foregrounded.
          */
         activity.window.decorView.post {
-            val player = findPlayer(activity) ?: return@post
-            if (tab.positionMs > 0L) {
-                player.seekTo(tab.positionMs)
-            }
-            player.playWhenReady = tab.playWhenReady
+            activity.restoreTabSession(tab.positionMs, tab.playWhenReady)
         }
+
+        TabPreparationManager.preloadNext(activity.applicationContext, tabId)
     }
 
     override fun onActivityPaused(activity: Activity) {
@@ -113,10 +106,7 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         }
     }
 
-    /**
-     * Read only the normal WebView page title which is already present on-device.
-     * This is metadata for the tab label; no page/video title is transmitted.
-     */
+    /** Read only local WebView page metadata for the tab label. */
     private fun captureBrowserPageTitle(activity: BrowserResolverActivity) {
         val title = activity
             .findViewById<WebView>(R.id.browser_web_view)
@@ -129,7 +119,7 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         }
     }
 
-    /** Prefer the locally captured WebView page title for a new browser tab. */
+    /** Prefer a useful locally captured browser title for browser-resolved JSON. */
     private fun withLocalBrowserTitle(json: String): String {
         val pageTitle = lastBrowserPageTitle.trim()
         if (pageTitle.isBlank()) return json
@@ -144,37 +134,18 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         }.getOrDefault(json)
     }
 
-    /** Save position/play state and, when available, the currently selected quality source. */
+    /**
+     * PlayerActivity exposes a small snapshot API so automatic lifecycle pause
+     * can be distinguished from a deliberate user pause. This replaces the old
+     * reflective access to private fields.
+     */
     private fun saveActivityTab(activity: PlayerActivity) {
         val tabId = activityTabs[activity] ?: return
-        val player = findPlayer(activity)
-
-        /*
-         * PlayerActivity keeps the current ResolvedMedia private because tabs did
-         * not exist when it was written. Reading that one model field reflectively
-         * lets this compatibility layer preserve a quality-switched source without
-         * changing the validated playback class in the first tab batch.
-         *
-         * This is deliberately isolated here and can be replaced by an explicit
-         * PlayerActivity session API in a later cleanup batch.
-         */
-        val resolved = runCatching {
-            val field = PlayerActivity::class.java.getDeclaredField("currentResolved")
-            field.isAccessible = true
-            field.get(activity) as? ResolvedMedia
-        }.getOrNull()
-
         val existing = VideoTabStore.get(tabId) ?: return
-        val currentJson = resolved?.toJson() ?: existing.resolvedMediaJson
+        val snapshot = activity.tabSessionSnapshot()
 
-        /*
-         * PlayerActivity may still hold the old generic browser title during the
-         * first visit because this compatibility coordinator runs after its
-         * onCreate. Preserve the better tab title already captured from WebView
-         * instead of accidentally overwriting it during onPause.
-         */
         val json = runCatching {
-            val current = ResolvedMedia.fromJson(currentJson)
+            val current = ResolvedMedia.fromJson(snapshot.resolvedMediaJson)
             if (
                 current.resolverMode == "browser" &&
                 existing.title.isNotBlank() &&
@@ -182,23 +153,19 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             ) {
                 current.copy(title = existing.title).toJson()
             } else {
-                currentJson
+                snapshot.resolvedMediaJson
             }
-        }.getOrDefault(currentJson)
+        }.getOrDefault(snapshot.resolvedMediaJson)
 
         VideoTabStore.update(
             id = tabId,
             resolvedMediaJson = json,
-            positionMs = player?.currentPosition ?: existing.positionMs,
-            playWhenReady = player?.playWhenReady ?: existing.playWhenReady
+            positionMs = snapshot.positionMs,
+            playWhenReady = snapshot.playWhenForeground
         )
     }
 
-    /** Find the Media3 Player through the public PlayerView API. */
-    private fun findPlayer(activity: PlayerActivity): Player? =
-        activity.findViewById<PlayerView>(R.id.player_view)?.player
-
-    /** Overlay a compact tab button at the top center of the existing player. */
+    /** Overlay a compact tab button without changing PlayerActivity's validated layout. */
     private fun attachTabButton(activity: PlayerActivity) {
         val decor = activity.window.decorView as? ViewGroup ?: return
         if (decor.findViewWithTag<View>(TAB_BUTTON_TAG) != null) return
@@ -228,12 +195,14 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     private fun updateTabButton(activity: PlayerActivity) {
         val decor = activity.window.decorView as? ViewGroup ?: return
         val button = decor.findViewWithTag<Button>(TAB_BUTTON_TAG) ?: return
-        button.text = activity.getString(R.string.tabs_button_count, VideoTabStore.allTabs().size)
+        val tabs = VideoTabStore.allTabs()
+        val ready = tabs.count { it.isReady }
+        button.text = activity.getString(R.string.tabs_button_ready_count, ready, tabs.size)
     }
 
     /**
-     * Vivaldi-like conceptual tab list: select a row to switch; use the × button
-     * on that row to close only that video tab.
+     * More browser-like tab switcher. Each row shows title plus preparation,
+     * position and quality information without exposing technical URLs.
      */
     private fun showTabSwitcher(activity: PlayerActivity) {
         saveActivityTab(activity)
@@ -244,24 +213,39 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             setPadding(12.dp(activity), 8.dp(activity), 12.dp(activity), 8.dp(activity))
         }
 
-        fun rebuildRows(dialog: AlertDialog?) {
+        var dialog: AlertDialog? = null
+
+        fun rebuildRows() {
             rows.removeAllViews()
             val tabs = VideoTabStore.allTabs()
 
+            if (tabs.isEmpty()) {
+                rows.addView(TextView(activity).apply {
+                    text = activity.getString(R.string.no_video_tabs)
+                    setPadding(12.dp(activity), 18.dp(activity), 12.dp(activity), 18.dp(activity))
+                })
+                return
+            }
+
             tabs.forEach { tab ->
-                val row = LinearLayout(activity).apply {
+                val card = LinearLayout(activity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
+                    setPadding(4.dp(activity), 4.dp(activity), 4.dp(activity), 8.dp(activity))
                 }
 
-                val selectButton = Button(activity).apply {
+                val textColumn = LinearLayout(activity).apply {
+                    orientation = LinearLayout.VERTICAL
+                }
+
+                val titleButton = Button(activity).apply {
                     isAllCaps = false
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
                     text = if (tab.id == currentId) {
                         activity.getString(R.string.tab_active_title, tab.title)
                     } else {
                         tab.title
                     }
-                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
                     setOnClickListener {
                         dialog?.dismiss()
                         if (tab.id != currentId) {
@@ -269,6 +253,22 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
                         }
                     }
                 }
+
+                val details = TextView(activity).apply {
+                    text = buildTabSubtitle(activity, tab)
+                    textSize = 12f
+                    alpha = 0.82f
+                    setPadding(14.dp(activity), 0, 10.dp(activity), 4.dp(activity))
+                }
+
+                textColumn.addView(
+                    titleButton,
+                    LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    )
+                )
+                textColumn.addView(details)
 
                 val closeButton = Button(activity).apply {
                     isAllCaps = false
@@ -281,24 +281,18 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
                             closeActiveTab(activity, currentId)
                         } else {
                             VideoTabStore.close(tab.id)
-                            rebuildRows(dialog)
+                            rebuildRows()
                             updateTabButton(activity)
                         }
                     }
                 }
 
-                row.addView(
-                    selectButton,
+                card.addView(
+                    textColumn,
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 )
-                row.addView(
-                    closeButton,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
-                )
-                rows.addView(row)
+                card.addView(closeButton)
+                rows.addView(card)
             }
         }
 
@@ -306,39 +300,111 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             addView(rows)
         }
 
-        val dialog = AlertDialog.Builder(activity)
+        dialog = AlertDialog.Builder(activity)
             .setTitle(R.string.video_tabs)
             .setView(scroll)
+            .setNeutralButton(R.string.settings) { _, _ ->
+                activity.startActivity(Intent(activity, SettingsActivity::class.java))
+            }
             .setNegativeButton(R.string.close, null)
             .create()
 
-        rebuildRows(dialog)
-        dialog.show()
+        rebuildRows()
+        dialog?.show()
+    }
+
+    private fun buildTabSubtitle(activity: Activity, tab: VideoTabStore.VideoTab): String {
+        val state = when (tab.preparationState) {
+            VideoTabStore.PreparationState.QUEUED -> activity.getString(R.string.tab_state_queued)
+            VideoTabStore.PreparationState.RESOLVING -> activity.getString(R.string.tab_state_resolving)
+            VideoTabStore.PreparationState.READY -> activity.getString(R.string.tab_state_ready)
+            VideoTabStore.PreparationState.NEEDS_ATTENTION -> activity.getString(R.string.tab_state_needs_attention)
+            VideoTabStore.PreparationState.ERROR -> activity.getString(R.string.tab_state_error)
+        }
+
+        val details = mutableListOf(state)
+        if (tab.positionMs > 0) details += formatPosition(tab.positionMs)
+
+        if (tab.resolvedMediaJson.isNotBlank()) {
+            runCatching { ResolvedMedia.fromJson(tab.resolvedMediaJson) }
+                .getOrNull()
+                ?.displayedHeight
+                ?.takeIf { it > 0 }
+                ?.let { details += "${it}p" }
+        }
+
+        return details.joinToString(" • ")
+    }
+
+    private fun formatPosition(ms: Long): String {
+        val totalSeconds = ms.coerceAtLeast(0L) / 1000L
+        val seconds = totalSeconds % 60
+        val minutes = (totalSeconds / 60) % 60
+        val hours = totalSeconds / 3600
+        return if (hours > 0) {
+            String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+        } else {
+            String.format(Locale.US, "%02d:%02d", minutes, seconds)
+        }
     }
 
     private fun openTab(activity: PlayerActivity, tab: VideoTabStore.VideoTab) {
         saveActivityTab(activity)
 
-        activity.startActivity(
-            Intent(activity, PlayerActivity::class.java)
-                .putExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA, tab.resolvedMediaJson)
-                .putExtra(EXTRA_TAB_ID, tab.id)
-        )
-        activity.finish()
+        when {
+            tab.isReady -> {
+                activity.startActivity(
+                    Intent(activity, PlayerActivity::class.java)
+                        .putExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA, tab.resolvedMediaJson)
+                        .putExtra(EXTRA_TAB_ID, tab.id)
+                )
+                activity.finish()
+            }
+
+            tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION -> {
+                activity.startActivity(
+                    Intent(activity, BrowserResolverActivity::class.java)
+                        .putExtra(BrowserResolverActivity.EXTRA_URL, tab.sourceUrl)
+                        .putExtra(BrowserResolverActivity.EXTRA_TAB_ID, tab.id)
+                )
+                activity.finish()
+            }
+
+            tab.preparationState == VideoTabStore.PreparationState.ERROR -> {
+                showTabPreparationError(activity, tab)
+            }
+
+            else -> {
+                Toast.makeText(activity, R.string.tab_not_ready_yet, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Recovery for a failed background-preparation tab. */
+    private fun showTabPreparationError(activity: PlayerActivity, tab: VideoTabStore.VideoTab) {
+        AlertDialog.Builder(activity)
+            .setTitle(R.string.tab_state_error)
+            .setMessage(R.string.tab_prepare_error_explanation)
+            .setPositiveButton(R.string.retry) { _, _ ->
+                TabPreparationManager.retry(activity.applicationContext, tab.id)
+                Toast.makeText(activity, R.string.retry_scheduled, Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton(R.string.try_browser_method) { _, _ ->
+                activity.startActivity(
+                    Intent(activity, BrowserResolverActivity::class.java)
+                        .putExtra(BrowserResolverActivity.EXTRA_URL, tab.sourceUrl)
+                        .putExtra(BrowserResolverActivity.EXTRA_TAB_ID, tab.id)
+                )
+                activity.finish()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
     }
 
     private fun closeActiveTab(activity: PlayerActivity, currentId: String) {
         val next = VideoTabStore.neighborAfterClose(currentId)
 
         if (next == null) {
-            /*
-             * The resolver/MainActivity can still exist underneath the player in
-             * Android's task stack. Merely calling finish() exposed that old
-             * resolver screen again, which looked like the closed tab was being
-             * reopened. Clear back to MainActivity instead, using a neutral
-             * Intent with no ACTION_SEND so the old shared URL is not resolved
-             * again.
-             */
             activity.startActivity(
                 Intent(activity, MainActivity::class.java)
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
@@ -347,11 +413,30 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             return
         }
 
-        activity.startActivity(
-            Intent(activity, PlayerActivity::class.java)
-                .putExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA, next.resolvedMediaJson)
-                .putExtra(EXTRA_TAB_ID, next.id)
-        )
+        when {
+            next.isReady -> {
+                activity.startActivity(
+                    Intent(activity, PlayerActivity::class.java)
+                        .putExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA, next.resolvedMediaJson)
+                        .putExtra(EXTRA_TAB_ID, next.id)
+                )
+            }
+
+            next.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION -> {
+                activity.startActivity(
+                    Intent(activity, BrowserResolverActivity::class.java)
+                        .putExtra(BrowserResolverActivity.EXTRA_URL, next.sourceUrl)
+                        .putExtra(BrowserResolverActivity.EXTRA_TAB_ID, next.id)
+                )
+            }
+
+            else -> {
+                activity.startActivity(
+                    Intent(activity, MainActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                )
+            }
+        }
         activity.finish()
     }
 
