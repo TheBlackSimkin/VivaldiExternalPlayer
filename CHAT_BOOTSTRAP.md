@@ -1,9 +1,8 @@
 # Temporary Chat Bootstrap — Vivaldi External Player
 
-Public repository:
-`https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
+Public repository: `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
 
-Treat GitHub `main` as the source of truth. Before changing code, read `PROJECT_STATE.md` in full. Keep both files updated whenever requirements, architecture, tests, failures, or priorities materially change.
+Treat GitHub `main` as the source of truth. Before changing code, read `PROJECT_STATE.md` completely. Keep both state files updated whenever requirements, architecture, tests, failures, decisions, or priorities materially change.
 
 ## Communication
 
@@ -12,6 +11,7 @@ Treat GitHub `main` as the source of truth. Before changing code, read `PROJECT_
 - Android app UI: bilingual English/Spanish.
 - Explain plainly; user is not an advanced developer.
 - Do GitHub work directly whenever possible.
+- Source code should contain abundant English comments.
 
 ## QA format
 
@@ -23,130 +23,116 @@ Never ask for PH/HH page/video title text. Titles may be used locally by the app
 
 ## Safety/content boundary
 
-PH and HH are real-world technical playback targets. The user performs the playback tests.
+PH and HH are real technical playback targets. The user performs playback/content testing.
 
-Allowed: technical analysis of URLs, manifests, codecs, quality, request metadata, candidate ranking, browser/network state, playback errors/status, and local tab-title handling.
+Allowed technical work: URLs, manifests, codecs, resolutions/qualities, request metadata, candidate ranking, browser/network state, playback errors/status, and local tab-title handling.
 
-Do not:
-- inspect/analyze/classify/describe video content;
-- bypass DRM or obtain keys;
-- bypass subscriptions/paywalls/authentication/regional controls;
-- deliberately automate anti-bot challenges;
-- import private credentials.
+Do not inspect/analyze/classify/describe media content. Do not bypass DRM, subscriptions/paywalls, authentication, regional restrictions, anti-bot/CAPTCHA challenges, or import private Vivaldi credentials.
 
 ### Automatic age/cookie consent
 
-The user is over 18 and explicitly wants the resolver to automatically accept **clearly identified**:
-- 18+ / age-confirmation prompts;
-- cookie-consent prompts.
-
-This automation must be conservative. Never auto-click ambiguous buttons, sign-in/account prompts, paywall/subscription/payment controls, regional controls, DRM controls, anti-bot/CAPTCHA/challenge controls, or unrelated page actions. If uncertain, leave the prompt for the user.
+The user wants conservative automation only for clearly identified 18+ confirmation and cookie-consent prompts. Never auto-click ambiguous buttons, login/account prompts, paywall/subscription/payment controls, regional controls, DRM controls, anti-bot/CAPTCHA/challenge controls, or unrelated actions. If uncertain, leave the prompt for the user.
 
 ## Verified Batch 4 baseline
 
-GitHub Actions build #48: PASS.
-
-Bitmovin: automatic YES, video YES, audio YES.
-PH: automatic YES, video YES, audio YES, quality options YES, quality switching YES.
-HH: automatic YES, video YES, audio YES, quality options YES, quality switching YES.
-Cloudinary is explicitly skipped and is not a required gate.
-
 Protect:
-- yt-dlp first, automatic browser-assisted fallback;
-- manual candidate chooser fallback only;
-- 720p → 1080p → best below 1080p;
-- first-seen HLS/DASH ranking;
-- up to 80 candidates stored, strongest 20 shown manually;
+- Vivaldi share flow;
+- yt-dlp first, then automatic browser-assisted fallback;
+- automatic best candidate first, manual chooser only as fallback;
+- quality policy 720p -> 1080p -> best below 1080p;
+- video + audio;
+- adaptive and sibling quality switching;
+- double-tap ±10 seconds;
+- seek preview;
+- rotation;
+- bilingual UI;
+- up to 80 stored candidates / strongest 20 manual candidates;
+- meaningful first-seen HLS/DASH ordering;
 - no generic playlist bonus;
-- soft demotion of obvious audio-only/video-only children;
-- sibling quality URLs;
-- video + audio, quality switching, double-tap ±10s, seek preview, rotation.
+- soft demotion of obvious audio-only/video-only child paths;
+- page-config family IDs for sibling URLs;
+- no media imagery inspection.
 
-## Foreground-only playback requirement
-
-Playback must never continue when External Player is not actively in the foreground.
-
-Required:
-- stop/pause video and audio when user switches to Vivaldi or any other app;
-- stop/pause video and audio when the phone is locked / screen is turned off;
-- preserve current tab position when stopped by backgrounding/lock;
-- background tab preparation/resolution may continue when Android allows it, but playback may not;
-- no background-audio continuation, PiP autoplay, or foreground playback service unless this requirement is explicitly changed later.
-
-Automatic background/lock pause should be distinguishable from deliberate user pause so sensible resume behavior can be implemented when the user returns; exact auto-resume policy remains to be decided during implementation. No media may play while backgrounded or locked.
+Verified targets:
+- Bitmovin automatic/video/audio PASS.
+- PH automatic/video/audio/quality options/quality switching PASS.
+- HH automatic/video/audio/quality options/quality switching PASS.
+- Cloudinary is not a QA gate.
 
 ## Multi-video tabs
 
-Architecture on `main`:
-- `VideoTabStore`: process-local sessions.
-- `TabbedPlayerApplication`: coordinator above validated player/resolver logic.
-- one active ExoPlayer at a time;
-- each tab stores resolved-media JSON, title, position and play/pause state;
-- `ResolvedMedia.toJson()` preserves selected source when practical;
-- bilingual tab switcher; tabs can be selected and closed independently.
+On `main`:
+- `VideoTabStore` stores process-local tab sessions;
+- `TabbedPlayerApplication` coordinates tabs above validated player/resolver logic;
+- one active ExoPlayer playback session at a time;
+- per-tab resolved JSON, title, position and play/pause state;
+- selected quality source preserved when practical;
+- independent select/switch/close;
+- final close returns to clean neutral `MainActivity`;
+- browser-assisted tabs use local WebView page title;
+- full process-restart persistence remains undecided.
 
-Full process-restart persistence remains undecided.
+The follow-up device QA for build #62 (final-tab cleanup + browser-assisted title fix) has already been completed/validated. Do not ask the user to repeat it unless investigating a regression.
 
-First device QA on 2026-08-13:
-- tabs 1→2 YES;
-- switch YES;
-- position restored YES;
-- quality preserved YES;
-- close one YES;
-- close active OK;
-- final close partial failure because old resolver was exposed;
-- auto resolver/video/audio/quality options/quality switching/double-tap all YES;
-- browser-assisted tab labels generic;
-- resolver/loading UI still visible.
+## Clean opening/buffering UX
 
-Post-QA commit `8be38f33c1a1f225ef555133229669f7e9008b1e`:
-- final tab clears to neutral `MainActivity` instead of revealing resolver;
-- browser-assisted tab title uses local WebView page title;
-- Batch 4 candidate ranking unchanged.
+A 2026-08-13 batch on `main` adds:
+- `Opening video…` for normal initial opening/direct resolution;
+- no intentional raw Python-resolver error flash before automatic browser fallback;
+- a presentation-only overlay in `GesturePlayerView`;
+- `Buffering…` only when Media3 reports `Player.STATE_BUFFERING`;
+- overlay hidden when ready/ended or when PlayerActivity takes over error diagnostics;
+- English + Spanish strings;
+- no change to Batch 4 candidate ranking/source selection/quality logic.
 
-GitHub Actions build #62: PASS.
+Relevant commits include:
+- `12d0f0e7786651ebb2d9c4aa8651e9bd50d4bb0a`;
+- `1075fe934dfe80ade3874478f5a3b346a42350ba`;
+- `6f3e37e8653d49ad5ac6904206393ec078cac363`;
+- `400f9640b11e01bd4a0102c46a25de3126191dea`.
 
-## Loading/buffering UX
+Remaining UX polish: BrowserResolverActivity may still be shown when foreground browser interaction is genuinely needed. Any further concealment must not change validated candidate logic.
 
-Next major feature:
-- `Opening video…` + spinner while resolving/opening;
-- `Buffering…` only during real Media3 buffering;
-- indicator disappears when ready;
-- no resolver/WebView/candidate/debug flicker in normal use;
-- diagnostics only via explicit diagnostics/error paths.
+## Foreground-only playback requirement
 
-## Background add from Vivaldi
+Playback must never continue when External Player is not actively foregrounded.
+
+Required:
+- pause/stop video and audio when switching to Vivaldi/another app;
+- pause/stop when phone locks/screen turns off;
+- preserve tab position;
+- distinguish automatic lifecycle pause from deliberate user pause;
+- background preparation may continue when Android allows it;
+- no background audio/PiP autoplay/media-session continuation/foreground playback service unless requirement changes.
+
+Implementation/device QA is still pending.
+
+## Background Add workflow
 
 Required separate share action: `Add to External Player` / `Añadir a External Player`.
 
-Expected behavior:
+Expected:
 - Vivaldi stays foregrounded;
-- create a new tab immediately;
-- begin resolution/preparation immediately;
-- by the time the user switches to External Player, earlier tabs should ideally already be READY;
-- selecting a READY tab must use stored resolved media without resolving again.
+- create tab immediately;
+- start pre-resolution immediately;
+- tabs should ideally be READY before user opens External Player;
+- selecting READY must use stored resolved media without resolving again.
 
-Preparation states should include `QUEUED`, `RESOLVING`, `READY`, and `NEEDS_ATTENTION`/`ERROR`.
+Preparation states: `QUEUED`, `RESOLVING`, `READY`, `NEEDS_ATTENTION` and/or `ERROR`.
 
-Architecture:
-- direct/yt-dlp pre-resolution should use Android-supported background work;
-- pre-resolution must not start multiple playbacks;
-- store resolved-media JSON when direct resolution succeeds;
-- if browser-assisted WebView work is still required, do not falsely mark READY; finish it through clean foreground `Opening video…` UX;
-- narrow automatic clear age/cookie consent handling should assist browser-assisted completion under the strict consent policy above;
-- background preparation never overrides the foreground-only playback rule.
+Pre-resolution is not playback. Browser-assisted work which genuinely requires foreground interaction must not be falsely marked READY.
 
 ## Current priority
 
-1. Device-QA build #62 final-tab cleanup + browser-assisted titles.
-2. Transparent `Opening video…` / `Buffering…` UX and hide resolver flicker.
-3. Conservative automatic clear 18+ age-confirmation and cookie-consent handling.
-4. Background `Add to External Player` / `Añadir a External Player` with immediate pre-resolution and per-tab preparation states.
-5. Enforce foreground-only playback when app is backgrounded or phone is locked.
+1. Finish/verify clean `Opening video…` / real `Buffering…` behavior and remaining resolver-visibility polish.
+2. Conservative automatic clear age/cookie consent handling.
+3. Background Add + immediate pre-resolution/preparation states.
+4. Foreground-only playback lifecycle enforcement.
+5. User-selected next-iteration feature(s) from the feature backlog discussed in chat.
 6. App icon.
 7. Playback speed.
 8. App-level volume/mute.
 9. Return to existing Vivaldi task/tab.
 10. Persistent APK signing.
-11. Decide full process-restart tab persistence separately.
-12. Brave later.
+11. Decide process-restart tab persistence.
+12. Brave support later.
