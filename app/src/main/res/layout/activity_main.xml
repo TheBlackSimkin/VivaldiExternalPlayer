@@ -1,15 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-
-<!--
-    Main screen used for two workflows:
-    1) receiving a URL shared by Vivaldi, and
-    2) manually pasting a URL while debugging.
-
-    All user-facing text comes from string resources so Android can
-    automatically choose English or Spanish from the phone language.
--->
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -21,53 +11,55 @@
         android:text="@string/main_intro"
         android:textSize="17sp" />
 
-    <!-- Manual URL entry is intentionally kept even though browser sharing is preferred. -->
+    <Button
+        android:id="@+id/open_tabs_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/open_saved_tabs"
+        android:visibility="gone" />
+
     <EditText
         android:id="@+id/url_input"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
         android:hint="@string/url_hint"
-        android:inputType="textUri"
-        android:maxLines="4" />
+        android:inputType="textUri" />
 
     <Button
         android:id="@+id/resolve_button"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
         android:text="@string/resolve_and_play" />
 
-    <!-- Visible only while the direct yt-dlp resolver is doing network work. -->
     <ProgressBar
         android:id="@+id/progress"
-        style="?android:attr/progressBarStyle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
-        android:layout_marginTop="16dp"
         android:visibility="gone" />
 
-    <!--
-        The app now opens this fallback automatically after a direct failure,
-        but the button remains available when the user returns to this screen
-        and wants to retry the browser-assisted path manually.
-    -->
     <Button
         android:id="@+id/browser_resolve_button"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
         android:text="@string/open_browser_assisted_resolver"
-        android:textAllCaps="false"
         android:visibility="gone" />
 
-    <!-- Technical resolver errors stay selectable so the user can copy them into chat. -->
     <TextView
         android:id="@+id/status"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp"
         android:textIsSelectable="true" />
 
+    <Button
+        android:id="@+id/settings_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/settings" />
+
+    <Button
+        android:id="@+id/about_button"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/about" />
 </LinearLayout>
