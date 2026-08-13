@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="open_in_external_player">Abrir en External Player</string>
+    <string name="add_to_external_player">Añadir a External Player</string>
+    <string name="added_to_external_player">Añadido a External Player</string>
+    <string name="open_saved_tabs">Abrir pestañas guardadas</string>
+    <string name="open_saved_tabs_count">Abrir pestañas (%1$d)</string>
+    <string name="tab_not_ready_yet">Esta pestaña todavía se está preparando.</string>
+
+    <string name="tabs_button_ready_count">Pestañas: %1$d/%2$d listas</string>
+    <string name="no_video_tabs">No hay pestañas de vídeo abiertas.</string>
+    <string name="tab_state_queued">En cola</string>
+    <string name="tab_state_resolving">Resolviendo…</string>
+    <string name="tab_state_ready">✓ Lista</string>
+    <string name="tab_state_needs_attention">Necesita atención</string>
+    <string name="tab_state_error">Error</string>
+    <string name="tab_prepare_error_explanation">Esta pestaña no pudo prepararse automáticamente. Puedes reintentar la resolución normal de red o abrir el método asistido por navegador.</string>
+    <string name="retry">Reintentar</string>
+    <string name="retry_scheduled">Reintento programado</string>
+    <string name="try_browser_method">Probar método del navegador</string>
+
+    <string name="settings">Ajustes</string>
+    <string name="settings_intro">Preferencias locales de External Player. Estos ajustes permanecen en este dispositivo.</string>
+    <string name="setting_clear_age_prompts">Confirmar automáticamente avisos claramente identificados de 18+</string>
+    <string name="setting_clear_cookie_prompts">Aceptar automáticamente avisos de cookies claramente identificados</string>
+    <string name="setting_network_retry">Reintentar automáticamente fallos temporales de red</string>
+    <string name="setting_preload_next_tab">Pre-resolver la siguiente pestaña en cola</string>
+    <string name="setting_persistent_tabs_info">Las pestañas abiertas, posiciones, calidades y estados de preparación se guardan localmente entre reinicios de la aplicación o del proceso.</string>
+    <string name="clear_saved_tabs">Borrar pestañas guardadas</string>
+    <string name="clear_saved_tabs_confirmation">¿Cerrar y olvidar todas las pestañas guardadas de External Player?</string>
+    <string name="clear">Borrar</string>
+    <string name="saved_tabs_cleared">Pestañas guardadas borradas</string>
+
+    <string name="about">Acerca de / Información de compilación</string>
+    <string name="about_build_details">Vivaldi External Player\n\nVersión: %1$s (%2$d)\nCommit Git: %3$s\nCompilación de GitHub Actions: %4$s\n\nLa reproducción funciona solo en primer plano. Los datos de pestañas/sesión y los ajustes se guardan localmente en este dispositivo.</string>
+
+    <string name="recovery_options">Opciones de recuperación</string>
+    <string name="recovery_explanation">Falló la reproducción. Estas acciones solo reintentan rutas normales de reproducción; no eluden accesos protegidos.</string>
+    <string name="retry_same_source">Reintentar la misma fuente</string>
+    <string name="try_another_detected_video">Probar otro vídeo detectado</string>
+    <string name="temporary_network_retry">Problema temporal de red — reintentando…</string>
+    <string name="retrying_playback">Reintentando reproducción…</string>
+</resources>
