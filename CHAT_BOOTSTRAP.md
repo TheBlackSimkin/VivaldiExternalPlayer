@@ -36,7 +36,8 @@ Whenever you give me a QA test, always provide two code blocks:
 2. A separate compact block containing only the short answer format I should
    fill in and send back.
 
-Keep the answer block simple and compact.
+Keep the answer block simple and compact. Never ask me to send PH/HH page/video
+titles to ChatGPT; title strings remain local to the Android app.
 
 ## Project goal
 
@@ -62,7 +63,7 @@ and plays it with Media3 / ExoPlayer.
   titles as content.
 - Use safe non-adult proxy pages when direct inspection is needed.
 
-## Required current workflow
+## Required current resolver workflow
 
 The app should NOT normally make me search manually through many detected
 videos.
@@ -88,80 +89,85 @@ Other existing requirements:
 - portrait/landscape rotation;
 - final Return to existing Vivaldi task/tab pending.
 
-## New future requirements after Batch 4
+## Current multi-video tab implementation
 
-### Multi-video tabs
+The first multi-video tab/session architecture is now implemented on GitHub
+`main`; device QA is still pending.
 
-The external player should gain its own tab system for videos moved from
-Vivaldi.
+Architecture:
 
-- Every shared/moved video becomes an independent app video tab.
-- Multiple video tabs may remain open simultaneously.
-- The user can open a tab switcher, select any tab, and close individual tabs,
-  conceptually similar to Vivaldi's tab workflow.
-- Each open tab preserves its own playback position and media selection; preserve
-  selected quality when practical.
-- Closing one tab must not close unrelated tabs.
-- Persistence across a full app/process restart is not yet specified and should
-  be decided separately during implementation.
+- `VideoTabStore` keeps process-local video sessions.
+- Every newly resolved video entering `PlayerActivity` without an existing tab ID
+  becomes a new independent tab automatically.
+- Each tab stores resolved-media JSON, playback position and play/pause state.
+- `ResolvedMedia.toJson()` lets the app remember a quality-switched source.
+- `TabbedPlayerApplication` sits above the validated Batch 4 player/resolver flow
+  and adds the tab UI without changing resolver ranking logic.
+- The player shows a bilingual `Tabs: N` / `Pestañas: N` button.
+- The tab switcher can select any tab and close tabs individually.
+- Switching tabs recreates one ExoPlayer for the selected session and restores
+  its saved position/play state; several ExoPlayers are not kept alive at once.
+- Closing the active tab switches to a neighboring remaining tab; closing the
+  final tab closes the player.
+- The first compatibility layer reads the private current `ResolvedMedia` model
+  reflectively when saving a tab, solely so selected quality can be preserved
+  without rewriting the validated Batch 4 `PlayerActivity`. Replace this with an
+  explicit session API later if/when the player is refactored.
 
-### Per-tab title
+Full app/process restart persistence is **not implemented in this first tab
+batch**. The product decision is still open; do not assume tabs must or must not
+survive a complete restart.
 
-Every video tab must show the title of the original video/page instead of a
-generic "Browser video" label.
+### Tab titles
 
-Preferred local title sources:
+Desired title-source order remains:
 
 1. resolver/yt-dlp title;
-2. page metadata/title from browser-assisted resolution;
-3. neutral fallback such as "Video".
+2. browser-assisted page metadata/title;
+3. fallback `Video`.
+
+Current status:
+
+- yt-dlp/direct tabs already inherit the resolver title;
+- browser-assisted tabs still inherit the old generic browser title;
+- local WebView page-title capture is the next feature after first tab device QA.
 
 Do not expose PH/HH title text to ChatGPT during QA.
 
-### Transparent loading/buffering UX
+## Transparent loading/buffering UX
 
-The internal resolution process should be hidden during normal use. Do not show
-the user every yt-dlp/WebView/candidate/manifest step.
+Still pending after first tab QA. Normal use should hide technical resolver
+steps and show only simple user-facing states such as:
 
-Instead provide a polished simple state such as:
-
-- "Opening video…" with a spinner while resolving/loading;
-- "Buffering…" while Media3 is waiting for media;
-- hide the indicator automatically when playback is ready.
+- `Opening video…` with a spinner while resolving/loading;
+- `Buffering…` while Media3 is genuinely buffering;
+- no normal WebView/candidate/manifest/debug details flashing before playback.
 
 Technical diagnostics should stay behind an explicit diagnostics/error path.
-The current brief browser-resolver screen/flicker is now an explicit UX issue to
-remove while preserving the working resolver logic.
+The brief browser-resolver screen/flicker remains an explicit UX issue, but it
+must be removed without changing the working Batch 4 selection logic.
 
-### App icon
+## App icon
 
-Replace the prototype launcher icon with a polished, recognizable custom Android
-adaptive icon for Vivaldi External Player. It should be modern, readable at
-launcher size, and original rather than copying another product's trademarked
-icon.
+Still pending after loading UX. Replace the prototype launcher icon with a
+polished, recognizable original Android adaptive icon. Do not copy Vivaldi or
+another product's trademarked icon.
 
-## Current Batch 4 status
+## Current verified baseline
 
-GitHub Actions clean build **#48** passed from the final cleaned `main` branch.
-Batch 4 is the source of truth in GitHub.
+### Batch 4 playback baseline
 
-### Bitmovin safe proxy
+GitHub Actions clean build **#48** passed from the final cleaned Batch 4 `main`.
 
-`https://bitmovin.com/demos/hls-fmp4/`
-
-**PASS**:
+Bitmovin safe proxy: **PASS**
 
 - automatic playback: YES;
 - video: YES;
 - audio: YES;
-- no manual candidate selection required.
+- no manual candidate selection required;
+- brief browser-resolver transition remains a UX issue.
 
-A brief browser-resolver screen can flash before automatic playback. Treat this
-as UX polish, not a selection failure.
-
-### Pornhub
-
-**PASS** on Batch 4:
+Pornhub (PH): **PASS**
 
 - automatic playback: YES;
 - video: YES;
@@ -169,11 +175,7 @@ as UX polish, not a selection failure.
 - multiple quality options: YES;
 - quality switching: YES.
 
-This confirms Batch 4 fixed the earlier PH quality-switching problem.
-
-### HentaiHaven
-
-**PASS** on Batch 4:
+HentaiHaven (HH): **PASS**
 
 - automatic playback: YES;
 - video: YES;
@@ -182,16 +184,19 @@ This confirms Batch 4 fixed the earlier PH quality-switching problem.
 - quality switching: YES;
 - no additional issues reported.
 
-This confirms Batch 4 preserved the previously working HH adaptive behavior.
+Cloudinary is explicitly skipped and is **not** a required QA gate.
 
-### Cloudinary
+### First multi-tab code build
 
-Older testing exposed the old 20-candidate limit. On 2026-08-12 the user chose
-to **skip further Cloudinary testing**. Do not treat Cloudinary as a required QA
-gate. It may remain only as an optional safe diagnostic proxy if a future noisy-
-page resolver bug specifically needs it.
+GitHub Actions build **#59** for commit
+`57dd543c7058f79f5357c789344db7556e1747fb` passed:
 
-## Batch 4 implementation summary
+- Build debug APK: PASS.
+- Upload APK: PASS.
+
+Device QA is still required before the tab feature is accepted.
+
+## Batch 4 resolver implementation summary — protect from regression
 
 - automatic best-candidate first attempt;
 - manual candidate chooser only as fallback;
@@ -205,15 +210,19 @@ page resolver bug specifically needs it.
 - let PlayerActivity switch between sibling quality URLs;
 - successful diagnostics report video/audio/quality state.
 
+Do not change this selection logic merely to implement tabs/titles/loading UI.
+
 ## Current prioritized backlog
 
-1. Multi-video app tabs/sessions: create, select, and close independent videos.
-2. Per-tab original video/page titles.
-3. Transparent "Opening video…" / "Buffering…" UX and removal of resolver
-   flicker.
+1. Device-QA and harden the first multi-video tab/session implementation.
+2. Browser-assisted per-tab original page/video title using local WebView title
+   metadata; direct/yt-dlp titles already work.
+3. Transparent `Opening video…` / `Buffering…` UX and removal of resolver
+   flicker without destabilizing Batch 4.
 4. Polished custom Android launcher icon.
 5. Playback-speed control.
 6. App-level volume/mute.
 7. Return to existing Vivaldi task/tab.
 8. Persistent APK signing for GitHub Actions.
-9. Brave evaluation after Vivaldi behavior is mature.
+9. Decide full process-restart tab persistence separately.
+10. Brave evaluation after Vivaldi behavior is mature.
