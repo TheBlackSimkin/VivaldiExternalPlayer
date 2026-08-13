@@ -7,6 +7,7 @@ import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebView
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -41,6 +42,13 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     /** Associate each live PlayerActivity instance with its logical video tab. */
     private val activityTabs = WeakHashMap<Activity, String>()
 
+    /**
+     * Browser-assisted resolution already has the real page title locally inside
+     * its WebView. Keep only the latest local value long enough to name the next
+     * video tab. The title is never uploaded or sent outside the app.
+     */
+    private var lastBrowserPageTitle: String = ""
+
     override fun onCreate() {
         super.onCreate()
         registerActivityLifecycleCallbacks(this)
@@ -50,12 +58,23 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         if (activity !is PlayerActivity) return
 
         val suppliedTabId = activity.intent.getStringExtra(EXTRA_TAB_ID)
-        val json = activity.intent.getStringExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA)
+        val originalJson = activity.intent.getStringExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA)
             ?: return
+
+        /*
+         * A newly created browser-assisted tab should prefer the page title that
+         * was already available in the resolver WebView. Existing tabs already
+         * carry their saved title in their stored JSON and must not be renamed.
+         */
+        val tabJson = if (suppliedTabId == null) {
+            withLocalBrowserTitle(originalJson)
+        } else {
+            originalJson
+        }
 
         val tabId = suppliedTabId
             ?.takeIf { VideoTabStore.get(it) != null }
-            ?: VideoTabStore.createTab(json).id
+            ?: VideoTabStore.createTab(tabJson).id
 
         activityTabs[activity] = tabId
 
@@ -88,9 +107,41 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     }
 
     override fun onActivityPaused(activity: Activity) {
-        if (activity is PlayerActivity) {
-            saveActivityTab(activity)
+        when (activity) {
+            is BrowserResolverActivity -> captureBrowserPageTitle(activity)
+            is PlayerActivity -> saveActivityTab(activity)
         }
+    }
+
+    /**
+     * Read only the normal WebView page title which is already present on-device.
+     * This is metadata for the tab label; no page/video title is transmitted.
+     */
+    private fun captureBrowserPageTitle(activity: BrowserResolverActivity) {
+        val title = activity
+            .findViewById<WebView>(R.id.browser_web_view)
+            ?.title
+            ?.trim()
+            .orEmpty()
+
+        if (title.isNotBlank()) {
+            lastBrowserPageTitle = title
+        }
+    }
+
+    /** Prefer the locally captured WebView page title for a new browser tab. */
+    private fun withLocalBrowserTitle(json: String): String {
+        val pageTitle = lastBrowserPageTitle.trim()
+        if (pageTitle.isBlank()) return json
+
+        return runCatching {
+            val resolved = ResolvedMedia.fromJson(json)
+            if (resolved.resolverMode != "browser") {
+                json
+            } else {
+                resolved.copy(title = pageTitle).toJson()
+            }
+        }.getOrDefault(json)
     }
 
     /** Save position/play state and, when available, the currently selected quality source. */
@@ -114,7 +165,26 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         }.getOrNull()
 
         val existing = VideoTabStore.get(tabId) ?: return
-        val json = resolved?.toJson() ?: existing.resolvedMediaJson
+        val currentJson = resolved?.toJson() ?: existing.resolvedMediaJson
+
+        /*
+         * PlayerActivity may still hold the old generic browser title during the
+         * first visit because this compatibility coordinator runs after its
+         * onCreate. Preserve the better tab title already captured from WebView
+         * instead of accidentally overwriting it during onPause.
+         */
+        val json = runCatching {
+            val current = ResolvedMedia.fromJson(currentJson)
+            if (
+                current.resolverMode == "browser" &&
+                existing.title.isNotBlank() &&
+                current.title != existing.title
+            ) {
+                current.copy(title = existing.title).toJson()
+            } else {
+                currentJson
+            }
+        }.getOrDefault(currentJson)
 
         VideoTabStore.update(
             id = tabId,
@@ -261,6 +331,18 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         val next = VideoTabStore.neighborAfterClose(currentId)
 
         if (next == null) {
+            /*
+             * The resolver/MainActivity can still exist underneath the player in
+             * Android's task stack. Merely calling finish() exposed that old
+             * resolver screen again, which looked like the closed tab was being
+             * reopened. Clear back to MainActivity instead, using a neutral
+             * Intent with no ACTION_SEND so the old shared URL is not resolved
+             * again.
+             */
+            activity.startActivity(
+                Intent(activity, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            )
             activity.finish()
             return
         }
