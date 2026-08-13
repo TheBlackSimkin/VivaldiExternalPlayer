@@ -24,6 +24,13 @@ class ForegroundPlaybackGuardProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return false
         app.registerActivityLifecycleCallbacks(ForegroundPlaybackGuard)
+
+        /*
+         * Reuse this already-registered process entry point to install the
+         * adaptive quality switching correction without another manifest
+         * provider. The quality helper changes only Media3 track selection.
+         */
+        AdaptiveQualityRuntime.install(app)
         return true
     }
 
