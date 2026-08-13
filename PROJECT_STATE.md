@@ -70,10 +70,10 @@ Required/desired behavior:
 - Normal portrait/landscape rotation.
 - Return to the existing Vivaldi task/tab — pending.
 
-## 4. Future multi-tab player requirements
+## 4. Multi-tab player requirements
 
-The external player should eventually behave like a small tabbed browser for
-videos moved from Vivaldi.
+The external player should behave like a small tabbed browser for videos moved
+from Vivaldi.
 
 Required tab behavior:
 
@@ -90,7 +90,37 @@ Required tab behavior:
 6. When the active tab is closed, switch cleanly to another remaining tab or an
    empty/home state if none remain.
 7. Persistence of tabs across a full app/process restart is not yet specified;
-   decide this separately during implementation rather than assuming it.
+   decide this separately rather than assuming it.
+
+### First tab implementation — code complete, device QA pending
+
+Implemented on `main` on 2026-08-12:
+
+- `VideoTabStore` is a process-local session store.
+- Each newly opened `PlayerActivity` without an existing tab ID creates an
+  independent video tab automatically.
+- Each tab stores the resolved-media JSON, playback position, and play/pause
+  state.
+- `ResolvedMedia.toJson()` allows a quality-switched source to be stored back in
+  the tab session.
+- `TabbedPlayerApplication` coordinates tab state above the validated
+  `PlayerActivity`/resolver flow.
+- A compact bilingual `Tabs: N` / `Pestañas: N` button is overlaid on the player.
+- The tab dialog allows selecting a tab and closing any tab individually.
+- Switching tabs recreates one ExoPlayer for the selected tab rather than
+  keeping several ExoPlayer instances alive simultaneously.
+- Position and play/pause state are restored when returning to a tab.
+- Closing the active tab selects a neighboring remaining tab; closing the final
+  tab closes the player.
+- The first compatibility layer reads `PlayerActivity.currentResolved`
+  reflectively only when saving a tab so selected quality can be preserved
+  without rewriting the already-validated Batch 4 player. This should eventually
+  become an explicit player-session API, but the isolation deliberately reduces
+  regression risk for this first tab batch.
+
+Full app/process restart persistence is **not implemented in this first tab
+batch**, and the product decision remains open. This is not a decision that tabs
+must always be non-persistent.
 
 ### Tab titles
 
@@ -103,6 +133,13 @@ Title-source preference for implementation:
 2. page metadata/title already available to the app during browser-assisted
    resolution;
 3. a neutral fallback such as "Video" if no usable title is available.
+
+Current first-tab status:
+
+- direct/yt-dlp tabs already use the resolver title carried in `ResolvedMedia`;
+- browser-assisted resolution still supplies the old generic browser title;
+- capturing the WebView page title locally is the next feature after first tab
+  device QA.
 
 PH/HH title strings should remain local to the app and should not be sent to or
 inspected by ChatGPT during testing.
@@ -130,7 +167,7 @@ working candidate-selection logic.
 
 ## 6. Preferred workflow
 
-Current single-video workflow:
+Current resolver workflow:
 
 1. User opens a page in Vivaldi.
 2. Android Share -> External Video Player.
@@ -142,9 +179,9 @@ Current single-video workflow:
    video from a simplified fallback list.
 7. Player opens with 720p preferred and quality controls when alternatives are
    available.
-
-Future tabbed workflow should keep steps 3-7 internal and attach the resulting
-media session to the newly created video tab.
+8. In the new first-tab architecture, every resulting PlayerActivity entry
+   creates a separate process-local video tab; switching tabs does not re-run the
+   resolver.
 
 Manual URL paste remains useful for debugging.
 
@@ -239,15 +276,26 @@ Batch 4 behavior:
 - existing adaptive HLS/DASH quality switching remains unchanged;
 - Diagnostics update after STATE_READY with explicit video/audio/quality results.
 
-Future architecture will need a tab/session layer above the current single
-PlayerActivity flow so several independent media sessions can be represented and
-switched without discarding their state.
+### VideoTabStore / TabbedPlayerApplication
+
+First tab architecture added after Batch 4:
+
+- session layer sits above resolver and player selection logic;
+- one process-local tab per resolved video;
+- one active ExoPlayer at a time;
+- selecting a tab reconstructs playback from saved resolved-media JSON and seeks
+  to the saved position;
+- switching/closing tabs does not modify `resolver.py` or browser candidate
+  ranking;
+- bilingual tab switcher is attached at app level to avoid destabilizing the
+  validated player implementation.
 
 ## 9. Verified Batch 4 results
 
 ### Build gate
 
-GitHub Actions clean build **#48** passed from the final cleaned repository state.
+GitHub Actions clean build **#48** passed from the final cleaned Batch 4
+repository state.
 
 - Build debug APK: PASS.
 - Upload APK: PASS.
@@ -306,7 +354,19 @@ Interpretation:
 - Batch 4 preserved the existing HH adaptive behavior;
 - HH remains a strong regression baseline.
 
-## 10. QA status
+## 10. First multi-tab build status
+
+GitHub Actions build **#59** for commit
+`57dd543c7058f79f5357c789344db7556e1747fb` passed the important code gates:
+
+- Build debug APK: PASS.
+- Upload APK: PASS.
+
+Device QA for multi-video tabs is still pending. Do not call the tab feature
+accepted until the user has tested tab creation, switching, independent closing,
+position restoration, and a quick Batch 4 playback regression check.
+
+## 11. QA status
 
 Completed and accepted for Batch 4:
 
@@ -322,9 +382,10 @@ For every QA request, ChatGPT must provide:
 - one detailed code block containing what to test, **EXPECTED**, and **RESULT**;
 - a second short code block which the user can copy, fill in, and send back.
 
-Keep the reply block compact.
+Keep the reply block compact. Do not request PH/HH page/video titles in QA
+results; title strings remain local to the app.
 
-## 11. App identity / launcher icon
+## 12. App identity / launcher icon
 
 The prototype launcher icon should be replaced with a polished, recognizable
 custom icon for Vivaldi External Player.
@@ -338,7 +399,7 @@ Requirements:
 - provide proper Android adaptive-icon assets and foreground/background variants
   when implemented.
 
-## 12. Development workflow and communication
+## 13. Development workflow and communication
 
 - Conversation language: English.
 - Windows/Vivaldi UI: Spanish; give Spanish UI labels when relevant.
@@ -351,7 +412,7 @@ Requirements:
 - Before every assistant response, verify whether the public GitHub repository
   can still be read directly and state the result briefly.
 
-## 13. GitHub
+## 14. GitHub
 
 Public repository:
 
@@ -360,15 +421,17 @@ Public repository:
 Direct GitHub access is currently working through the connected GitHub tool.
 The `main` branch is the project source of truth.
 
-## 14. Current prioritized backlog
+## 15. Current prioritized backlog
 
-1. Multi-video tab/session system: create, select, and close independent video
-   tabs moved from Vivaldi.
-2. Per-tab original video/page title.
-3. Transparent loading/buffering UX and removal of the resolver-screen flicker.
+1. Device-QA and harden the first multi-video tab/session implementation.
+2. Per-tab original browser-assisted video/page title via local WebView metadata;
+   direct/yt-dlp titles already flow into tabs.
+3. Transparent "Opening video…" / "Buffering…" UX and removal of resolver
+   flicker without changing Batch 4 resolver ranking.
 4. Polished custom Android launcher icon.
 5. Playback-speed control.
 6. App-level volume/mute.
 7. Return to existing Vivaldi task/tab.
 8. Persistent APK signing for GitHub Actions.
-9. Brave evaluation only after Vivaldi behavior is mature.
+9. Decide tab persistence across full process restart separately; do not assume.
+10. Brave evaluation only after Vivaldi behavior is mature.
