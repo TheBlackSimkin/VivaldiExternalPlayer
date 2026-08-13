@@ -1,293 +1,207 @@
 # Vivaldi External Player — Project State
 
-> Operational source of truth. GitHub `main` is authoritative. Update this file whenever requirements, architecture, QA results, failures, decisions, or priorities materially change.
+> Operational source of truth. GitHub `main` is authoritative. Keep this file current whenever requirements, architecture, QA, failures, decisions, or priorities materially change.
 
-## Environment and communication
+## Environment / communication
 
 - Android phone; Vivaldi Mobile Browser is Phase 1.
-- Conversation with ChatGPT: English.
-- Windows/Vivaldi UI is normally Spanish; use Spanish UI labels when relevant.
+- Conversation: English. Windows/Vivaldi UI is normally Spanish; use Spanish UI labels when relevant.
 - Android app UI remains bilingual English/Spanish.
-- Do GitHub work directly whenever possible; do not require manual file editing/upload/commits when the connected GitHub tools can do it.
-- Explain implementation/test steps plainly; user is not an advanced developer.
-- Source code should contain abundant English comments.
+- Use connected GitHub tools directly whenever possible; do not make the user manually edit/commit files when the connector can do it.
+- Explain plainly; user is not an advanced developer. Source code should contain abundant English comments.
 
 ## Safety/content boundary
 
 PH and HH are real technical playback targets. The user performs all media-content testing.
 
-Allowed technical work: URLs, manifests, codecs, qualities/resolutions, request metadata, candidate ranking, browser/network state, playback state/errors, and local tab-title handling.
+Allowed: technical work on URLs, manifests, codecs, resolutions/qualities, request metadata, candidate ranking, browser/network state, playback errors/status, and local tab titles.
 
-Do not inspect/analyze/classify/describe PH/HH video content. Do not bypass DRM or obtain keys. Do not bypass subscriptions/paywalls, authentication, regional controls, anti-bot/CAPTCHA/challenge systems, or import private Vivaldi credentials.
+Do not inspect/analyze/classify/describe PH/HH video content. Do not bypass DRM, subscriptions/paywalls, authentication, regional restrictions, anti-bot/CAPTCHA challenges, or import private Vivaldi credentials. Local titles may be used on-device; never ask the user to send PH/HH title text.
 
-Local page/video titles may be used on-device for tab labels. ChatGPT must not request PH/HH title text.
+### Conservative automatic consent
 
-### Automatic consent policy
+Automatically accept only clearly identified 18+/age-confirmation and cookie-consent prompts. Never auto-click ambiguous buttons, login/account, payment/subscription/paywall, regional, DRM, anti-bot/CAPTCHA/challenge, or unrelated controls. If uncertain, leave it for the user.
 
-The user is over 18 and wants conservative automatic acceptance only for clearly identified:
-- 18+ / age-confirmation prompts;
-- cookie-consent prompts.
+## Verified Batch 4 baseline — must not regress
 
-Never auto-click ambiguous controls, login/account controls, paywall/subscription/payment controls, regional-access controls, DRM-related controls, anti-bot/CAPTCHA/challenge controls, or unrelated page actions. If uncertain, leave the prompt for the user.
+Quality policy: exact 720p -> otherwise 1080p -> otherwise highest available below 1080p.
 
-## Verified Batch 4 playback baseline — protect from regression
-
-Quality policy:
-1. exact 720p when available;
-2. otherwise 1080p;
-3. otherwise highest available quality below 1080p.
-
-Required baseline behavior:
-- Share from Vivaldi.
-- yt-dlp first, then automatic browser-assisted fallback.
-- Automatic best candidate first; manual chooser fallback only.
-- Video + audio playback.
-- Adaptive and sibling-URL quality switching.
-- Double tap left/right = -10/+10 seconds.
-- Timeline thumbnail preview where technically supported.
-- Portrait/landscape.
-- English + Spanish UI.
-
-Verified device baseline:
-- Bitmovin: automatic YES, video YES, audio YES.
-- PH: automatic YES, video YES, audio YES, quality options YES, quality switching YES.
-- HH: automatic YES, video YES, audio YES, quality options YES, quality switching YES.
-- Cloudinary is explicitly skipped and is not a QA gate.
-
-Resolver protections:
-- discovery settles before automatic best-candidate attempt;
-- manual chooser fallback only;
-- up to 80 candidates stored, strongest 20 shown manually;
+Protect:
+- Vivaldi share;
+- yt-dlp first then browser-assisted fallback;
+- automatic best candidate first, manual chooser fallback only;
+- video + audio;
+- adaptive and sibling-URL quality switching;
+- double-tap ±10 seconds;
+- seek thumbnail preview where supported;
+- portrait/landscape;
+- English + Spanish;
+- up to 80 stored candidates / strongest 20 manual;
 - meaningful first-seen HLS/DASH ordering;
-- no generic `playlist` bonus;
-- soft demotion of obvious audio-only/video-only child paths;
-- page-config family IDs for sibling quality URLs;
+- no generic playlist bonus;
+- soft audio-only/video-only child demotion;
+- page-config family IDs;
 - no media imagery inspection.
 
-## Multi-video tabs and persistence
+Verified device baseline:
+- Bitmovin automatic/video/audio PASS.
+- PH automatic/video/audio/quality options/quality switching PASS.
+- HH automatic/video/audio/quality options/quality switching PASS.
+- Cloudinary is explicitly skipped and is not a QA gate.
 
-Core multi-tab behavior was device-validated before this iteration. Build #62 follow-up QA for final-tab cleanup/browser titles was already completed; do not ask the user to repeat it unless investigating a regression.
+Build #62 follow-up final-tab/title QA was already completed/validated. Do not ask to repeat unless investigating a regression.
 
-### Current persistent architecture
+## Clean loading baseline
 
-`VideoTabStore` is now a local persistent store backed by SharedPreferences. Tabs survive normal process death/app restart and contain technical session state only:
-- tab ID and local title;
-- original/source webpage URL;
-- completed `ResolvedMedia` JSON when available;
-- playback position;
-- intended foreground play/pause state;
-- preparation state and limited technical error text;
-- timestamps.
+Build #74 PASS. Normal flow uses `Opening video…` / `Abriendo video...`; Media3-driven `Buffering…` / `Cargando...` appears only for real buffering; raw direct-resolver error flicker was removed. Candidate ranking/source selection remained unchanged.
 
-No WebView cookies, Vivaldi credentials or private authentication data are persisted by the tab store.
+## Selected next-build bundle — 2026-08-13
 
-Preparation states:
-- `QUEUED`;
-- `RESOLVING`;
-- `READY`;
-- `NEEDS_ATTENTION`;
-- `ERROR`.
-
-A READY tab must use its stored resolved-media JSON and must not resolve again merely because the user selects it.
-
-`TabbedPlayerApplication` remains the coordinator above the validated resolver/player logic. It now initializes persistent tabs, resumes queued preparation, updates an existing pending tab when foreground browser assistance completes, restores tab position/play intent, pre-resolves the next queued tab, and exposes richer tab status UI. One actual ExoPlayer playback session remains the architectural rule.
-
-## Selected next-build feature bundle — 2026-08-13
-
-The user selected these features as one coordinated next-build requirement:
-1. background Add + immediate pre-resolution;
-2. foreground-only playback / stop when backgrounded or locked;
-3. conservative clear age/cookie prompt automation;
-4. clean browser-assisted loading screen;
+The user selected these features together for the next major build:
+1. background Add + pre-resolution;
+2. foreground-only playback / stop on app background or phone lock;
+3. conservative automatic clear 18+/cookie prompts;
+4. completely clean browser-assisted loading until interaction is required;
 5. READY/resolving/error tab indicators;
 6. process-restart persistent tabs;
-20. more polished tab switcher;
-21. better playback error recovery;
+20. polished tab switcher;
+21. playback error recovery;
 23. adaptive launcher icon;
-24. proper persistent APK signing;
+24. persistent signed release APKs;
 25. in-app version/build information;
-28. limited automatic retry for temporary network failures;
-29. pre-resolve/preload the next queued tab;
-30. local app settings screen.
+28. bounded automatic retry for temporary network failures;
+29. pre-resolve the next queued tab;
+30. local settings screen.
 
-Do not split these back into unrelated priorities: they are the required feature set for the next major device-QA build.
+Treat these as one coordinated required feature set, not separate optional priorities.
+
+## Persistent tabs / preparation states
+
+`VideoTabStore` is now a local SharedPreferences-backed persistent store. It saves technical session state only: tab ID/title, source URL, resolved-media JSON, position, intended foreground play state, preparation state/error status and timestamps. It does not persist WebView cookies, Vivaldi credentials or private authentication data.
+
+States: `QUEUED`, `RESOLVING`, `READY`, `NEEDS_ATTENTION`, `ERROR`.
+
+READY tabs reuse stored resolved JSON and must not re-resolve merely because selected. Stale RESOLVING state after process death is reset to QUEUED and can resume through WorkManager.
+
+`TabbedPlayerApplication` initializes/restores tabs, updates an existing pending tab when foreground browser completion succeeds, restores position/play intent, pre-resolves the next queued tab, and shows a state-aware tab switcher. One actual ExoPlayer playback session remains the rule.
 
 ## Background Add / pre-resolution
 
-Implemented architecture on `main`:
-- separate Android share target labelled `Add to External Player` / `Añadir a External Player`;
-- a transparent `BackgroundAddActivity` creates a persistent tab immediately and finishes so the calling browser/task can remain the user's foreground context;
-- WorkManager performs direct/yt-dlp pre-resolution under a connected-network constraint;
-- pre-resolution stores resolved metadata/URLs only and never constructs ExoPlayer;
-- direct success marks the tab READY;
-- ordinary direct failure which may need a WebView marks `NEEDS_ATTENTION` rather than falsely READY;
-- explicit DRM/challenge/paywall/login/geo signals are not retried around and become ERROR;
-- transient network failures use bounded retry only;
-- queued work is resumed after process restart;
-- selecting a READY tab uses stored JSON directly.
+Implemented:
+- second Android share target: `Add to External Player` / `Añadir a External Player`;
+- transparent `BackgroundAddActivity` creates the tab immediately, schedules preparation and finishes so the browser/task can remain foreground context;
+- WorkManager `ResolveTabWorker` performs direct/yt-dlp pre-resolution under connected-network constraint;
+- pre-resolution never constructs ExoPlayer;
+- direct success -> READY;
+- normal browser-required failure -> NEEDS_ATTENTION;
+- explicit DRM/challenge/paywall/login/geo signals -> ERROR and are not bypassed;
+- temporary network failures get bounded retry;
+- queued work resumes after process restart;
+- selecting READY uses stored media JSON.
 
 WorkManager dependency: `androidx.work:work-runtime-ktx:2.11.2`.
 
 ## Foreground-only playback / privacy
 
-Playback must never continue when External Player is not actively foregrounded.
+Playback must not continue when External Player leaves foreground or phone is locked.
 
-Implementation on `main` now has two layers:
-- tab session snapshot preserves position and the user's foreground play intention;
-- `ForegroundPlaybackGuardProvider` applies an explicit Media3 pause after `PlayerActivity.onPause` callbacks and again on stop.
+Implementation:
+- tab snapshot stores position and the user's foreground play intention before privacy pause;
+- `ForegroundPlaybackGuardProvider` posts a Media3 pause after `PlayerActivity.onPause` callbacks and also pauses on stop;
+- returning to the same tab can restore saved user intent;
+- background WorkManager preparation may continue, but playback may not.
 
-This is designed so switching to Vivaldi/another app or locking the screen stops video/audio, while returning to the same tab can restore the saved user intention. Background WorkManager preparation may continue; playback may not.
-
-No background audio, PiP autoplay, media-session continuation or foreground playback service is introduced.
-
-Device QA is still required for Home/app switch/lock behavior.
+No background audio, PiP autoplay, media-session continuation or foreground playback service is introduced. Device QA is still required for app switch/Home/lock behavior.
 
 ## Clean browser-assisted UX + conservative consent
 
-The validated `BrowserResolverActivity` candidate-ranking code remains unchanged.
+The validated `BrowserResolverActivity` candidate-ranking logic remains unchanged.
 
-`BrowserAssistEnhancerProvider` adds a presentation/consent layer above it:
-- a clean black `Opening video…` overlay covers the WebView during normal automatic discovery;
-- when a candidate exists, the cover stays while the existing resolver debounce/automatic best-candidate path runs;
-- if no automatic candidate appears after a short grace period, the real WebView is revealed for user attention;
-- returning from a failed/wrong automatic candidate reveals the existing resolver/manual chooser;
-- anti-bot/challenge signals reveal the page and are never auto-solved.
+`BrowserAssistEnhancerProvider` sits above it:
+- black `Opening video…` cover during automatic discovery;
+- keeps cover while existing candidate debounce/automatic launch runs;
+- reveals WebView when interaction is actually needed;
+- returning from a wrong/failed automatic candidate reveals the existing manual resolver UI;
+- challenge/CAPTCHA signals reveal the page and are never auto-solved.
 
-Conservative local DOM consent automation is settings-controlled and accepts only narrowly matched clear English/Spanish 18+ confirmations or cookie consent. It explicitly excludes ambiguous controls and scopes containing login, subscription/payment, regional, DRM or challenge/CAPTCHA markers. No media imagery is inspected.
+Settings-controlled local DOM helper only clicks narrowly matched clear English/Spanish 18+ or cookie controls. It excludes ambiguous/login/payment/subscription/regional/DRM/challenge scopes and performs no media imagery inspection.
 
-## Tab status and polished switcher
+`PendingBrowserTabBridgeProvider` makes foreground browser completion update the same NEEDS_ATTENTION persistent tab rather than duplicate it.
 
-The player tab button now summarizes ready/total count. The tab dialog shows:
-- local tab title;
-- active marker;
-- preparation status;
-- saved playback position;
+## Tab status / polished switcher
+
+The tab UI now displays:
+- local title / active marker;
+- preparation state;
+- saved position;
 - selected/displayed quality when available;
-- independent close action.
+- independent close action;
+- ready/total count on the player tab button.
 
-NEEDS_ATTENTION tabs route to foreground browser assistance. ERROR tabs expose retry/browser-assisted recovery rather than pretending to be playable.
+NEEDS_ATTENTION routes to foreground browser assistance. ERROR exposes retry/browser recovery instead of pretending READY.
 
-## Playback error recovery and retry
+## Playback recovery / automatic retry
 
-`PlayerRecoveryProvider` observes Media3 playback errors without changing source-selection/ranking logic.
+`PlayerRecoveryProvider` observes Media3 errors without changing candidate/source ranking.
 
-Safe recovery behavior:
-- limited automatic retry (maximum two) only for normal network connection/timeout failures and HTTP 429/5xx responses;
-- recovery button after an error;
-- retry same source while preserving current position;
-- browser-resolved playback can return to the already-existing resolver/candidate list;
-- direct-resolved playback can explicitly open browser assistance using the original webpage URL.
+Safe recovery:
+- maximum two automatic retries only for network connection/timeout or HTTP 429/5xx;
+- retry same source preserving current position;
+- browser playback can return to already-detected candidates;
+- direct playback can explicitly open normal browser assistance using the original webpage URL.
 
-No retry path bypasses DRM, authentication, paywall, regional or challenge controls.
+No recovery path bypasses protected access.
 
-## Preload next tab
+## Next-tab pre-resolution
 
-When a PlayerActivity resumes, `TabbedPlayerApplication` asks `TabPreparationManager` to pre-resolve the next queued tab when the setting is enabled. This is metadata/source preparation only; it never starts a second ExoPlayer.
+On PlayerActivity resume, `TabbedPlayerApplication` asks `TabPreparationManager` to pre-resolve the next queued tab when enabled. This prepares metadata/source URLs only and never starts a second player. Background-added tabs are also scheduled immediately.
 
-Background-added tabs are also independently scheduled immediately, so several queued tabs may resolve in parallel as Android allows, while playback remains single-session foreground-only.
+## Settings / About
 
-## Local settings
-
-`SettingsActivity` provides local on-device toggles for:
-- conservative clear 18+ prompt handling;
-- conservative clear cookie prompt handling;
+`SettingsActivity` provides local toggles for:
+- clear age prompts;
+- clear cookie prompts;
 - bounded temporary-network retry;
-- next-tab pre-resolution.
+- next-tab pre-resolution;
+plus local Clear saved tabs.
 
-It also explains persistent tabs and provides a local Clear saved tabs action. Settings are stored only on-device.
-
-## About / build information
-
-`AboutActivity` shows:
-- version name/code (`0.2.0`, versionCode 2 for this iteration);
-- Git commit identifier from `GITHUB_SHA` when built in Actions;
-- GitHub Actions run number from `GITHUB_RUN_NUMBER`;
-- local-development fallbacks when not built in Actions.
-
-This is intended to make device QA identify the installed APK precisely.
+`AboutActivity` shows version `0.2.0` / versionCode 2, Git commit and GitHub Actions run number (with local-development fallbacks).
 
 ## Adaptive launcher icon
 
-Original project icon added:
-- dark adaptive background;
-- original white V-shaped player mark;
-- small red play triangle;
-- adaptive icon for Android 8+ plus legacy vector fallback.
-
-It is an original External Player mark, not a copy of the Vivaldi browser logo.
+Original project icon added: dark adaptive background, white V-shaped player mark and red play triangle, with Android 8+ adaptive icon plus legacy vector fallback. It is not a copy of Vivaldi branding.
 
 ## Persistent APK signing
 
-Code/workflow support is implemented but secure key material is not present in the public repository.
-
-The Actions workflow always builds a debug APK. If these repository secrets exist, it also builds and verifies a persistently signed release APK:
+Workflow support is implemented securely. CI always builds debug. When these GitHub repository secrets exist, it also builds and verifies a persistently signed release APK:
 - `VEP_KEYSTORE_BASE64`;
 - `VEP_KEYSTORE_PASSWORD`;
 - `VEP_KEY_ALIAS`;
 - `VEP_KEY_PASSWORD`.
 
-The decoded keystore exists only temporarily on the GitHub Actions runner and is deleted after the build. The private keystore must never be committed to this public repository.
+The keystore is decoded only on the temporary runner and removed after build. Never commit private signing material to this public repo.
 
-Current limitation: the connected GitHub tool available to ChatGPT has no repository-secret write action, so initial signing-secret provisioning requires a one-time secure user-side GitHub Secrets step (or another connector/tool with secret-management permission). Until then, CI produces the normal debug APK and skips the signed release artifact.
+A new long-term release keystore/signing kit was generated outside GitHub on 2026-08-13. It has NOT been committed. The connected GitHub tool has no repository-secret write action, so the user must perform one secure one-time GitHub Actions Secrets provisioning step. After that ChatGPT can re-run the workflow directly with the connected Actions tool.
 
-## CI / implementation status
+Until secrets are provisioned, only the debug APK artifact exists.
 
-- Clean-loading app build #74: PASS.
-- During this large next-build batch, workflow run #98 reached `Build debug APK: SUCCESS` and `Upload APK: SUCCESS`, confirming the Android source through commit `649fc10d31496d8dc1dcc7e177c11c5d8488c430` compiled and produced an artifact.
-- The first signing-workflow rewrite produced workflow run #99 failure before any job was created; this was a CI/YAML workflow failure, not an Android compile failure.
-- Commit `95b50ff66eb6e929e1689acf5d39d747fe6d5993` simplified/fixed the optional-signing workflow; build #100 was running when this state entry was written.
-- `ForegroundPlaybackGuardProvider` was added after the #98 compile and requires the newest CI run to complete before the entire selected bundle can be called compile-clean.
+## CI status
 
-## Current architecture summary
+- Build #74: PASS clean-loading baseline.
+- Build #98: debug APK build + upload PASS through the full feature wiring before final foreground-guard hardening.
+- Build #99: failed before jobs due to the first signing-workflow rewrite; this was a workflow/YAML issue, not Android compile failure.
+- Build #100: PASS after workflow simplification; exactly one artifact existed (debug APK), confirming signing secrets were not configured yet.
+- **Build #104: PASS on commit `5cffc11bc893dc6e4af496a861847eb24c863c0b`, including the explicit foreground playback guard and both state-file updates. Debug APK artifact uploaded successfully.**
 
-### MainActivity
-- foreground `ACTION_SEND / text/plain` entry;
-- yt-dlp first, browser-assisted fallback;
-- clean opening state;
-- home entry points for saved tabs, Settings and About.
+Therefore the selected 14-feature Android source bundle is currently compile-clean on `main`. Runtime/device QA remains required, and persistent release signing becomes operational after the one-time secret provisioning.
 
-### BackgroundAddActivity / ResolveTabWorker / TabPreparationManager
-- separate background-add share target;
-- immediate persistent tab creation;
-- WorkManager direct resolution/preparation;
-- prep states and bounded retry;
-- no ExoPlayer/background playback.
+## Current priority
 
-### resolver.py
-- yt-dlp via Chaquopy;
-- does not download media files;
-- rejects media marked DRM;
-- Batch 4 quality policy unchanged.
-
-### BrowserResolverActivity
-Validated candidate discovery/ranking remains unchanged: ordinary WebView/service-worker requests, page `<video>`/`<source>` elements, Performance API resources, and exposed technical player configuration.
-
-### BrowserAssistEnhancerProvider
-- clean resolver cover;
-- conservative age/cookie DOM helper;
-- reveals interaction when necessary;
-- no candidate-ranking changes.
-
-### PlayerActivity / GesturePlayerView
-- Media3 ExoPlayer;
-- progressive/HLS/DASH;
-- merged video/audio;
-- quality switching;
-- seek preview/double-tap;
-- diagnostics;
-- clean Opening/Buffering overlay.
-
-### PlayerRecoveryProvider / ForegroundPlaybackGuardProvider
-- bounded normal-network recovery;
-- safe manual retry routes;
-- explicit no-background playback enforcement.
-
-### VideoTabStore / TabbedPlayerApplication
-- persistent independent tabs;
-- preparation states;
-- per-tab resolved JSON/title/position/play intent;
-- polished state-aware switcher;
-- one active ExoPlayer playback session.
+1. Securely provision the four signing secrets from the generated private signing kit; do not commit the key.
+2. Re-run Actions and require both debug and signed-release APK artifacts plus successful `apksigner` verification.
+3. Perform one consolidated device QA for the selected 14-feature bundle while protecting Batch 4 playback.
+4. Fix any runtime/device regressions before adding unrelated features.
+5. Brave support later.
 
 ## QA format
 
@@ -296,11 +210,3 @@ Whenever asking the user to test, provide EXACTLY:
 2. one separate short code block containing only the compact answer format.
 
 Never ask for PH/HH title text. Cloudinary is not required.
-
-## Current priority
-
-1. Get the newest CI build fully clean after the foreground-playback guard and documentation commits.
-2. Provision persistent signing secrets securely so the next major QA build can include a signed release APK as well as debug.
-3. Perform one consolidated device QA for the selected 14-feature next-build bundle while protecting the verified Batch 4 playback baseline.
-4. Fix any device-only failures/regressions found by that consolidated QA before adding unrelated features.
-5. Brave support remains later.
