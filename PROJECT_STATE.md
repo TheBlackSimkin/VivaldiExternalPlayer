@@ -128,6 +128,8 @@ Settings-controlled local DOM helper only clicks narrowly matched clear English/
 
 `PendingBrowserTabBridgeProvider` makes foreground browser completion update the same NEEDS_ATTENTION persistent tab rather than duplicate it.
 
+Static review before device QA found one local-title cache edge case: a very fast second browser-assisted session could theoretically reuse the previous session's title before WebView published a new one. Commit `e59e35ac40696996b69fa91497fd5df6b60b0568` resets that cache when each BrowserResolverActivity is created. This does not change resolver candidate ranking or media selection.
+
 ## Tab status / polished switcher
 
 The tab UI now displays:
@@ -193,13 +195,19 @@ Feature 24 status for this iteration: **workflow/infrastructure prepared; signin
 - Build #98: debug APK build + upload PASS through the full feature wiring before final foreground-guard hardening.
 - Build #99: failed before jobs due to the first signing-workflow rewrite; this was a workflow/YAML issue, not Android compile failure.
 - Build #100: PASS after workflow simplification; exactly one artifact existed (debug APK), confirming signing secrets were not configured.
-- **Build #104: PASS on commit `5cffc11bc893dc6e4af496a861847eb24c863c0b`, including the explicit foreground playback guard and both state-file updates. Debug APK artifact uploaded successfully.**
+- Build #104: PASS on commit `5cffc11bc893dc6e4af496a861847eb24c863c0b`, including the explicit foreground playback guard.
+- Build #108: PASS after recording the deliberate signing deferral; no app-code change relative to the selected bundle.
+- **Build #109: PASS on app-code commit `e59e35ac40696996b69fa91497fd5df6b60b0568`, including the browser-title cache reset. Debug APK uploaded. Artifact SHA-256: `6298a92bf98c460db0f850d8ecdc241cb32d013793cd51d068f3536246bb7464`.**
+
+### Designated device-QA artifact
+
+Use **build #109** for the consolidated selected-feature QA. It is the latest app-code build after the pre-QA static review. State/documentation-only commits made after #109 do not require chasing a newer APK number because they do not modify packaged Android app code.
 
 The selected Android source bundle is compile-clean. Runtime/device QA remains required. Release-signing activation is postponed by product decision and does not block the current iteration.
 
 ## Current priority
 
-1. Perform one consolidated device QA for the selected feature bundle using the latest compile-clean debug APK, while protecting the Batch 4 baseline.
+1. Perform one consolidated device QA using **build #109** while protecting the Batch 4 baseline.
 2. Fix any runtime/device regressions found by that QA before adding unrelated features.
 3. Re-run focused QA after fixes until the selected bundle is stable.
 4. Activate permanent release signing only in a future stable/private-repo phase; keep signing material outside Git history.
