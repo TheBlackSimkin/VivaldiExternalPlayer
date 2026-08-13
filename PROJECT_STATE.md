@@ -67,13 +67,13 @@ The user selected these features together for the next major build:
 20. polished tab switcher;
 21. playback error recovery;
 23. adaptive launcher icon;
-24. persistent signed release APKs;
+24. persistent signed release APK infrastructure, with activation deliberately deferred;
 25. in-app version/build information;
 28. bounded automatic retry for temporary network failures;
 29. pre-resolve the next queued tab;
 30. local settings screen.
 
-Treat these as one coordinated required feature set, not separate optional priorities.
+Treat these as one coordinated required feature set, with release-signing activation intentionally postponed until a future stable/private-repo phase.
 
 ## Persistent tabs / preparation states
 
@@ -171,36 +171,38 @@ plus local Clear saved tabs.
 
 Original project icon added: dark adaptive background, white V-shaped player mark and red play triangle, with Android 8+ adaptive icon plus legacy vector fallback. It is not a copy of Vivaldi branding.
 
-## Persistent APK signing
+## Persistent APK signing — deliberately deferred
 
-Workflow support is implemented securely. CI always builds debug. When these GitHub repository secrets exist, it also builds and verifies a persistently signed release APK:
+Secure release-signing infrastructure is implemented in GitHub Actions. CI always builds a normal Android debug APK. If these repository secrets are provided later, the same workflow can also build and verify a persistently signed release APK:
 - `VEP_KEYSTORE_BASE64`;
 - `VEP_KEYSTORE_PASSWORD`;
 - `VEP_KEY_ALIAS`;
 - `VEP_KEY_PASSWORD`.
 
-The keystore is decoded only on the temporary runner and removed after build. Never commit private signing material to this public repo.
+Decision on 2026-08-13: do NOT provision those secrets yet. Continue development/device QA using debug-signed APKs. Activate the permanent release key later, likely when the project returns to a private/stable-release phase.
 
-A new long-term release keystore/signing kit was generated outside GitHub on 2026-08-13. It has NOT been committed. The connected GitHub tool has no repository-secret write action, so the user must perform one secure one-time GitHub Actions Secrets provisioning step. After that ChatGPT can re-run the workflow directly with the connected Actions tool.
+The future permanent key must still remain outside Git history even if the repository is private. A generated long-term signing kit exists outside GitHub and has not been committed; retain it securely if it will be used later.
 
-Until secrets are provisioned, only the debug APK artifact exists.
+Expected future transition: a release APK signed by the permanent key normally cannot upgrade over a debug-signed installation. Plan for one uninstall/reinstall when moving from debug builds to the permanent release identity; local debug-app data may be cleared at that transition. Afterward, release APKs signed with the same permanent key can upgrade normally.
+
+Feature 24 status for this iteration: **workflow/infrastructure prepared; signing activation intentionally deferred and is not a QA blocker.**
 
 ## CI status
 
 - Build #74: PASS clean-loading baseline.
 - Build #98: debug APK build + upload PASS through the full feature wiring before final foreground-guard hardening.
 - Build #99: failed before jobs due to the first signing-workflow rewrite; this was a workflow/YAML issue, not Android compile failure.
-- Build #100: PASS after workflow simplification; exactly one artifact existed (debug APK), confirming signing secrets were not configured yet.
+- Build #100: PASS after workflow simplification; exactly one artifact existed (debug APK), confirming signing secrets were not configured.
 - **Build #104: PASS on commit `5cffc11bc893dc6e4af496a861847eb24c863c0b`, including the explicit foreground playback guard and both state-file updates. Debug APK artifact uploaded successfully.**
 
-Therefore the selected 14-feature Android source bundle is currently compile-clean on `main`. Runtime/device QA remains required, and persistent release signing becomes operational after the one-time secret provisioning.
+The selected Android source bundle is compile-clean. Runtime/device QA remains required. Release-signing activation is postponed by product decision and does not block the current iteration.
 
 ## Current priority
 
-1. Securely provision the four signing secrets from the generated private signing kit; do not commit the key.
-2. Re-run Actions and require both debug and signed-release APK artifacts plus successful `apksigner` verification.
-3. Perform one consolidated device QA for the selected 14-feature bundle while protecting Batch 4 playback.
-4. Fix any runtime/device regressions before adding unrelated features.
+1. Perform one consolidated device QA for the selected feature bundle using the latest compile-clean debug APK, while protecting the Batch 4 baseline.
+2. Fix any runtime/device regressions found by that QA before adding unrelated features.
+3. Re-run focused QA after fixes until the selected bundle is stable.
+4. Activate permanent release signing only in a future stable/private-repo phase; keep signing material outside Git history.
 5. Brave support later.
 
 ## QA format
