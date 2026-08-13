@@ -39,6 +39,19 @@ private object PendingBrowserTabLifecycle : Application.ActivityLifecycleCallbac
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         when (activity) {
             is BrowserResolverActivity -> {
+                /*
+                 * Every browser-assisted session must begin with a clean title
+                 * cache. Without this reset, a very fast second resolver session
+                 * could reach PlayerActivity before WebView publishes its new
+                 * page title and accidentally reuse the previous tab's title.
+                 *
+                 * The title field is intentionally private to the application
+                 * coordinator. This small compatibility bridge uses reflection
+                 * rather than widening that API only for one lifecycle reset.
+                 * Failure is harmless: the normal resolver title/fallback remains.
+                 */
+                clearCachedBrowserTitle(activity)
+
                 pendingTabId = activity.intent
                     .getStringExtra(TabbedPlayerApplication.EXTRA_TAB_ID)
                     ?.takeIf { it.isNotBlank() }
@@ -51,6 +64,17 @@ private object PendingBrowserTabLifecycle : Application.ActivityLifecycleCallbac
                 }
                 pendingTabId = null
             }
+        }
+    }
+
+    private fun clearCachedBrowserTitle(activity: BrowserResolverActivity) {
+        val application = activity.application as? TabbedPlayerApplication ?: return
+
+        runCatching {
+            val field = TabbedPlayerApplication::class.java
+                .getDeclaredField("lastBrowserPageTitle")
+            field.isAccessible = true
+            field.set(application, "")
         }
     }
 
