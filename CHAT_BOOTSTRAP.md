@@ -3,226 +3,159 @@
 I am continuing an existing Android project called **Vivaldi External Player**.
 
 Public repository:
-
 `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
 
-Before every response, verify whether you can still read this repository
-directly and briefly state the result. If direct access fails, use the newest ZIP
-I provide and do not claim to have read files you could not access.
-
-Before changing code, read `PROJECT_STATE.md` in full. Treat it as the
-operational memory/source of truth. Update `PROJECT_STATE.md` and this file when
-requirements, architecture, tests, failures, decisions, or next steps materially
-change.
+Before every response, verify whether you can still read this repository directly and briefly state the result. Treat GitHub `main` as the source of truth. Before changing code, read `PROJECT_STATE.md` in full. Update both `PROJECT_STATE.md` and this file whenever requirements, architecture, tests, failures, decisions, or next steps materially change.
 
 ## Communication preferences
 
-- Keep the conversation in **English**.
-- Windows and Vivaldi UI are normally **Spanish**, so give Spanish UI labels when
-  instructions depend on what I see on screen.
-- The Android app itself must remain **bilingual English/Spanish**.
-- I am not an advanced developer: explain behavior in plain language.
-- Candidate-selection UI should tell me what I am looking at in plain language;
-  host/protocol/discovery-source jargon is not useful as the main description.
+- Conversation: English.
+- Windows/Vivaldi UI: normally Spanish; use Spanish UI labels when relevant.
+- Android app UI: bilingual English/Spanish.
+- Explain behavior plainly; I am not an advanced developer.
 - Source code should contain abundant English comments.
-- If you ask me to replace a source file manually, give the FULL replacement
-  file in one code block.
+- Do GitHub work directly whenever possible; do not make me manually edit/code/upload files if the connected GitHub tool can do it.
 
 ## QA response format
 
-Whenever you give me a QA test, always provide two code blocks:
+Whenever you ask me to test something, always provide exactly:
+1. one detailed code block with steps, **EXPECTED**, and **RESULT**;
+2. one separate short code block containing only the compact answer format for me to fill in.
 
-1. A detailed block with test steps, **EXPECTED**, and **RESULT**.
-2. A separate compact block containing only the short answer format I should
-   fill in and send back.
+Never ask me to send PH/HH page/video titles to ChatGPT. Titles may be used locally by the Android app for tab labels only.
 
-Keep the answer block simple and compact. Never ask me to send PH/HH page/video
-titles to ChatGPT; title strings remain local to the Android app.
+## Safety/content boundary
 
-## Project goal
+PH and HH are real-world technical playback targets.
 
-This is a personal Android external video player intended primarily for Vivaldi
-Mobile Browser. Phase 1 targets Pornhub (PH) and HentaiHaven (HH). The app
-receives a browser-shared page URL, resolves an accessible non-DRM media stream,
-and plays it with Media3 / ExoPlayer.
+Do not:
+- inspect/analyze/classify/describe their video content;
+- bypass DRM or obtain keys;
+- bypass subscriptions/paywalls/authentication/regional controls;
+- deliberately automate anti-bot challenges;
+- import Vivaldi passwords/private credentials.
 
-## Boundaries
+Technical analysis of URLs, manifests, codecs, quality, request metadata, candidate ranking, playback errors/status is allowed. The user performs PH/HH playback tests personally.
 
-- Do not bypass DRM or obtain DRM keys.
-- Do not bypass subscriptions/paywalls, authentication, or regional controls.
-- Do not deliberately automate anti-bot challenges.
-- Intended target usage is logged out.
-- ChatGPT must never inspect, analyze, classify, summarize, or describe PH/HH
-  video content itself.
-- I perform PH/HH playback tests on my own device and report only technical
-  results.
-- ChatGPT may analyze technical URLs, manifests, containers, codecs,
-  resolutions, request metadata, candidate ranking, and playback errors/status.
-- Video/page titles may be captured locally by the app for tab labels, but do not
-  ask me to send PH/HH title text to ChatGPT and do not inspect/analyze those
-  titles as content.
-- Use safe non-adult proxy pages when direct inspection is needed.
+## Verified Batch 4 playback baseline
 
-## Required current resolver workflow
+GitHub Actions clean build **#48** passed.
 
-The app should NOT normally make me search manually through many detected
-videos.
+Bitmovin: PASS
+- automatic YES;
+- video YES;
+- audio YES.
 
-Expected flow:
+PH: PASS
+- automatic YES;
+- video YES;
+- audio YES;
+- quality options YES;
+- quality switching YES.
 
-1. Share page from Vivaldi.
-2. Direct yt-dlp attempt runs first.
-3. If it fails, browser-assisted resolution opens automatically.
-4. Browser-assisted resolution detects candidates and automatically tries the
-   best match after discovery stabilizes.
-5. Manual "Choose another video" list is only a fallback if the first attempt
-   is wrong.
-6. Quality policy: 720p first, otherwise 1080p, otherwise best below 1080p.
+HH: PASS
+- automatic YES;
+- video YES;
+- audio YES;
+- quality options YES;
+- quality switching YES.
 
-Other existing requirements:
+Cloudinary is explicitly skipped and is not a required QA gate.
 
-- double-tap left/right = -10/+10 seconds;
-- timeline preview where supported;
-- quality controls for adaptive manifests and separate per-quality URLs;
-- playback speed pending;
-- volume/mute pending;
-- portrait/landscape rotation;
-- final Return to existing Vivaldi task/tab pending.
+Protect these Batch 4 behaviors:
+- yt-dlp first, automatic browser-assisted fallback;
+- manual candidate chooser fallback only;
+- 720p → 1080p → best below 1080p quality policy;
+- first-seen HLS/DASH ranking;
+- up to 80 candidates stored, strongest 20 shown manually;
+- no generic playlist bonus;
+- soft demotion of obvious audio-only/video-only children;
+- browser sibling quality URLs;
+- video + audio, quality switching, double-tap ±10s, seek preview, rotation.
 
-## Current multi-video tab implementation
+## Multi-video tabs — current status
 
-The first multi-video tab/session architecture is now implemented on GitHub
-`main`; device QA is still pending.
+Architecture on `main`:
+- `VideoTabStore`: process-local video sessions.
+- `TabbedPlayerApplication`: tab coordinator above validated player/resolver logic.
+- one active ExoPlayer at a time;
+- each tab stores resolved-media JSON, title, playback position and play/pause state;
+- `ResolvedMedia.toJson()` preserves the selected resolved source when practical;
+- bilingual `Tabs: N` / `Pestañas: N` switcher;
+- select/switch/close tabs individually.
 
-Architecture:
+Full process-restart persistence is still undecided and not implemented. Do not assume a final persistence policy yet.
 
-- `VideoTabStore` keeps process-local video sessions.
-- Every newly resolved video entering `PlayerActivity` without an existing tab ID
-  becomes a new independent tab automatically.
-- Each tab stores resolved-media JSON, playback position and play/pause state.
-- `ResolvedMedia.toJson()` lets the app remember a quality-switched source.
-- `TabbedPlayerApplication` sits above the validated Batch 4 player/resolver flow
-  and adds the tab UI without changing resolver ranking logic.
-- The player shows a bilingual `Tabs: N` / `Pestañas: N` button.
-- The tab switcher can select any tab and close tabs individually.
-- Switching tabs recreates one ExoPlayer for the selected session and restores
-  its saved position/play state; several ExoPlayers are not kept alive at once.
-- Closing the active tab switches to a neighboring remaining tab; closing the
-  final tab closes the player.
-- The first compatibility layer reads the private current `ResolvedMedia` model
-  reflectively when saving a tab, solely so selected quality can be preserved
-  without rewriting the validated Batch 4 `PlayerActivity`. Replace this with an
-  explicit session API later if/when the player is refactored.
+### First device QA — 2026-08-13
 
-Full app/process restart persistence is **not implemented in this first tab
-batch**. The product decision is still open; do not assume tabs must or must not
-survive a complete restart.
+User reported:
+- Tabs 1→2: YES.
+- Switch tabs: YES.
+- Position restored: YES.
+- Quality preserved: YES.
+- Close one only: YES / OK.
+- Close active: OK.
+- Close final cleanly: NO/PARTIAL — after final close the old resolver screen underneath appeared and looked like it was trying to open again.
+- Auto resolver: YES.
+- Video: YES.
+- Audio: YES.
+- Quality options: YES.
+- Quality switching: YES.
+- Double-tap seek: YES.
+- Tab labels: GENERIC in browser-assisted flow.
+- Resolver/loading UI still visible instead of clean loading animation.
 
-### Tab titles
+Interpretation: the core tab architecture works and Batch 4 playback did not regress. Remaining tab-hardening bugs were final-tab back-stack cleanup and browser-assisted titles.
 
-Desired title-source order remains:
+### Post-QA fix
 
-1. resolver/yt-dlp title;
-2. browser-assisted page metadata/title;
-3. fallback `Video`.
+Commit `8be38f33c1a1f225ef555133229669f7e9008b1e`:
+- final tab clears back to `MainActivity` using a neutral non-share Intent so the old resolver is not revealed/retriggered;
+- browser-assisted tab title now uses the already-loaded WebView page title captured locally in `TabbedPlayerApplication`;
+- titles stay on-device and are not sent to ChatGPT;
+- Batch 4 candidate ranking/selection was not changed.
 
-Current status:
+GitHub Actions build **#62** was triggered for this fix. Verify it before asking for device QA.
 
-- yt-dlp/direct tabs already inherit the resolver title;
-- browser-assisted tabs still inherit the old generic browser title;
-- local WebView page-title capture is the next feature after first tab device QA.
+## Loading/buffering UX — next major feature
 
-Do not expose PH/HH title text to ChatGPT during QA.
+Still pending and explicitly confirmed as a UX problem in the latest QA.
 
-## Transparent loading/buffering UX
-
-Still pending after first tab QA. Normal use should hide technical resolver
-steps and show only simple user-facing states such as:
-
-- `Opening video…` with a spinner while resolving/loading;
+Normal use should show only:
+- `Opening video…` + spinner while resolving/opening;
 - `Buffering…` while Media3 is genuinely buffering;
-- no normal WebView/candidate/manifest/debug details flashing before playback.
+- indicator disappears when ready.
 
-Technical diagnostics should stay behind an explicit diagnostics/error path.
-The brief browser-resolver screen/flicker remains an explicit UX issue, but it
-must be removed without changing the working Batch 4 selection logic.
+Do not normally flash WebView/candidate/manifest/debug details. Keep diagnostics behind explicit diagnostics/error UI. Remove resolver flicker without destabilizing the working Batch 4 resolver.
 
-## App icon
+## Background add from Vivaldi — new requirement
 
-Still pending after loading UX. Replace the prototype launcher icon with a
-polished, recognizable original Android adaptive icon. Do not copy Vivaldi or
-another product's trademarked icon.
+User asked whether a link can be sent to External Player **in the background / “segundo plano”** so Vivaldi stays in front.
 
-## Current verified baseline
+Preferred design:
+- add a separate share target/action named approximately `Add to External Player` / `Añadir a External Player`;
+- sharing to that action should queue the webpage URL as a **pending video tab** and immediately leave/return the user in Vivaldi;
+- the pending tab resolves when the user later opens/selects it;
+- do not depend on running the browser-assisted WebView resolver invisibly in Android background, because that is not robust and may require user interaction;
+- retain the existing normal share-to-open behavior separately.
 
-### Batch 4 playback baseline
+Implementation is pending, after current tab hardening/loading/title UX is stable.
 
-GitHub Actions clean build **#48** passed from the final cleaned Batch 4 `main`.
+## Other pending features
 
-Bitmovin safe proxy: **PASS**
+After loading/background-add work:
+- polished original adaptive launcher icon;
+- playback speed;
+- app-level volume/mute;
+- return to existing Vivaldi task/tab;
+- persistent APK signing for GitHub Actions;
+- decide full process-restart tab persistence separately;
+- Brave support later.
 
-- automatic playback: YES;
-- video: YES;
-- audio: YES;
-- no manual candidate selection required;
-- brief browser-resolver transition remains a UX issue.
+## Current priority
 
-Pornhub (PH): **PASS**
-
-- automatic playback: YES;
-- video: YES;
-- audio: YES;
-- multiple quality options: YES;
-- quality switching: YES.
-
-HentaiHaven (HH): **PASS**
-
-- automatic playback: YES;
-- video: YES;
-- audio: YES;
-- quality options: YES;
-- quality switching: YES;
-- no additional issues reported.
-
-Cloudinary is explicitly skipped and is **not** a required QA gate.
-
-### First multi-tab code build
-
-GitHub Actions build **#59** for commit
-`57dd543c7058f79f5357c789344db7556e1747fb` passed:
-
-- Build debug APK: PASS.
-- Upload APK: PASS.
-
-Device QA is still required before the tab feature is accepted.
-
-## Batch 4 resolver implementation summary — protect from regression
-
-- automatic best-candidate first attempt;
-- manual candidate chooser only as fallback;
-- plain-language candidate descriptions;
-- preserve up to 80 candidates instead of deleting the oldest at 20;
-- show only the strongest 20 in the manual fallback list;
-- meaningful first-seen HLS/DASH ranking;
-- removed the generic `playlist` bonus;
-- soft-demote obvious audio-only/video-only child renditions;
-- group page-config sibling quality URLs;
-- let PlayerActivity switch between sibling quality URLs;
-- successful diagnostics report video/audio/quality state.
-
-Do not change this selection logic merely to implement tabs/titles/loading UI.
-
-## Current prioritized backlog
-
-1. Device-QA and harden the first multi-video tab/session implementation.
-2. Browser-assisted per-tab original page/video title using local WebView title
-   metadata; direct/yt-dlp titles already work.
-3. Transparent `Opening video…` / `Buffering…` UX and removal of resolver
-   flicker without destabilizing Batch 4.
-4. Polished custom Android launcher icon.
-5. Playback-speed control.
-6. App-level volume/mute.
-7. Return to existing Vivaldi task/tab.
-8. Persistent APK signing for GitHub Actions.
-9. Decide full process-restart tab persistence separately.
-10. Brave evaluation after Vivaldi behavior is mature.
+1. Verify build #62 and QA final-tab cleanup + browser-assisted titles.
+2. Implement transparent `Opening video…` / `Buffering…` UX and hide resolver flicker.
+3. Implement background `Add to External Player` / `Añadir a External Player` queued-tab share target.
+4. App icon.
+5. Remaining playback/usability backlog.
