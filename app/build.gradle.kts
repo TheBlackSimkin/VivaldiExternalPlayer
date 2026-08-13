@@ -12,14 +12,28 @@ android {
         applicationId = "com.example.vivaldiplayer"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+
+        /*
+         * These values are visible in the local About screen. GitHub Actions
+         * supplies them automatically; local Android Studio builds fall back to
+         * readable development values.
+         */
+        val githubSha = System.getenv("GITHUB_SHA")?.take(8) ?: "local"
+        val githubRun = System.getenv("GITHUB_RUN_NUMBER") ?: "local"
+        buildConfigField("String", "GIT_COMMIT", "\"$githubSha\"")
+        buildConfigField("String", "BUILD_RUN", "\"$githubRun\"")
 
         ndk {
             abiFilters += listOf("arm64-v8a")
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -29,6 +43,21 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+
+            /*
+             * A persistent release signing key is provided only through CI/local
+             * environment variables. Never commit a private signing key to this
+             * public repository.
+             */
+            val storeFilePath = System.getenv("VEP_KEYSTORE_PATH")
+            if (!storeFilePath.isNullOrBlank()) {
+                signingConfig = signingConfigs.create("persistentRelease") {
+                    storeFile = file(storeFilePath)
+                    storePassword = System.getenv("VEP_KEYSTORE_PASSWORD")
+                    keyAlias = System.getenv("VEP_KEY_ALIAS")
+                    keyPassword = System.getenv("VEP_KEY_PASSWORD")
+                }
+            }
         }
     }
 
@@ -60,6 +89,9 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.9.1")
+
+    // Reliable, Android-managed background pre-resolution. This never owns playback.
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 
     implementation("androidx.media3:media3-common:$media3Version")
     implementation("androidx.media3:media3-datasource:$media3Version")
