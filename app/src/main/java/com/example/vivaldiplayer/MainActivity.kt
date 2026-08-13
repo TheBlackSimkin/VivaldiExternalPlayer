@@ -1,5 +1,7 @@
 package com.example.vivaldiplayer
 
+import android.app.Activity
+import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
@@ -7,21 +9,33 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
+import androidx.work.BackoffPolicy
+import androidx.work.Constraints
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import androidx.work.workDataOf
 import com.chaquo.python.Python
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.TimeUnit
 
 /**
- * Main entry screen for the app.
+ * Main entry screen for the foreground "open now" workflow.
  *
  * Preferred real-world flow:
  * Vivaldi -> Android Share -> this Activity -> resolver -> PlayerActivity.
  *
- * The manual URL field remains because it is useful while debugging websites
- * whose own player does not expose an "open in external app" action.
+ * A SECOND share target, BackgroundAddActivity, is defined below. It creates a
+ * tab and starts pre-resolution without bringing the full External Player UI to
+ * the foreground.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -30,23 +44,25 @@ class MainActivity : AppCompatActivity() {
     private lateinit var browserResolveButton: Button
     private lateinit var progress: ProgressBar
     private lateinit var status: TextView
+    private lateinit var openTabsButton: Button
+    private lateinit var settingsButton: Button
+    private lateinit var aboutButton: Button
 
-    /**
-     * Remember the most recent URL which failed in yt-dlp. If the user returns
-     * from the WebView fallback, the visible retry button can reopen that same URL.
-     */
+    /** Remember the most recent direct-resolver failure for a manual retry. */
     private var lastFailedUrl: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Bind XML views once so the rest of the code can use readable names.
         urlInput = findViewById(R.id.url_input)
         resolveButton = findViewById(R.id.resolve_button)
         browserResolveButton = findViewById(R.id.browser_resolve_button)
         progress = findViewById(R.id.progress)
         status = findViewById(R.id.status)
+        openTabsButton = findViewById(R.id.open_tabs_button)
+        settingsButton = findViewById(R.id.settings_button)
+        aboutButton = findViewById(R.id.about_button)
 
         resolveButton.setOnClickListener {
             resolveAndPlay(urlInput.text.toString())
@@ -57,13 +73,29 @@ class MainActivity : AppCompatActivity() {
             launchBrowserResolver(url)
         }
 
-        /*
-         * Process the original share Intent only on the first creation. This
-         * prevents an Activity recreation from resolving the same shared URL twice.
-         */
+        openTabsButton.setOnClickListener {
+            openSavedTab()
+        }
+
+        settingsButton.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
+        aboutButton.setOnClickListener {
+            startActivity(Intent(this, AboutActivity::class.java))
+        }
+
+        updateSavedTabsButton()
+
+        /* Avoid resolving the same shared URL twice after Activity recreation. */
         if (savedInstanceState == null) {
             acceptSharedUrl(intent)
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        updateSavedTabsButton()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -72,36 +104,16 @@ class MainActivity : AppCompatActivity() {
         acceptSharedUrl(intent)
     }
 
-    /**
-     * Browsers may share "page title + URL", not just a bare URL. Extract the
-     * first normal HTTP(S) address from the shared text.
-     */
+    /** Browsers may share "page title + URL", not only a bare URL. */
     private fun acceptSharedUrl(intent: Intent) {
-        if (intent.action != Intent.ACTION_SEND || intent.type != "text/plain") {
-            return
-        }
-
-        val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty()
-
-        val url = Regex("https?://\\S+")
-            .find(sharedText)
-            ?.value
-            ?.trimEnd('.', ',', ')', ']', '}')
-            ?: return
-
+        val url = extractSharedHttpUrl(intent) ?: return
         urlInput.setText(url)
         resolveAndPlay(url)
     }
 
     /**
-     * First attempt: ask yt-dlp (running through Chaquopy) to resolve the page.
-     *
-     * If yt-dlp fails, immediately move to the browser-assisted resolver. Normal
-     * users should see one simple "Opening video…" state instead of a raw Python
-     * error flashing briefly before the fallback Activity appears.
-     *
-     * This presentation change does NOT alter resolver order or candidate logic:
-     * yt-dlp remains first and BrowserResolverActivity remains the fallback.
+     * First attempt: yt-dlp through Chaquopy. If it fails, immediately move to
+     * the browser-assisted resolver. Candidate ranking is not changed here.
      */
     private fun resolveAndPlay(url: String) {
         val cleanUrl = url.trim()
@@ -137,25 +149,16 @@ class MainActivity : AppCompatActivity() {
             }.onFailure {
                 setBusy(false)
                 lastFailedUrl = cleanUrl
-
-                /*
-                 * Keep the automatic transition visually clean. The retry button
-                 * is still enabled for the case where the user later returns from
-                 * the browser-assisted resolver without opening a stream.
-                 */
                 status.text = getString(R.string.opening_video)
                 browserResolveButton.visibility = View.VISIBLE
-
-                // Open the different fallback path immediately instead of repeating yt-dlp.
                 launchBrowserResolver(cleanUrl)
             }
         }
     }
 
-    /** Launch the user-driven WebView resolver for a normal web address. */
+    /** Launch foreground browser assistance for a normal web address. */
     private fun launchBrowserResolver(url: String) {
         val cleanUrl = url.trim()
-
         if (!isHttpUrl(cleanUrl)) {
             status.text = getString(R.string.status_complete_url)
             return
@@ -167,16 +170,269 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /** Shared URL validation helper. */
+    /** Open the first persistent tab without re-resolving a READY tab. */
+    private fun openSavedTab() {
+        val tab = VideoTabStore.allTabs().firstOrNull() ?: return
+
+        when {
+            tab.isReady -> {
+                startActivity(
+                    Intent(this, PlayerActivity::class.java)
+                        .putExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA, tab.resolvedMediaJson)
+                        .putExtra(TabbedPlayerApplication.EXTRA_TAB_ID, tab.id)
+                )
+            }
+
+            tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION -> {
+                startActivity(
+                    Intent(this, BrowserResolverActivity::class.java)
+                        .putExtra(BrowserResolverActivity.EXTRA_URL, tab.sourceUrl)
+                        .putExtra(BrowserResolverActivity.EXTRA_TAB_ID, tab.id)
+                )
+            }
+
+            else -> Toast.makeText(this, R.string.tab_not_ready_yet, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun updateSavedTabsButton() {
+        val count = VideoTabStore.allTabs().size
+        openTabsButton.visibility = if (count > 0) View.VISIBLE else View.GONE
+        if (count > 0) {
+            openTabsButton.text = getString(R.string.open_saved_tabs_count, count)
+        }
+    }
+
     private fun isHttpUrl(value: String): Boolean =
         value.startsWith("https://", ignoreCase = true) ||
             value.startsWith("http://", ignoreCase = true)
 
-    /** Disable editable controls while Python/yt-dlp is doing network work. */
     private fun setBusy(busy: Boolean) {
         progress.visibility = if (busy) View.VISIBLE else View.GONE
         resolveButton.isEnabled = !busy
         browserResolveButton.isEnabled = !busy
         urlInput.isEnabled = !busy
     }
+}
+
+/**
+ * Second Android share target: "Add to External Player".
+ *
+ * It intentionally has no player UI. Android briefly launches this transparent
+ * Activity, it creates a persistent tab, schedules pre-resolution, shows a small
+ * confirmation toast, and immediately finishes so Vivaldi becomes foreground
+ * again.
+ */
+class BackgroundAddActivity : Activity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        VideoTabStore.initialize(applicationContext)
+        val url = extractSharedHttpUrl(intent)
+
+        if (url == null) {
+            Toast.makeText(this, R.string.status_complete_url, Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
+
+        val tab = VideoTabStore.createPendingTab(url)
+        TabPreparationManager.enqueue(applicationContext, tab.id)
+
+        Toast.makeText(this, R.string.added_to_external_player, Toast.LENGTH_SHORT).show()
+        finish()
+        overridePendingTransition(0, 0)
+    }
+}
+
+/**
+ * WorkManager coordinator for tab preparation.
+ *
+ * Preparation resolves URLs and stores metadata only. It never constructs an
+ * ExoPlayer, never starts audio/video, and therefore remains separate from the
+ * one-foreground-player playback rule.
+ */
+object TabPreparationManager {
+    private const val WORK_PREFIX = "prepare-video-tab-"
+
+    fun enqueue(context: Context, tabId: String, replace: Boolean = false) {
+        val tab = VideoTabStore.get(tabId) ?: return
+        if (tab.sourceUrl.isBlank() || tab.isReady) return
+
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
+        val request = OneTimeWorkRequestBuilder<ResolveTabWorker>()
+            .setInputData(workDataOf(ResolveTabWorker.KEY_TAB_ID to tabId))
+            .setConstraints(constraints)
+            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+            .build()
+
+        WorkManager.getInstance(context.applicationContext).enqueueUniqueWork(
+            "$WORK_PREFIX$tabId",
+            if (replace) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.KEEP,
+            request
+        )
+    }
+
+    /** Resume queued work after process restart. */
+    fun resumePending(context: Context) {
+        VideoTabStore.allTabs()
+            .filter { it.preparationState == VideoTabStore.PreparationState.QUEUED }
+            .forEach { enqueue(context, it.id) }
+    }
+
+    /** Explicit retry used by the tab/error recovery UI. */
+    fun retry(context: Context, tabId: String) {
+        VideoTabStore.markQueued(tabId)
+        enqueue(context, tabId, replace = true)
+    }
+
+    /**
+     * Feature 29: proactively pre-resolve the next queued tab. READY tabs need no
+     * work and NEEDS_ATTENTION tabs intentionally require foreground WebView use.
+     */
+    fun preloadNext(context: Context, currentTabId: String) {
+        if (!AppSettings.preloadNextTab(context)) return
+        val next = VideoTabStore.nextAfter(currentTabId) ?: return
+        if (next.preparationState == VideoTabStore.PreparationState.QUEUED) {
+            enqueue(context, next.id)
+        }
+    }
+}
+
+/**
+ * Direct background resolver.
+ *
+ * A direct success makes the tab READY. A normal non-transient direct failure is
+ * interpreted as "browser assistance may be needed" and becomes
+ * NEEDS_ATTENTION. Explicit access-control/DRM/challenge errors become ERROR and
+ * are never automated around.
+ */
+class ResolveTabWorker(
+    appContext: Context,
+    params: WorkerParameters
+) : CoroutineWorker(appContext, params) {
+
+    companion object {
+        const val KEY_TAB_ID = "tab_id"
+    }
+
+    override suspend fun doWork(): Result {
+        VideoTabStore.initialize(applicationContext)
+
+        val tabId = inputData.getString(KEY_TAB_ID).orEmpty()
+        val tab = VideoTabStore.get(tabId) ?: return Result.success()
+        if (tab.isReady) return Result.success()
+        if (tab.sourceUrl.isBlank()) {
+            VideoTabStore.markError(tabId, "Missing source URL")
+            return Result.failure()
+        }
+
+        VideoTabStore.markResolving(tabId)
+
+        return runCatching {
+            withContext(Dispatchers.IO) {
+                Python
+                    .getInstance()
+                    .getModule("resolver")
+                    .callAttr("resolve", tab.sourceUrl, "auto")
+                    .toString()
+            }
+        }.fold(
+            onSuccess = { json ->
+                /* Parse once here so corrupt/incomplete resolver output is not marked READY. */
+                runCatching { ResolvedMedia.fromJson(json) }
+                    .onSuccess {
+                        VideoTabStore.markReady(tabId, json)
+                    }
+                    .onFailure { error ->
+                        VideoTabStore.markError(tabId, error.message ?: "Invalid resolver result")
+                    }
+
+                if (VideoTabStore.get(tabId)?.isReady == true) Result.success() else Result.failure()
+            },
+            onFailure = { error ->
+                val technical = (error.message ?: error.toString()).take(500)
+
+                when {
+                    isRestrictedOrChallengeFailure(technical) -> {
+                        VideoTabStore.markError(tabId, technical)
+                        Result.failure()
+                    }
+
+                    isTransientNetworkFailure(technical) &&
+                        AppSettings.networkRetryEnabled(applicationContext) &&
+                        runAttemptCount < AppSettings.MAX_TRANSIENT_RETRIES -> {
+                        VideoTabStore.markQueued(tabId, "Temporary network failure; retry scheduled")
+                        Result.retry()
+                    }
+
+                    isTransientNetworkFailure(technical) -> {
+                        VideoTabStore.markError(tabId, technical)
+                        Result.failure()
+                    }
+
+                    else -> {
+                        /*
+                         * This is the normal background fallback boundary: a WebView
+                         * may be able to finish the job later in the foreground.
+                         */
+                        VideoTabStore.markNeedsAttention(tabId, technical)
+                        Result.success()
+                    }
+                }
+            }
+        )
+    }
+
+    private fun isTransientNetworkFailure(message: String): Boolean {
+        val lower = message.lowercase()
+        return listOf(
+            "timed out",
+            "timeout",
+            "temporary failure",
+            "connection reset",
+            "connection aborted",
+            "network is unreachable",
+            "name or service not known",
+            "http error 429",
+            "http error 500",
+            "http error 502",
+            "http error 503",
+            "http error 504"
+        ).any(lower::contains)
+    }
+
+    /** Never retry or automate around explicit protected-access/challenge signals. */
+    private fun isRestrictedOrChallengeFailure(message: String): Boolean {
+        val lower = message.lowercase()
+        return listOf(
+            "drm",
+            "captcha",
+            "verify you are human",
+            "anti-bot",
+            "paywall",
+            "subscription required",
+            "login required",
+            "sign in to confirm",
+            "geo-restricted",
+            "not available in your country"
+        ).any(lower::contains)
+    }
+}
+
+/** Shared extraction for both Android share targets. */
+private fun extractSharedHttpUrl(intent: Intent): String? {
+    if (intent.action != Intent.ACTION_SEND || intent.type != "text/plain") return null
+
+    return Regex("https?://\\S+")
+        .find(intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty())
+        ?.value
+        ?.trimEnd('.', ',', ')', ']', '}')
+        ?.takeIf {
+            it.startsWith("https://", ignoreCase = true) ||
+                it.startsWith("http://", ignoreCase = true)
+        }
 }
