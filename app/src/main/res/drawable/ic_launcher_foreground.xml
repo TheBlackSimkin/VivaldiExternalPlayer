@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Original External Player mark: a simple V silhouette. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M26,28 L40,28 L54,62 L68,28 L82,28 L61,80 L47,80 Z" />
+
+    <!-- Play triangle identifies the app as a player without copying browser branding. -->
+    <path
+        android:fillColor="#FFE64A3B"
+        android:pathData="M47,43 L47,65 L66,54 Z" />
+</vector>
