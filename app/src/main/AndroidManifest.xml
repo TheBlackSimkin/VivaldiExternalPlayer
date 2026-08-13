@@ -20,16 +20,13 @@
         <activity android:name=".BrowserResolverActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
+        <activity
+            android:name=".BackgroundPreparationActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity="${applicationId}.backgroundprepare"
+            android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
-        <!--
-            The background share target intentionally owns a tiny, separate task.
-            It queues the URL, removes that temporary task immediately, and lets
-            Android reveal the task which was underneath it (normally Vivaldi).
-
-            android:order gives this target the higher same-app match order. The
-            final Android/Vivaldi share ranking remains system-controlled, so this
-            is a preference rather than a promise about every device's UI order.
-        -->
         <activity
             android:name=".BackgroundAddActivity"
             android:excludeFromRecents="true"
