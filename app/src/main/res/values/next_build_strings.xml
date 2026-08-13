@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="open_in_external_player">Open in External Player</string>
+    <string name="add_to_external_player">Add to External Player</string>
+    <string name="added_to_external_player">Added to External Player</string>
+    <string name="open_saved_tabs">Open saved tabs</string>
+    <string name="open_saved_tabs_count">Open tabs (%1$d)</string>
+    <string name="tab_not_ready_yet">This tab is still being prepared.</string>
+
+    <string name="tabs_button_ready_count">Tabs: %1$d/%2$d ready</string>
+    <string name="no_video_tabs">No video tabs are open.</string>
+    <string name="tab_state_queued">Queued</string>
+    <string name="tab_state_resolving">Resolving…</string>
+    <string name="tab_state_ready">✓ Ready</string>
+    <string name="tab_state_needs_attention">Needs attention</string>
+    <string name="tab_state_error">Error</string>
+    <string name="tab_prepare_error_explanation">This tab could not be prepared automatically. You can retry normal network resolution or open the browser-assisted method.</string>
+    <string name="retry">Retry</string>
+    <string name="retry_scheduled">Retry scheduled</string>
+    <string name="try_browser_method">Try browser method</string>
+
+    <string name="settings">Settings</string>
+    <string name="settings_intro">Local External Player preferences. These settings stay on this device.</string>
+    <string name="setting_clear_age_prompts">Automatically confirm clearly identified 18+ prompts</string>
+    <string name="setting_clear_cookie_prompts">Automatically accept clearly identified cookie prompts</string>
+    <string name="setting_network_retry">Retry temporary network failures automatically</string>
+    <string name="setting_preload_next_tab">Pre-resolve the next queued tab</string>
+    <string name="setting_persistent_tabs_info">Open tabs, positions, qualities and preparation states are saved locally across app/process restarts.</string>
+    <string name="clear_saved_tabs">Clear saved tabs</string>
+    <string name="clear_saved_tabs_confirmation">Close and forget all saved External Player tabs?</string>
+    <string name="clear">Clear</string>
+    <string name="saved_tabs_cleared">Saved tabs cleared</string>
+
+    <string name="about">About / Build info</string>
+    <string name="about_build_details">Vivaldi External Player\n\nVersion: %1$s (%2$d)\nGit commit: %3$s\nGitHub Actions build: %4$s\n\nPlayback is foreground-only. Tab/session data and settings are stored locally on this device.</string>
+
+    <string name="recovery_options">Recovery options</string>
+    <string name="recovery_explanation">Playback failed. These recovery actions retry normal playback paths only; they do not bypass protected access.</string>
+    <string name="retry_same_source">Retry same source</string>
+    <string name="try_another_detected_video">Try another detected video</string>
+    <string name="temporary_network_retry">Temporary network problem — retrying…</string>
+    <string name="retrying_playback">Retrying playback…</string>
+</resources>
