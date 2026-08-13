@@ -28,14 +28,13 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /**
- * Main entry screen for the foreground "open now" workflow.
+ * Main entry screen for the foreground "play now" workflow.
  *
  * Preferred real-world flow:
  * Vivaldi -> Android Share -> this Activity -> resolver -> PlayerActivity.
  *
  * A SECOND share target, BackgroundAddActivity, is defined below. It creates a
- * tab and starts pre-resolution without bringing the full External Player UI to
- * the foreground.
+ * tab and starts safe background preparation without starting playback.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -216,31 +215,53 @@ class MainActivity : AppCompatActivity() {
 }
 
 /**
- * Second Android share target: "Add to External Player".
+ * Second Android share target: the background preparation path.
  *
- * It intentionally has no player UI. Android briefly launches this transparent
- * Activity, it creates a persistent tab, schedules pre-resolution, shows a small
- * confirmation toast, and immediately finishes so Vivaldi becomes foreground
- * again.
+ * Android share targets are Activities, so a tiny Activity must exist for the
+ * share hand-off. The manifest deliberately puts this Activity in its own
+ * transient task. It saves the tab, schedules WorkManager, removes that task,
+ * and returns Android to the task which was previously visible (normally
+ * Vivaldi). It never constructs ExoPlayer or starts playback.
  */
 class BackgroundAddActivity : Activity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handleSharedIntent(intent)
+    }
 
+    /** singleTask makes this defensive path useful if two shares arrive rapidly. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleSharedIntent(intent)
+    }
+
+    private fun handleSharedIntent(sharedIntent: Intent) {
         VideoTabStore.initialize(applicationContext)
-        val url = extractSharedHttpUrl(intent)
+        val url = extractSharedHttpUrl(sharedIntent)
 
         if (url == null) {
-            Toast.makeText(this, R.string.status_complete_url, Toast.LENGTH_SHORT).show()
-            finish()
+            Toast.makeText(applicationContext, R.string.status_complete_url, Toast.LENGTH_SHORT).show()
+            closeTransientTask()
             return
         }
 
         val tab = VideoTabStore.createPendingTab(url)
         TabPreparationManager.enqueue(applicationContext, tab.id)
 
-        Toast.makeText(this, R.string.added_to_external_player, Toast.LENGTH_SHORT).show()
-        finish()
+        Toast.makeText(
+            applicationContext,
+            R.string.added_to_external_player,
+            Toast.LENGTH_SHORT
+        ).show()
+
+        closeTransientTask()
+    }
+
+    /** Remove only the special background-add task; never touch Vivaldi's task. */
+    private fun closeTransientTask() {
+        finishAndRemoveTask()
         overridePendingTransition(0, 0)
     }
 }
@@ -291,7 +312,8 @@ object TabPreparationManager {
 
     /**
      * Feature 29: proactively pre-resolve the next queued tab. READY tabs need no
-     * work and NEEDS_ATTENTION tabs intentionally require foreground WebView use.
+     * work. NEEDS_ATTENTION means the safe background stage already finished and
+     * the remaining browser/WebView step must wait for the foreground.
      */
     fun preloadNext(context: Context, currentTabId: String) {
         if (!AppSettings.preloadNextTab(context)) return
@@ -306,9 +328,10 @@ object TabPreparationManager {
  * Direct background resolver.
  *
  * A direct success makes the tab READY. A normal non-transient direct failure is
- * interpreted as "browser assistance may be needed" and becomes
- * NEEDS_ATTENTION. Explicit access-control/DRM/challenge errors become ERROR and
- * are never automated around.
+ * interpreted as "browser assistance is the next normal step" and is stored as
+ * NEEDS_ATTENTION internally. The user-facing label describes this as a browser
+ * step rather than an error. Explicit access-control/DRM/challenge errors become
+ * ERROR and are never automated around.
  */
 class ResolveTabWorker(
     appContext: Context,
@@ -376,8 +399,8 @@ class ResolveTabWorker(
 
                     else -> {
                         /*
-                         * This is the normal background fallback boundary: a WebView
-                         * may be able to finish the job later in the foreground.
+                         * Safe background work ends here. Browser-assisted
+                         * discovery remains a foreground-only user-visible step.
                          */
                         VideoTabStore.markNeedsAttention(tabId, technical)
                         Result.success()
