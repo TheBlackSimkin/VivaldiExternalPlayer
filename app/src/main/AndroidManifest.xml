@@ -14,6 +14,7 @@
         <provider android:name=".BrowserAssistEnhancerProvider" android:authorities="${applicationId}.browserassist" android:exported="false" />
         <provider android:name=".PendingBrowserTabBridgeProvider" android:authorities="${applicationId}.pendingtabbridge" android:exported="false" />
         <provider android:name=".PlayerRecoveryProvider" android:authorities="${applicationId}.playerrecovery" android:exported="false" />
+        <provider android:name=".ForegroundPlaybackGuardProvider" android:authorities="${applicationId}.foregroundguard" android:exported="false" />
 
         <activity android:name=".PlayerActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
         <activity android:name=".BrowserResolverActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
