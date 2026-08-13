@@ -1,43 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:name=".TabbedPlayerApplication"
         android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
         android:label="External Video Player"
         android:supportsRtl="true"
         android:theme="@style/Theme.VivaldiExternalPlayer"
         android:usesCleartextTraffic="false">
 
-        <activity
-            android:name=".PlayerActivity"
-            android:configChanges="keyboardHidden|orientation|screenSize"
-            android:exported="false" />
+        <provider android:name=".BrowserAssistEnhancerProvider" android:authorities="${applicationId}.browserassist" android:exported="false" />
+        <provider android:name=".PendingBrowserTabBridgeProvider" android:authorities="${applicationId}.pendingtabbridge" android:exported="false" />
+        <provider android:name=".PlayerRecoveryProvider" android:authorities="${applicationId}.playerrecovery" android:exported="false" />
+
+        <activity android:name=".PlayerActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
+        <activity android:name=".BrowserResolverActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
+        <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".AboutActivity" android:exported="false" />
 
         <activity
-            android:name=".BrowserResolverActivity"
-            android:configChanges="keyboardHidden|orientation|screenSize"
-            android:exported="false" />
-
-        <activity
-            android:name=".MainActivity"
-            android:exported="true">
-
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-
+            android:name=".BackgroundAddActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/add_to_external_player"
+            android:noHistory="true"
+            android:theme="@style/Theme.VivaldiExternalPlayer.Transparent">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
             </intent-filter>
-
         </activity>
 
+        <activity android:name=".MainActivity" android:exported="true" android:label="@string/open_in_external_player">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
     </application>
-
 </manifest>
