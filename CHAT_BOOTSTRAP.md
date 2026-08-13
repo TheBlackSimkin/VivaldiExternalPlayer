@@ -115,7 +115,7 @@ Commit `8be38f33c1a1f225ef555133229669f7e9008b1e`:
 - titles stay on-device and are not sent to ChatGPT;
 - Batch 4 candidate ranking/selection was not changed.
 
-GitHub Actions build **#62** was triggered for this fix. Verify it before asking for device QA.
+GitHub Actions build **#62** passed both debug APK build and artifact upload.
 
 ## Loading/buffering UX — next major feature
 
@@ -128,18 +128,33 @@ Normal use should show only:
 
 Do not normally flash WebView/candidate/manifest/debug details. Keep diagnostics behind explicit diagnostics/error UI. Remove resolver flicker without destabilizing the working Batch 4 resolver.
 
-## Background add from Vivaldi — new requirement
+## Background add from Vivaldi — refined requirement
 
-User asked whether a link can be sent to External Player **in the background / “segundo plano”** so Vivaldi stays in front.
+User wants a separate background-style share action so Vivaldi stays in front, but a background-added tab must **start preparing immediately** rather than remain untouched until selected.
 
-Preferred design:
-- add a separate share target/action named approximately `Add to External Player` / `Añadir a External Player`;
-- sharing to that action should queue the webpage URL as a **pending video tab** and immediately leave/return the user in Vivaldi;
-- the pending tab resolves when the user later opens/selects it;
-- do not depend on running the browser-assisted WebView resolver invisibly in Android background, because that is not robust and may require user interaction;
-- retain the existing normal share-to-open behavior separately.
+Expected behavior:
+- share through `Add to External Player` / `Añadir a External Player`;
+- create the tab immediately;
+- begin resolution/preparation immediately while Vivaldi remains foregrounded;
+- by the time the user switches to External Player, previously sent tabs should ideally already be resolved and ready;
+- selecting a `READY` tab must use stored resolved media and should not run the resolver again.
 
-Implementation is pending, after current tab hardening/loading/title UX is stable.
+Proposed tab preparation states:
+- `QUEUED`;
+- `RESOLVING`;
+- `READY`;
+- `NEEDS_ATTENTION` or `ERROR`.
+
+Architecture rule:
+- direct/yt-dlp resolution should be scheduled immediately as Android-supported background work (prefer WorkManager for reliable/deferrable network work);
+- pre-resolution must not start multiple video playbacks;
+- if direct resolution succeeds, store the completed `ResolvedMedia` JSON in the tab;
+- if the page needs browser-assisted WebView resolution, do not claim it is ready merely because it was queued. Hidden background WebView resolution is not a reliable contract. Mark it as needing browser-assisted completion and finish that through the clean `Opening video…` foreground UX, unless a later implementation proves a reliable compliant method;
+- retain the existing share-to-open behavior separately.
+
+Android background execution restrictions must be respected; do not assume an Activity or arbitrary background service can stay alive indefinitely.
+
+Implementation remains pending after tab-hardening/loading/title UX.
 
 ## Other pending features
 
@@ -154,8 +169,8 @@ After loading/background-add work:
 
 ## Current priority
 
-1. Verify build #62 and QA final-tab cleanup + browser-assisted titles.
+1. QA build #62 final-tab cleanup + browser-assisted titles.
 2. Implement transparent `Opening video…` / `Buffering…` UX and hide resolver flicker.
-3. Implement background `Add to External Player` / `Añadir a External Player` queued-tab share target.
+3. Implement background `Add to External Player` / `Añadir a External Player` with immediate pre-resolution and per-tab preparation states.
 4. App icon.
 5. Remaining playback/usability backlog.
