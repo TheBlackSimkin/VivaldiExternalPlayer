@@ -2,7 +2,7 @@
 
 Public repository: `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
 
-Treat GitHub `main` as the source of truth. Before changing code, read `PROJECT_STATE.md` completely. Keep both state files updated whenever requirements, architecture, QA, failures, decisions, or priorities materially change.
+Treat GitHub `main` as the source of truth. Before changing code, read `PROJECT_STATE.md` completely. Keep both state files updated whenever requirements, architecture, tests, failures, decisions, or priorities materially change.
 
 ## Communication
 
@@ -51,13 +51,13 @@ User selected together:
 20 polished tab switcher;
 21 playback recovery;
 23 adaptive icon;
-24 persistent signing;
+24 persistent signing infrastructure, with activation deliberately deferred;
 25 build/version info;
 28 temporary-network retry;
 29 next-tab pre-resolution;
 30 settings.
 
-Treat as one required iteration.
+Treat as one required iteration. Signing activation itself is not a current QA blocker.
 
 ## Implemented architecture on `main`
 
@@ -89,14 +89,12 @@ Shows ready/total count, tab title, state, position, quality, independent close.
 ### Icon
 Original adaptive icon: dark background, white V-shaped player mark, red play triangle; legacy vector fallback; not copied from Vivaldi.
 
-### Signing
-Actions workflow is ready for these secrets:
-- `VEP_KEYSTORE_BASE64`
-- `VEP_KEYSTORE_PASSWORD`
-- `VEP_KEY_ALIAS`
-- `VEP_KEY_PASSWORD`
+### Signing — deliberately deferred
+Actions workflow already supports the four release-signing secrets and will build/verify a permanent release APK when they are supplied later. On 2026-08-13 the user chose not to provision them during the current public/development phase.
 
-A new long-term private signing kit was generated outside GitHub on 2026-08-13 and has not been committed. The GitHub connector cannot write Actions secrets, so user must do the one-time secret provisioning. After that ChatGPT can re-run Actions directly. Do not commit the private key.
+Continue with debug-signed APKs for development and device QA. The future release key must remain outside Git history even if the repository becomes private. Plan for one uninstall/reinstall when transitioning from debug signing to the permanent release identity because Android normally will not update a debug-signed installation with a differently signed release APK.
+
+A long-term signing kit exists outside GitHub and has not been committed. Feature 24 is considered infrastructure-prepared, activation-deferred.
 
 ## CI status
 
@@ -106,12 +104,12 @@ A new long-term private signing kit was generated outside GitHub on 2026-08-13 a
 - #100 PASS after workflow repair; only debug artifact existed because secrets were absent.
 - **#104 PASS on commit `5cffc11bc893dc6e4af496a861847eb24c863c0b`, including foreground privacy guard; debug artifact uploaded.**
 
-The selected Android source bundle is compile-clean. Runtime/device QA still required. Persistent signing is operational once secrets are provisioned and a workflow rerun produces/validates the release APK.
+The selected Android source bundle is compile-clean. Runtime/device QA still required. Release-signing activation is intentionally postponed and does not block this iteration.
 
 ## Current priority
 
-1. Provision the four GitHub Actions signing secrets from the private signing kit.
-2. Re-run Actions and require debug + signed release artifacts and successful apksigner verification.
-3. Consolidated device QA for all selected features while protecting Batch 4.
-4. Fix runtime regressions before unrelated additions.
+1. Consolidated device QA for the selected feature bundle using the latest compile-clean debug APK while protecting Batch 4.
+2. Fix runtime/device regressions before unrelated additions.
+3. Repeat focused QA until stable.
+4. Activate permanent release signing only later in the stable/private-repo phase; never commit the key.
 5. Brave later.
