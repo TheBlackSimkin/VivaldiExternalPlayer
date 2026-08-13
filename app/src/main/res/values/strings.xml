@@ -9,6 +9,8 @@
     <string name="open_browser_assisted_resolver">Open browser-assisted resolver</string>
     <string name="status_complete_url">Paste or share a complete web address.</string>
     <string name="status_resolving">Finding the video — 720p preferred…</string>
+    <string name="opening_video">Opening video…</string>
+    <string name="playback_buffering">Buffering…</string>
     <string name="status_direct_failed">The fast resolver could not open this page.</string>
     <string name="status_opening_browser_fallback">Trying the browser method automatically…</string>
     <string name="status_browser_fallback_explanation">The browser method observes normal media requests made by this app. It does not automate challenges, DRM, subscriptions, sign-in, or regional access controls.</string>
