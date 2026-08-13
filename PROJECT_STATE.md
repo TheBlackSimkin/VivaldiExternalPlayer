@@ -78,6 +78,18 @@ Protect Batch 4 resolver behavior:
 - page-config family IDs for sibling quality URLs;
 - no media imagery inspection.
 
+## Playback lifecycle / privacy behavior
+
+Playback is foreground-only.
+
+Required behavior:
+- Video and audio must stop immediately when External Player is no longer the foreground app, including when the user switches back to Vivaldi or another app.
+- Video and audio must stop when the phone is locked / screen is turned off.
+- Background tab preparation/resolution may continue when Android allows it, but **playback itself must not continue in background**.
+- Do not use background audio playback, Picture-in-Picture autoplay, media-session continuation, or a foreground playback service unless this requirement is explicitly changed later.
+- Preserve the tab's playback position when playback is stopped because the app is backgrounded/locked.
+- Automatic background/lock pause should be distinguishable from a deliberate user pause so the app can preserve sensible resume behavior when returning to the same tab; exact auto-resume policy can be decided during implementation, but no media may play while backgrounded or locked.
+
 ## Multi-video tabs
 
 Required behavior:
@@ -171,6 +183,7 @@ Architecture rules:
 - If browser-assisted WebView resolution is genuinely required and cannot be completed robustly in background, mark the tab as needing browser-assisted completion; do not claim it is READY.
 - When foreground completion is necessary, use the clean `Opening video…` UX.
 - Automatic clear age/cookie consent handling should also help browser-assisted completion, subject to the strict consent policy above.
+- Background preparation never implies background playback; foreground-only playback rules above always win.
 
 ## Current architecture summary
 
@@ -203,6 +216,7 @@ Future narrow age/cookie consent automation belongs here (or a dedicated helper 
 - Adaptive track selection and sibling-URL quality switching.
 - Seek preview.
 - Playback diagnostics.
+- Must obey foreground-only playback lifecycle: no video/audio while app is backgrounded or phone is locked.
 
 ### VideoTabStore / TabbedPlayerApplication
 - Process-local independent tabs.
@@ -225,10 +239,11 @@ Never ask for PH/HH title text. Cloudinary is not required.
 2. Implement transparent `Opening video…` / `Buffering…` UX and hide resolver flicker.
 3. Implement conservative automatic clear 18+ age-confirmation and cookie-consent handling.
 4. Implement background `Add to External Player` / `Añadir a External Player` with immediate pre-resolution and per-tab preparation states.
-5. Polished original adaptive launcher icon.
-6. Playback speed control.
-7. App-level volume/mute.
-8. Return to existing Vivaldi task/tab.
-9. Persistent APK signing for GitHub Actions.
-10. Decide full process-restart tab persistence separately.
-11. Brave support later.
+5. Enforce foreground-only playback when app is backgrounded or phone is locked.
+6. Polished original adaptive launcher icon.
+7. Playback speed control.
+8. App-level volume/mute.
+9. Return to existing Vivaldi task/tab.
+10. Persistent APK signing for GitHub Actions.
+11. Decide full process-restart tab persistence separately.
+12. Brave support later.
