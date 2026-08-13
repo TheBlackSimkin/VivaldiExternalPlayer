@@ -21,12 +21,20 @@
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
 
+        <!--
+            The background share target intentionally owns a tiny, separate task.
+            It queues the URL, removes that temporary task immediately, and lets
+            Android reveal the task which was underneath it (normally Vivaldi).
+            This avoids leaving the main External Player task in the foreground.
+        -->
         <activity
             android:name=".BackgroundAddActivity"
             android:excludeFromRecents="true"
             android:exported="true"
             android:label="@string/add_to_external_player"
+            android:launchMode="singleTask"
             android:noHistory="true"
+            android:taskAffinity="${applicationId}.backgroundadd"
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
