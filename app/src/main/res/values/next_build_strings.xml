@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="open_in_external_player">Play now · External Player</string>
-    <string name="add_to_external_player">Add in background · External Player</string>
+    <string name="open_in_external_player">Add to External Player</string>
+    <string name="add_to_external_player">Add to External Player in background</string>
     <string name="added_to_external_player">Added — preparing in background</string>
     <string name="open_saved_tabs">Open saved tabs</string>
     <string name="open_saved_tabs_count">Open tabs (%1$d)</string>
