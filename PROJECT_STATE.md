@@ -121,7 +121,7 @@ Commit `8be38f33c1a1f225ef555133229669f7e9008b1e`:
 - title remains on-device only and is not transmitted;
 - Batch 4 resolver candidate ranking was not changed.
 
-GitHub Actions build #62 was triggered for this fix and must pass before device QA is requested.
+GitHub Actions build #62 passed both the debug APK build and artifact upload.
 
 ## 5. Tab titles
 
@@ -152,17 +152,27 @@ The resolver functionality must not be destabilized while removing this flicker.
 
 ## 7. Background-add / “segundo plano” requirement
 
-New requested workflow from user on 2026-08-13:
+Requested workflow from user on 2026-08-13:
 - From Vivaldi, the user wants an option to send/add a link to External Player **in the background**, so Vivaldi stays in front and the newly sent video becomes another app tab without immediately taking over the screen.
+- A background-added tab is expected to **start resolving/preparing immediately**, not wait untouched until the user later selects it.
+- When the user eventually switches from Vivaldi to External Player, tabs sent earlier should ideally already be resolved and ready to open/play.
 
-Preferred architecture decision:
+Updated architecture requirement:
 - Add a separate share target/action such as `Add to External Player` / `Añadir a External Player`.
-- This action should queue the shared webpage URL as a pending video tab and immediately return/leave the user in Vivaldi.
-- The pending tab should resolve when the user later opens/selects it.
-- Do **not** rely on running the browser-assisted WebView resolver invisibly in the Android background; that is not a robust design and may require user interaction.
-- Normal existing share-to-open behavior should remain available separately.
+- Sharing to that action creates a tab immediately and starts preparation work immediately while Vivaldi remains in front.
+- Tab state should distinguish at least: `QUEUED`, `RESOLVING`, `READY`, and `NEEDS_ATTENTION`/`ERROR`.
+- Direct/yt-dlp resolution is suitable for background work and should run as soon as the share is received.
+- Use Android-supported background work (preferably WorkManager for deferrable/reliable network work) rather than assuming an Activity can remain visible or alive. Android background execution restrictions must be respected.
+- If direct resolution succeeds, store the completed `ResolvedMedia` JSON in the tab so selecting the tab later should not run the resolver again.
+- If direct resolution fails and browser-assisted WebView resolution is required, do not silently pretend the tab is ready. A hidden background WebView is not a robust contract. Mark that tab as needing browser-assisted completion, and complete that step through the clean `Opening video…` UX when the app is foregrounded, unless a later implementation proves a reliable compliant pre-resolution path.
+- Existing normal share-to-open behavior remains available separately.
 
-Implementation is pending. This should be integrated with the tab/session architecture after the current tab hardening and loading/title UX are stable.
+UX expectation:
+- Background-added tabs should visually show preparation state in the tab switcher when they are not yet ready.
+- A `READY` tab should open immediately from saved resolved media without re-resolving.
+- The system should prepare multiple queued tabs without starting multiple video playbacks; pre-resolution and playback remain separate concepts.
+
+Implementation is pending. This should be integrated with the tab/session architecture after the current tab hardening/loading/title UX are stable.
 
 ## 8. Current architecture summary
 
@@ -224,9 +234,9 @@ Never ask the user to send PH/HH title text. Cloudinary is not a required gate.
 
 ## 11. Current prioritized backlog
 
-1. Verify build #62 and device-QA final-tab cleanup + browser-assisted tab titles.
+1. Device-QA final-tab cleanup + browser-assisted tab titles from build #62.
 2. Transparent `Opening video…` / `Buffering…` UX and removal of resolver flicker.
-3. Background `Add to External Player` / `Añadir a External Player` share target that queues a pending tab while leaving Vivaldi in front.
+3. Background `Add to External Player` / `Añadir a External Player` share target with immediate background pre-resolution and per-tab preparation states.
 4. Polished original Android adaptive launcher icon.
 5. Playback speed control.
 6. App-level volume/mute.
