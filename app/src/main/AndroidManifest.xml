@@ -20,6 +20,7 @@
         <activity android:name=".BrowserResolverActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
+
         <activity
             android:name=".BackgroundPreparationActivity"
             android:excludeFromRecents="true"
@@ -28,13 +29,13 @@
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
         <activity
-            android:name=".BackgroundAddActivity"
+            android:name=".BackgroundShareActivity"
             android:excludeFromRecents="true"
             android:exported="true"
             android:label="@string/add_to_external_player"
             android:launchMode="singleTask"
             android:noHistory="true"
-            android:taskAffinity="${applicationId}.backgroundadd"
+            android:taskAffinity="${applicationId}.backgroundshare"
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent">
             <intent-filter android:order="100">
                 <action android:name="android.intent.action.SEND" />
