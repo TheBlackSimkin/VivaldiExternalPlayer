@@ -16,7 +16,7 @@ Treat GitHub `main` as the source of truth. Before changing code, read `PROJECT_
 ## QA format
 
 Whenever asking the user to test, always provide exactly:
-1. one detailed code block with steps, EXPECTED, and RESULT;
+1. one detailed code block with steps, **EXPECTED**, and **RESULT**;
 2. one separate short code block containing only the compact answer format.
 
 Never ask for PH/HH page/video title text. Titles may be used locally by the app only.
@@ -61,6 +61,19 @@ Protect:
 - soft demotion of obvious audio-only/video-only children;
 - sibling quality URLs;
 - video + audio, quality switching, double-tap ±10s, seek preview, rotation.
+
+## Foreground-only playback requirement
+
+Playback must never continue when External Player is not actively in the foreground.
+
+Required:
+- stop/pause video and audio when user switches to Vivaldi or any other app;
+- stop/pause video and audio when the phone is locked / screen is turned off;
+- preserve current tab position when stopped by backgrounding/lock;
+- background tab preparation/resolution may continue when Android allows it, but playback may not;
+- no background-audio continuation, PiP autoplay, or foreground playback service unless this requirement is explicitly changed later.
+
+Automatic background/lock pause should be distinguishable from deliberate user pause so sensible resume behavior can be implemented when the user returns; exact auto-resume policy remains to be decided during implementation. No media may play while backgrounded or locked.
 
 ## Multi-video tabs
 
@@ -120,7 +133,8 @@ Architecture:
 - pre-resolution must not start multiple playbacks;
 - store resolved-media JSON when direct resolution succeeds;
 - if browser-assisted WebView work is still required, do not falsely mark READY; finish it through clean foreground `Opening video…` UX;
-- narrow automatic clear age/cookie consent handling should assist browser-assisted completion under the strict consent policy above.
+- narrow automatic clear age/cookie consent handling should assist browser-assisted completion under the strict consent policy above;
+- background preparation never overrides the foreground-only playback rule.
 
 ## Current priority
 
@@ -128,10 +142,11 @@ Architecture:
 2. Transparent `Opening video…` / `Buffering…` UX and hide resolver flicker.
 3. Conservative automatic clear 18+ age-confirmation and cookie-consent handling.
 4. Background `Add to External Player` / `Añadir a External Player` with immediate pre-resolution and per-tab preparation states.
-5. App icon.
-6. Playback speed.
-7. App-level volume/mute.
-8. Return to existing Vivaldi task/tab.
-9. Persistent APK signing.
-10. Decide full process-restart tab persistence separately.
-11. Brave later.
+5. Enforce foreground-only playback when app is backgrounded or phone is locked.
+6. App icon.
+7. Playback speed.
+8. App-level volume/mute.
+9. Return to existing Vivaldi task/tab.
+10. Persistent APK signing.
+11. Decide full process-restart tab persistence separately.
+12. Brave later.
