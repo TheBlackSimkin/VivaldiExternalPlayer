@@ -96,10 +96,12 @@ class MainActivity : AppCompatActivity() {
     /**
      * First attempt: ask yt-dlp (running through Chaquopy) to resolve the page.
      *
-     * IMPORTANT Batch 1 change:
-     * If yt-dlp fails, we no longer wait for the user to discover a fallback
-     * button. We automatically open BrowserResolverActivity. That is a DIFFERENT
-     * resolver path, so it is not simply repeating the same 410/403 request.
+     * If yt-dlp fails, immediately move to the browser-assisted resolver. Normal
+     * users should see one simple "Opening video…" state instead of a raw Python
+     * error flashing briefly before the fallback Activity appears.
+     *
+     * This presentation change does NOT alter resolver order or candidate logic:
+     * yt-dlp remains first and BrowserResolverActivity remains the fallback.
      */
     private fun resolveAndPlay(url: String) {
         val cleanUrl = url.trim()
@@ -112,7 +114,7 @@ class MainActivity : AppCompatActivity() {
         lastFailedUrl = null
         browserResolveButton.visibility = View.GONE
         setBusy(true)
-        status.text = getString(R.string.status_resolving)
+        status.text = getString(R.string.opening_video)
 
         lifecycleScope.launch {
             runCatching {
@@ -132,28 +134,19 @@ class MainActivity : AppCompatActivity() {
                     Intent(this@MainActivity, PlayerActivity::class.java)
                         .putExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA, json)
                 )
-            }.onFailure { error ->
+            }.onFailure {
                 setBusy(false)
                 lastFailedUrl = cleanUrl
-                browserResolveButton.visibility = View.VISIBLE
 
                 /*
-                 * Keep the raw technical error selectable on MainActivity. It is
-                 * valuable when the user copies a phone failure back into chat.
+                 * Keep the automatic transition visually clean. The retry button
+                 * is still enabled for the case where the user later returns from
+                 * the browser-assisted resolver without opening a stream.
                  */
-                val technical = error.message ?: error.toString()
+                status.text = getString(R.string.opening_video)
+                browserResolveButton.visibility = View.VISIBLE
 
-                status.text = buildString {
-                    appendLine(getString(R.string.status_direct_failed))
-                    appendLine()
-                    appendLine(technical)
-                    appendLine()
-                    appendLine(getString(R.string.status_browser_fallback_explanation))
-                    appendLine()
-                    append(getString(R.string.status_opening_browser_fallback))
-                }
-
-                // Open the NEW fallback path immediately instead of waiting for another tap.
+                // Open the different fallback path immediately instead of repeating yt-dlp.
                 launchBrowserResolver(cleanUrl)
             }
         }
