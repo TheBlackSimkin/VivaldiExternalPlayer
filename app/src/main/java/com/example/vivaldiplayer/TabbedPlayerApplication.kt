@@ -18,7 +18,7 @@ import java.util.WeakHashMap
 /**
  * Application-level persistent-tab coordinator.
  *
- * The home dashboard is now the canonical tab UI. PlayerActivity keeps only a
+ * The home dashboard is the canonical tab UI. PlayerActivity keeps only a
  * compact floating Tabs button which saves the current session and returns to
  * MainActivity; there is no second tab-popup implementation to drift out of sync.
  */
@@ -58,11 +58,6 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             VideoTabStore.createTab(tabJson).id
         }
 
-        /*
-         * AdaptiveQualityRuntime is registered before Application callbacks.
-         * Writing the resolved tab ID back into the Intent lets its posted attach
-         * step read the persistent tab even for a newly-created Play-now tab.
-         */
         activity.intent.putExtra(EXTRA_TAB_ID, tabId)
         activityTabs[activity] = tabId
         activity.window.decorView.post { attachTabButton(activity) }
@@ -87,7 +82,6 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             }
         }, 1_800L)
 
-        /* Feature 29 now enters the same browser-capable engine as BG Add. */
         TabPreparationManager.preloadNext(activity, tabId)
     }
 
@@ -128,14 +122,29 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         val existing = VideoTabStore.get(tabId) ?: return
         val snapshot = activity.tabSessionSnapshot()
 
-        val json = runCatching {
-            val current = ResolvedMedia.fromJson(snapshot.resolvedMediaJson)
-            if (
-                current.resolverMode == "browser" &&
-                existing.title.isNotBlank() &&
-                current.title != existing.title
-            ) current.copy(title = existing.title).toJson() else snapshot.resolvedMediaJson
-        }.getOrDefault(snapshot.resolvedMediaJson)
+        val currentResolved = runCatching {
+            ResolvedMedia.fromJson(snapshot.resolvedMediaJson)
+        }.getOrNull()
+
+        /*
+         * Direct and sibling-URL quality changes produce a concrete resolved
+         * source height, so that value is also a trustworthy actual quality.
+         * Adaptive HLS/DASH remains verified separately by Media3 VideoSize.
+         */
+        currentResolved?.displayedHeight?.takeIf { it > 0 }?.let {
+            VideoTabStore.setActualQuality(tabId, it)
+        }
+
+        val json = if (
+            currentResolved != null &&
+            currentResolved.resolverMode == "browser" &&
+            existing.title.isNotBlank() &&
+            currentResolved.title != existing.title
+        ) {
+            currentResolved.copy(title = existing.title).toJson()
+        } else {
+            snapshot.resolvedMediaJson
+        }
 
         VideoTabStore.update(
             id = tabId,
@@ -145,7 +154,6 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         )
     }
 
-    /** Compact floating control which opens the full dashboard. */
     private fun attachTabButton(activity: PlayerActivity) {
         val decor = activity.window.decorView as? ViewGroup ?: return
         if (decor.findViewWithTag<View>(TAB_BUTTON_TAG) != null) return
