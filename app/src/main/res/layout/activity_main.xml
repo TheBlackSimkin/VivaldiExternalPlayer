@@ -60,51 +60,39 @@
             </LinearLayout>
         </LinearLayout>
 
-        <com.google.android.material.card.MaterialCardView
+        <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="26dp"
-            app:cardBackgroundColor="@color/app_surface"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="0dp"
-            app:strokeColor="@color/app_outline"
-            app:strokeWidth="1dp">
+            android:text="@string/dashboard_title"
+            android:textColor="@color/app_text_primary"
+            android:textSize="20sp"
+            android:textStyle="bold" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="18dp">
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/dashboard_subtitle"
+            android:textColor="@color/app_text_secondary"
+            android:textSize="13sp" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/home_tabs_section"
-                    android:textColor="@color/app_text_primary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
+        <LinearLayout
+            android:id="@+id/tab_dashboard_container"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:orientation="vertical" />
 
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:text="@string/main_intro"
-                    android:textColor="@color/app_text_secondary"
-                    android:textSize="13sp" />
-
-                <Button
-                    android:id="@+id/open_tabs_button"
-                    android:layout_width="match_parent"
-                    android:layout_height="52dp"
-                    android:layout_marginTop="14dp"
-                    android:backgroundTint="@color/app_accent"
-                    android:text="@string/open_saved_tabs"
-                    android:textAllCaps="false"
-                    android:textColor="@color/white"
-                    android:textStyle="bold"
-                    android:visibility="gone" />
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
+        <TextView
+            android:id="@+id/dashboard_swipe_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:text="@string/dashboard_swipe_hint"
+            android:textColor="@color/app_text_secondary"
+            android:textSize="11sp"
+            android:visibility="gone" />
 
         <TextView
             android:layout_width="match_parent"
