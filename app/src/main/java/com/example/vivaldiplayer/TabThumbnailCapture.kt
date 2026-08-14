@@ -157,7 +157,17 @@ object TabThumbnailCapture {
         val width = minOf(480, sourceWidth)
         val height = ((sourceHeight.toFloat() / sourceWidth.toFloat()) * width)
             .toInt().coerceAtLeast(1)
-        return Bitmap.createScaledBitmap(bitmap, width, height, true)
+
+        if (width == sourceWidth && height == sourceHeight) {
+            return bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        }
+
+        val scaled = Bitmap.createScaledBitmap(bitmap, width, height, true)
+        return if (scaled === bitmap) {
+            bitmap.copy(Bitmap.Config.ARGB_8888, false)
+        } else {
+            scaled
+        }
     }
 
     private fun normalizeMime(value: String): String = when (value) {
