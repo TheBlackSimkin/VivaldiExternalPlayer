@@ -29,9 +29,9 @@
         <activity android:name=".AboutActivity" android:exported="false" />
 
         <!--
-          Short-lived foreground process lease. Private virtual displays and the
-          real WebView Activity exist only while one or more explicit BG shares
-          are preparing. The service never creates Media3/ExoPlayer.
+          Short-lived foreground process lease. It only protects process lifetime
+          while one or more explicit BG shares are preparing. The service never
+          creates Media3/ExoPlayer or background playback.
         -->
         <service
             android:name=".BackgroundPreparationKeepAliveService"
@@ -40,10 +40,16 @@
             android:stopWithTask="false" />
 
         <!--
-          Private-secondary-display preparation host. It is never exported and
-          is launched only by BackgroundShareActivityV2 with ActivityOptions
-          targeting an app-owned virtual display. It remains a genuine Activity
-          so WebView receives the Activity context required by Android.
+          Current normal BG preparation host.
+
+          The class name still contains "Virtual" for source-history continuity,
+          but build #212 device QA proved that Android 13 refuses the first normal
+          third-party Activity launch onto an untrusted private virtual display.
+          The normal path now launches this Activity on the DEFAULT display in the
+          same excluded task. Its application lifecycle callback makes the window
+          almost fully transparent and NOT_TOUCHABLE while keeping the Activity
+          top/resumed, so Vivaldi remains visually underneath without putting the
+          WebView host into the STOPPED state that #205 showed this phone destroys.
         -->
         <activity
             android:name=".BackgroundVirtualPreparationActivity"
@@ -51,7 +57,7 @@
             android:excludeFromRecents="true"
             android:exported="false"
             android:launchMode="standard"
-            android:theme="@style/Theme.VivaldiExternalPlayer" />
+            android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
         <!--
           Legacy non-exported preparer remains only for explicit retry/preload
@@ -65,10 +71,13 @@
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
         <!--
-          Exported BG chooser target. This Activity is now a very short handoff:
-          create tab -> start foreground lease -> create private virtual display ->
-          launch BackgroundVirtualPreparationActivity there -> finish.
-          It owns no WebView/resolver work and therefore may be destroyed safely.
+          Exported BG chooser target. This Activity is a short share-time handoff:
+          create tab -> start foreground lease -> launch the transparent RESUMED
+          preparation Activity in the same excluded task -> finish the handoff.
+
+          It deliberately does NOT move the task behind Vivaldi and does NOT use
+          ActivityOptions.launchDisplayId. The preparer must remain resumed until
+          it reaches READY/ERROR/NEEDS_ATTENTION.
         -->
         <activity
             android:name=".BackgroundShareActivityV2"

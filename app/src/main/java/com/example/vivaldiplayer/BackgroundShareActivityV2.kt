@@ -1,31 +1,36 @@
 package com.example.vivaldiplayer
 
 import android.app.Activity
-import android.app.ActivityOptions
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 
 /**
  * Exported chooser target for "BG - External Player".
  *
- * Build #205 device logging proved that keeping the process alive with a
- * foreground service was not enough: once this normal share Activity moved
- * behind Vivaldi, Android destroyed the stopped Activity within ~200 ms and its
- * WebView/direct coroutine died with it.
+ * Builds #205 and #212 taught us two separate Android lifecycle limits on the
+ * real test phone:
  *
- * This class is therefore intentionally tiny. It now:
- * 1. creates the persistent tab;
- * 2. starts the short foreground-process lease;
- * 3. creates a private app-owned virtual display;
- * 4. launches BackgroundVirtualPreparationActivity on that off-screen display;
- * 5. immediately finishes this visible/share task.
+ * 1. moving the preparation Activity behind Vivaldi makes it STOPPED, and this
+ *    phone destroys that stopped Activity almost immediately;
+ * 2. a normal third-party app cannot launch the first Activity onto its own
+ *    untrusted virtual display without privileged activity-embedding rights.
  *
- * The real preparation Activity remains an actual Android Activity (required by
- * WebView), but it is resumed on the private secondary display instead of being
- * a stopped Activity behind Vivaldi on the phone's primary display.
+ * The current handoff therefore uses the ordinary/default display, but does NOT
+ * move the real preparation Activity behind Vivaldi. Instead the preparation
+ * Activity remains RESUMED with a nearly-transparent, non-touchable window. The
+ * browser underneath remains what the user sees while the WebView keeps a real
+ * Activity context and a normal full-size viewport.
+ *
+ * This exported Activity itself is intentionally tiny. It only:
+ * - validates the shared URL;
+ * - creates the persistent tab immediately at share time;
+ * - starts the short foreground process lease;
+ * - starts BackgroundVirtualPreparationActivity in this same excluded task;
+ * - finishes itself (but does NOT remove the task, because the preparer now owns it).
+ *
+ * Despite its historical class name, BackgroundVirtualPreparationActivity is no
+ * longer launched on a virtual display by the normal BG path.
  */
 class BackgroundShareActivityV2 : Activity() {
 
@@ -36,93 +41,50 @@ class BackgroundShareActivityV2 : Activity() {
         val sourceUrl = extractSharedUrl(intent).orEmpty()
         if (!isHttpUrl(sourceUrl)) {
             Toast.makeText(applicationContext, R.string.status_complete_url, Toast.LENGTH_SHORT).show()
-            finishAndRemoveTask()
+            finish()
             overridePendingTransition(0, 0)
             return
         }
 
         val tab = VideoTabStore.createPendingTab(sourceUrl)
         val tabId = tab.id
-        val sessionToken = "virtual-$tabId"
+        val sessionToken = "overlay-$tabId-${System.currentTimeMillis()}"
 
         VideoTabStore.markPreparationRequested(tabId)
-        VideoTabStore.markTechnicalStage(tabId, "VIRTUAL_DISPLAY_SESSION_REQUESTED")
+        VideoTabStore.markTechnicalStage(tabId, "PRIMARY_OVERLAY_SESSION_REQUESTED")
+
         OperationLog.record(
             this,
-            event = "BG_SHARE_HANDOFF_STARTED",
+            event = "BG_SHARE_OVERLAY_HANDOFF_STARTED",
             tabId = tabId,
-            detail = "api=${Build.VERSION.SDK_INT}"
+            detail = "token=$sessionToken"
         )
 
         /*
-         * Activities on secondary displays require API 26 and the platform
-         * FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS capability. Do not silently
-         * fall back to the old stopped-Activity/Worker architecture if unavailable.
+         * The foreground service does not resolve or play anything. It only keeps
+         * the process important while the user-requested preparation Activity owns
+         * yt-dlp/WebView work.
          */
-        if (
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.O ||
-            !packageManager.hasSystemFeature(PackageManager.FEATURE_ACTIVITIES_ON_SECONDARY_DISPLAYS)
-        ) {
-            VideoTabStore.markError(
-                tabId,
-                "Automatic BG browser preparation requires Android secondary-display activity support"
-            )
-            VideoTabStore.markTechnicalStage(tabId, "VIRTUAL_DISPLAY_UNSUPPORTED")
-            OperationLog.record(
-                this,
-                event = "VIRTUAL_DISPLAY_UNSUPPORTED",
-                tabId = tabId
-            )
-            Toast.makeText(applicationContext, R.string.added_to_external_player, Toast.LENGTH_SHORT).show()
-            finishAndRemoveTask()
-            overridePendingTransition(0, 0)
-            return
-        }
-
         BackgroundPreparationKeepAliveService.acquire(applicationContext, sessionToken)
-
-        val displayId = BackgroundVirtualDisplayRegistry.create(
-            context = this,
-            sessionToken = sessionToken
-        )
-
-        if (displayId == null) {
-            VideoTabStore.markError(tabId, "Could not create private BG preparation display")
-            VideoTabStore.markTechnicalStage(tabId, "VIRTUAL_DISPLAY_CREATE_FAILED")
-            BackgroundPreparationKeepAliveService.release(sessionToken)
-            OperationLog.record(
-                this,
-                event = "VIRTUAL_DISPLAY_CREATE_FAILED",
-                tabId = tabId
-            )
-            Toast.makeText(applicationContext, R.string.added_to_external_player, Toast.LENGTH_SHORT).show()
-            finishAndRemoveTask()
-            overridePendingTransition(0, 0)
-            return
-        }
 
         val preparationIntent = Intent(this, BackgroundVirtualPreparationActivity::class.java)
             .putExtra(BackgroundVirtualPreparationActivity.EXTRA_URL, sourceUrl)
             .putExtra(BackgroundVirtualPreparationActivity.EXTRA_TAB_ID, tabId)
             .putExtra(BackgroundVirtualPreparationActivity.EXTRA_SESSION_TOKEN, sessionToken)
-            .addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
-                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
-                    Intent.FLAG_ACTIVITY_NO_ANIMATION
-            )
-
-        val options = ActivityOptions.makeBasic().apply {
-            launchDisplayId = displayId
-        }
+            .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
 
         val launched = runCatching {
-            startActivity(preparationIntent, options.toBundle())
+            /*
+             * Deliberately launch in this same task on the DEFAULT display.
+             * Do not use ActivityOptions.launchDisplayId and do not move the task
+             * behind Vivaldi. Keeping the preparer top/resumed is the lifecycle fix.
+             */
+            startActivity(preparationIntent)
             true
         }.getOrElse { error ->
             OperationLog.record(
                 this,
-                event = "VIRTUAL_PREP_LAUNCH_FAILED",
+                event = "PRIMARY_OVERLAY_PREP_LAUNCH_FAILED",
                 tabId = tabId,
                 detail = error.message ?: error.toString()
             )
@@ -130,33 +92,32 @@ class BackgroundShareActivityV2 : Activity() {
         }
 
         if (!launched) {
-            BackgroundVirtualDisplayRegistry.release(sessionToken)
             BackgroundPreparationKeepAliveService.release(sessionToken)
-            VideoTabStore.markError(tabId, "Could not launch off-screen BG preparation Activity")
-            VideoTabStore.markTechnicalStage(tabId, "VIRTUAL_PREP_LAUNCH_FAILED")
+            VideoTabStore.markError(tabId, "Could not launch transparent BG preparation Activity")
+            VideoTabStore.markTechnicalStage(tabId, "PRIMARY_OVERLAY_PREP_LAUNCH_FAILED")
         } else {
-            VideoTabStore.markTechnicalStage(tabId, "VIRTUAL_PREP_LAUNCH_REQUESTED")
+            VideoTabStore.markTechnicalStage(tabId, "PRIMARY_OVERLAY_PREP_LAUNCH_REQUESTED")
             OperationLog.record(
                 this,
-                event = "VIRTUAL_PREP_LAUNCH_REQUESTED",
-                tabId = tabId,
-                detail = "display=$displayId"
+                event = "PRIMARY_OVERLAY_PREP_LAUNCH_REQUESTED",
+                tabId = tabId
             )
         }
 
         Toast.makeText(applicationContext, R.string.added_to_external_player, Toast.LENGTH_SHORT).show()
 
         /*
-         * The exported share Activity owns no resolver work. Finishing it is now
-         * safe: the foreground service holds process importance and the actual
-         * preparation Activity lives on the private secondary display.
+         * IMPORTANT: use finish(), NOT finishAndRemoveTask(). The preparation
+         * Activity was just launched into this task and must remain alive as its
+         * new root until it reaches READY/ERROR/NEEDS_ATTENTION.
          */
-        finishAndRemoveTask()
+        finish()
         overridePendingTransition(0, 0)
     }
 
     private fun extractSharedUrl(sharedIntent: Intent): String? {
         if (sharedIntent.action != Intent.ACTION_SEND || sharedIntent.type != "text/plain") return null
+
         return Regex("https?://\\S+")
             .find(sharedIntent.getStringExtra(Intent.EXTRA_TEXT).orEmpty())
             ?.value

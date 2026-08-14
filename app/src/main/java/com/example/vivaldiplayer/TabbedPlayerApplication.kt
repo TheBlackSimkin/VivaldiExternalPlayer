@@ -4,10 +4,12 @@ import android.app.Activity
 import android.app.Application
 import android.content.Intent
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.FrameLayout
@@ -21,6 +23,14 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     companion object {
         const val EXTRA_TAB_ID = "video_tab_id"
         private const val TAB_BUTTON_TAG = "vivaldi_external_player_tabs_button"
+
+        /**
+         * The preparation window must be effectively invisible while remaining a
+         * real top/resumed Activity window. A tiny non-zero alpha avoids relying
+         * on compositor behavior for a completely zero-alpha surface, while being
+         * far below Android's obscuring-opacity threshold for touch pass-through.
+         */
+        private const val BG_PREPARATION_WINDOW_ALPHA = 0.01f
     }
 
     private val activityTabs = WeakHashMap<Activity, String>()
@@ -32,10 +42,10 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
 
         /*
          * VideoTabStore converts stale RESOLVING state to QUEUED after process
-         * restart. If an off-screen BG session had already created its preparation
-         * Activity/WebView, do not silently revive it through the legacy Worker.
+         * restart. A normal BG session which had already created its preparation
+         * host/WebView must not silently re-enter the legacy Worker architecture.
          */
-        convertInterruptedVirtualSessionsToError()
+        convertInterruptedBgPreparationSessionsToError()
 
         TabPreparationManager.resumePending(this)
         registerActivityLifecycleCallbacks(this)
@@ -47,15 +57,34 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             return
         }
 
-        /*
-         * BackgroundShareActivityV2 is now only a short share handoff and owns no
-         * resolver state. BackgroundVirtualPreparationActivity handles its own
-         * lifecycle/error reporting on the private secondary display.
-         */
-        if (
-            activity is BackgroundShareActivityV2 ||
-            activity is BackgroundVirtualPreparationActivity
-        ) {
+        if (activity is BackgroundShareActivityV2) {
+            /* The exported chooser target is only a short share-time handoff. */
+            return
+        }
+
+        if (activity is BackgroundVirtualPreparationActivity) {
+            /*
+             * Historical class name notwithstanding, the normal BG path no longer
+             * launches this Activity on a virtual display. #212 device QA proved
+             * Android 13 denied the first Activity launch onto our untrusted
+             * private virtual display.
+             *
+             * Keep this Activity on the normal/default display and keep it
+             * RESUMED. Its window is almost fully transparent and NOT_TOUCHABLE,
+             * so Vivaldi remains what the user sees underneath while WebView keeps
+             * the real Activity context and full viewport which the successful
+             * manual Browser Step uses.
+             *
+             * We intentionally do NOT add FLAG_NOT_FOCUSABLE: browser/page code
+             * can depend on focus. NOT_TOUCHABLE is enough to prevent accidental
+             * invisible interaction with the WebView during automatic discovery.
+             */
+            configureTransparentPreparationWindow(activity)
+            OperationLog.record(
+                this,
+                event = "PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED",
+                detail = "display=${activity.display?.displayId ?: -1} alpha=${activity.window.attributes.alpha}"
+            )
             return
         }
 
@@ -79,11 +108,27 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         activity.window.decorView.post { attachTabButton(activity) }
     }
 
+    override fun onActivityStarted(activity: Activity) {
+        if (activity is BackgroundVirtualPreparationActivity) {
+            OperationLog.record(
+                this,
+                event = "PRIMARY_OVERLAY_PREP_ACTIVITY_STARTED",
+                detail = "display=${activity.display?.displayId ?: -1}"
+            )
+        }
+    }
+
     override fun onActivityResumed(activity: Activity) {
-        if (
-            activity is BackgroundShareActivityV2 ||
-            activity is BackgroundVirtualPreparationActivity
-        ) {
+        if (activity is BackgroundShareActivityV2) {
+            return
+        }
+
+        if (activity is BackgroundVirtualPreparationActivity) {
+            OperationLog.record(
+                this,
+                event = "PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED",
+                detail = "display=${activity.display?.displayId ?: -1}"
+            )
             return
         }
 
@@ -109,10 +154,16 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     }
 
     override fun onActivityPaused(activity: Activity) {
-        if (
-            activity is BackgroundShareActivityV2 ||
-            activity is BackgroundVirtualPreparationActivity
-        ) {
+        if (activity is BackgroundShareActivityV2) {
+            return
+        }
+
+        if (activity is BackgroundVirtualPreparationActivity) {
+            OperationLog.record(
+                this,
+                event = "PRIMARY_OVERLAY_PREP_ACTIVITY_PAUSED",
+                detail = "finishing=${activity.isFinishing}"
+            )
             return
         }
 
@@ -126,20 +177,32 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         }
     }
 
+    override fun onActivityStopped(activity: Activity) {
+        if (activity is BackgroundVirtualPreparationActivity) {
+            OperationLog.record(
+                this,
+                event = "PRIMARY_OVERLAY_PREP_ACTIVITY_STOPPED",
+                detail = "finishing=${activity.isFinishing}"
+            )
+        }
+    }
+
     override fun onActivityDestroyed(activity: Activity) {
         if (activity is BackgroundVirtualPreparationActivity) {
             /*
-             * The virtual preparation Activity itself owns truthful completion or
+             * The preparation Activity itself owns truthful READY/ERROR and
              * interruption handling. Never enqueue the legacy Worker here.
              */
+            OperationLog.record(
+                this,
+                event = "PRIMARY_OVERLAY_PREP_ACTIVITY_DESTROYED_CALLBACK",
+                detail = "changingConfig=${activity.isChangingConfigurations}"
+            )
             return
         }
 
         if (activity is BackgroundShareActivityV2) {
-            /*
-             * The share handoff is expected to be destroyed immediately after it
-             * launches the private-display preparation Activity.
-             */
+            /* The short handoff is expected to finish after starting preparation. */
             return
         }
 
@@ -159,9 +222,8 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
                         TabThumbnailCapture.captureResolved(this, tab)
 
                     /*
-                     * This old preparer remains only for explicit retry/preload
-                     * recovery paths. Its historical Worker recovery is preserved
-                     * here; normal BG shares no longer depend on this Activity.
+                     * This older preparer remains only for explicit retry/preload
+                     * recovery paths. Normal BG shares never enter it automatically.
                      */
                     tab?.preparationState == VideoTabStore.PreparationState.RESOLVING &&
                         !activity.isChangingConfigurations -> {
@@ -179,11 +241,25 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     }
 
     /**
-     * Process death bypasses Activity.onDestroy(). A virtual BG session can be
-     * identified by a created preparation host + WebView + unfinished READY time.
-     * Convert it to ERROR before resumePending() can re-enter the old Worker path.
+     * Make the preparation host visually disappear without putting its Activity
+     * into the STOPPED state which #205 proved this phone aggressively destroys.
      */
-    private fun convertInterruptedVirtualSessionsToError() {
+    private fun configureTransparentPreparationWindow(activity: Activity) {
+        activity.window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        activity.window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+        activity.window.decorView.setBackgroundColor(Color.TRANSPARENT)
+
+        val attributes = activity.window.attributes
+        attributes.alpha = BG_PREPARATION_WINDOW_ALPHA
+        activity.window.attributes = attributes
+    }
+
+    /**
+     * Process death bypasses Activity.onDestroy(). Identify an unfinished normal
+     * BG host by its created host + WebView timestamps and convert it to ERROR
+     * before resumePending() can re-enter the old Worker path.
+     */
+    private fun convertInterruptedBgPreparationSessionsToError() {
         VideoTabStore.allTabs()
             .filter { tab ->
                 tab.preparationState == VideoTabStore.PreparationState.QUEUED &&
@@ -199,13 +275,13 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
                 )
                 VideoTabStore.markTechnicalStage(
                     tab.id,
-                    "PROCESS_RESTART_VIRTUAL_BG_ERROR"
+                    "PROCESS_RESTART_PRIMARY_OVERLAY_BG_ERROR"
                 )
                 OperationLog.record(
                     this,
-                    event = "PROCESS_RESTART_VIRTUAL_BG_ERROR",
+                    event = "PROCESS_RESTART_PRIMARY_OVERLAY_BG_ERROR",
                     tabId = tab.id,
-                    detail = "Interrupted private-display BG session; legacy Worker recovery skipped"
+                    detail = "Interrupted transparent BG session; legacy Worker recovery skipped"
                 )
             }
     }
@@ -341,7 +417,5 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     private fun Int.dp(activity: Activity): Int =
         (this * activity.resources.displayMetrics.density).toInt()
 
-    override fun onActivityStarted(activity: Activity) = Unit
-    override fun onActivityStopped(activity: Activity) = Unit
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 }
