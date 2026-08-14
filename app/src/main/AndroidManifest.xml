@@ -3,10 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <!--
-      The BG share host now gets a short foreground-process lease while it owns
-      direct/WebView preparation. This is NOT playback: the service never creates
-      ExoPlayer and is declared only as dataSync because it keeps user-requested
-      network preparation alive while Vivaldi remains in front.
+      Short foreground-process lease for user-requested BG preparation.
+      The service does not own playback or ExoPlayer.
     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -31,10 +29,9 @@
         <activity android:name=".AboutActivity" android:exported="false" />
 
         <!--
-          Short-lived keep-alive for a user-requested BG preparation session.
-          The Activity still owns yt-dlp/WebView discovery; this service only
-          protects process lifetime and records technical lifecycle state.
-          It never owns PlayerActivity, Media3 or ExoPlayer.
+          Short-lived foreground process lease. Private virtual displays and the
+          real WebView Activity exist only while one or more explicit BG shares
+          are preparing. The service never creates Media3/ExoPlayer.
         -->
         <service
             android:name=".BackgroundPreparationKeepAliveService"
@@ -43,9 +40,22 @@
             android:stopWithTask="false" />
 
         <!--
-          This non-exported preparer remains for foreground retry/preload and
-          process-recovery paths. The normal BG share path no longer needs to
-          launch this second Activity before it can start doing work.
+          Private-secondary-display preparation host. It is never exported and
+          is launched only by BackgroundShareActivityV2 with ActivityOptions
+          targeting an app-owned virtual display. It remains a genuine Activity
+          so WebView receives the Activity context required by Android.
+        -->
+        <activity
+            android:name=".BackgroundVirtualPreparationActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="standard"
+            android:theme="@style/Theme.VivaldiExternalPlayer" />
+
+        <!--
+          Legacy non-exported preparer remains only for explicit retry/preload
+          and older recovery paths. Normal BG shares no longer use it.
         -->
         <activity
             android:name=".BackgroundPreparationActivity"
@@ -55,22 +65,10 @@
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
         <!--
-          #192 proved that a self-owned share Activity starts preparation without
-          requiring a dashboard/tab click, but PH device QA also proved that its
-          automatic browser copy was not equivalent to the successful visible
-          Browser Step.
-
-          BackgroundShareActivityV2 keeps the self-owned document-task model and
-          adds a bounded direct budget plus browser-like hidden discovery (normal
-          layout + Service Worker observation). The Activity remains excluded from
-          Recents and moves behind Vivaldi; it never owns ExoPlayer/playback.
-
-          The application lifecycle now starts the short foreground preparation
-          lease before this Activity's posted moveTaskToBack() runs. This prevents
-          Android from silently demoting the process into the old recovery path.
-
-          Do not add android:noHistory: Android must be allowed to keep this
-          explicit share host alive while its preparation is in progress.
+          Exported BG chooser target. This Activity is now a very short handoff:
+          create tab -> start foreground lease -> create private virtual display ->
+          launch BackgroundVirtualPreparationActivity there -> finish.
+          It owns no WebView/resolver work and therefore may be destroyed safely.
         -->
         <activity
             android:name=".BackgroundShareActivityV2"
