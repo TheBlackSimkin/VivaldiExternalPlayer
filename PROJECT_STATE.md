@@ -142,6 +142,50 @@ Inspection of committed app-code commit `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f
 - Later state-only commits do not supersede #215 app code.
 - CI proves compile/package integrity only; device QA is still required for lifecycle/visibility/touch behavior and automatic PH completion.
 
+## UX findings reported before #215 device QA
+These were explicitly raised before proceeding with the #215 test and must not be lost.
+
+### Persistent tabs wording / restore behavior
+Current implementation persists the **currently open** `VideoTabStore` list in local SharedPreferences and loads it automatically when the app initializes. `MainActivity` displays `VideoTabStore.allTabs()`, so there is no separate hidden saved-tabs archive and no manual reload step in the intended design. Closing/swiping a tab calls `VideoTabStore.close()` and permanently removes that tab from the persisted open-tab list.
+
+User feedback: Settings wording such as `saved tabs` / `pestañas guardadas` strongly suggests a separate archive of previous/closed tabs, but none exists. The user has therefore reasonably expected a `reload stored tabs` control and reports never seeing such stored history.
+
+Required UI correction for the next non-resolver UI build:
+- make it explicit that **current/open tabs are restored automatically** after app/process restart;
+- rename `Clear saved tabs` / `Borrar pestañas guardadas` to wording such as `Clear all tabs` / `Borrar todas las pestañas` so it does not imply a hidden library;
+- explain that swiping/closing a tab forgets it;
+- do not add a meaningless manual reload button merely to reload the same in-memory persistent list;
+- consider a genuine `Recently closed` / `Restore closed tab` archive as a separate useful feature if closed-tab recovery is desired.
+
+If open tabs fail to reappear after a true process/app restart without having been closed/cleared, treat that as a persistence bug and investigate it separately.
+
+### Explicit app-language selector — required
+The promised language control is still missing. Current Settings has the four preference switches, tab clearing, operations-log sharing and About, but no language control.
+
+Required next UI build: add a persistent app-wide selector in Settings for at least:
+- `System default`;
+- `English`;
+- `Español`.
+
+It must affect the app UI consistently and survive restart. Do not rely solely on the phone language once this selector exists.
+
+### Secure GitHub operations-log reporting
+Current `Share operations log` uses Android's ordinary text share sheet. User requested a more convenient way to send QA logs directly to this GitHub repository.
+
+Security requirement: never embed a GitHub PAT, repository write token, OAuth client secret or other reusable credential in the APK. Creating GitHub issues through the REST API requires authenticated Issues write permission.
+
+Preferred first implementation for the next UI build:
+- retain the existing full `Share operations log` action;
+- add a separate `Report log on GitHub` / `Reportar registro en GitHub` action;
+- open this repository's GitHub `new issue` page in the browser with build/version information and a bounded recent portion of the sanitized operations log pre-filled in the title/body;
+- user can review and press GitHub Submit, so no GitHub credential is stored by ExternalPlayer;
+- cap the prefilled log body so the issue URL cannot grow without bound; keep ordinary Share for the complete long log.
+
+A future true one-tap API submission is possible only with an explicit GitHub App/OAuth authorization design and secure token handling; do not add that complexity or credential risk during the current resolver/lifecycle blocker.
+
+### Sequencing decision
+Do **not** rebuild or modify #215 before its focused one-PH lifecycle test. #215 is intentionally a clean architecture experiment. After the one-link #215 result is captured, the next UI-oriented build may bundle the persistent-tabs wording fix, language selector, and secure GitHub-report shortcut without changing the resolver architecture.
+
 ## Current quality status / later fix
 Protected policy remains exact 720 -> otherwise 1080 -> otherwise best below 1080. Current PH runtime violates it by initially choosing 1080 when 720 exists.
 
@@ -157,7 +201,9 @@ Do not mix speculative quality changes into the BG lifecycle blocker. Once PH au
 - closing tabs WORKS from #192;
 - resume position WORKS from #192;
 - tested Back flow after manual Browser Step WORKS from #192;
-- Settings needs explicit app-language selector;
+- explicit app-language selector is REQUIRED and specified above;
+- clarify persistent-open-tabs wording and optionally add genuine recently-closed restoration;
+- add secure `Report log on GitHub` shortcut while retaining full Android-share log export;
 - BG absence from Android Recents PASS and preferred;
 - exportable operations log PASS/useful from #205;
 - launcher/logo refinement still required: preserve white-E/purple identity, less boxy/more refined, purple more prominent.
@@ -165,16 +211,17 @@ Do not mix speculative quality changes into the BG lifecycle blocker. Once PH au
 Do not request HH testing yet. PH automatic BG preparation remains the blocker.
 
 ## Current development priority
-1. Device-test build #215 with **one PH link only**.
+1. Device-test build #215 with **one PH link only** before changing its code.
 2. Before the real share, clean old tabs, leave ExternalPlayer with Home/switching, and return to Vivaldi; do not force-stop or swipe ExternalPlayer from Recents.
 3. Share one PH URL via `BG - External Player` and keep looking at Vivaldi for about 45–60 seconds.
 4. Verify Vivaldi remains visually on screen and perform one harmless normal scroll/touch to confirm the transparent `NOT_TOUCHABLE` preparation window does not block browser interaction.
 5. Key lifecycle proof: operations log should show `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED` and should not show an immediate PAUSED/STOPPED before preparation reaches READY/ERROR/NEEDS_ATTENTION.
 6. Target: tab is READY before opening ExternalPlayer/card, with no Browser Step.
 7. If not READY, export operations log before Browser Step. `WORKER_ENQUEUED`, `BG_HOST_DESTROYED_RECOVERY_QUEUED`, or `VIRTUAL_PREP_LAUNCH_FAILED` are not expected in the normal #215 path.
-8. If one-link PH passes, test 2–3 PH shares for browser-slot serialization.
-9. After PH BG passes, fix strict 720 preference + 480 switching, then test HH separately.
-10. Add app-language selector after BG blocker; later perform launcher/logo refinement.
+8. After the one-link #215 result, implement the UI bundle specified above: persistent-tab wording/closed-tab clarity, System/English/Español selector, and secure GitHub log-report shortcut; keep resolver behavior unchanged in that UI build.
+9. If one-link PH passes, test 2–3 PH shares for browser-slot serialization (either #215 or a later build whose resolver code is proven unchanged).
+10. After PH BG passes, fix strict 720 preference + 480 switching, then test HH separately.
+11. Later perform launcher/logo refinement.
 
 ## QA format
 Whenever asking user to test, provide exactly:
