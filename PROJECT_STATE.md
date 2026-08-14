@@ -166,13 +166,32 @@ If Android unexpectedly destroys the self-owned BG Activity while it is still RE
 - Build #192 is designated for **focused BG lifecycle device QA only**. CI proves compilation/package integrity, not the BG runtime result.
 - A later state-only commit which records these #192 facts does not supersede the #192 app-code APK.
 
+## Share-target entry requirement — explicit verification before #192 QA
+This is now a protected runtime requirement because foreground/background entry behavior has failed repeatedly:
+- `ExternalPlayer` chooser selection must launch exported `ForegroundShareActivity`; that trampoline explicitly starts/raises `MainActivity` with the shared URL using CLEAR_TOP/SINGLE_TOP. `MainActivity.acceptSharedUrl()` immediately invokes the normal visible `resolveAndPlay()` path. Expected device behavior: ExternalPlayer visibly comes to the foreground and starts resolving/playing normally.
+- `BG - External Player` chooser selection must launch exported `BackgroundShareActivity`; that already-created Activity creates the persistent tab, records PREPARATION_REQUESTED/RESOLVING/direct start, and then moves its own transparent document task into the **background** so Vivaldi remains visible while preparation continues.
+- Both chooser targets are explicitly registered as exported text/plain SEND Activities in the manifest.
+- Code inspection confirms the intended entry paths, but do **not** call either behavior device-verified until real-device QA confirms foreground raising and continued background execution. A green CI build is not runtime proof.
+
+English wording: Portuguese `segundo plano` is naturally **“the background”** here. Example: “ExternalPlayer should keep preparing the video **in the background**.”
+
+## Future logo / launcher visual direction — NOT part of #192
+For the next visual iteration, preserve the current logo identity, colors, and letter concept (white E / purple scheme), but make it:
+- less square / less boxy;
+- more stylized and refined;
+- still recognizable as the same logo family;
+- with the purple portions more noticeable/prominent.
+Do not change build #192 for this request; handle it in a later visual iteration after the BG lifecycle priority is resolved.
+
 ## Current development priority
-1. Device-test build #192 specifically for whether BG tabs leave QUEUED and prepare **before ExternalPlayer or the individual card is manually opened**.
-2. Test multiple BG shares without clicking their cards; each should progress according to its own document/preparation task.
-3. Use the local `tech ...` stage marker to identify exactly where a failure stops if device behavior still differs from the intended lifecycle.
-4. Confirm direct -> safe browser fallback is automatic when ordinary resolution fails, while protected controls still stop at NEEDS_ATTENTION/ERROR as appropriate.
-5. Do not treat #192 as a successful BG fix until device QA confirms it.
-6. Only after BG is fixed, resume remaining #187 checks (dashboard gestures, Back navigation, HH quality, buffering) unless the user volunteers results earlier.
+1. Device-test build #192 first for **both share-entry semantics**: `ExternalPlayer` must visibly raise/open the app and begin the foreground flow; `BG - External Player` must leave Vivaldi visible while the app's already-launched BG Activity actually begins preparation.
+2. For BG specifically, verify tabs leave QUEUED and prepare **before ExternalPlayer or the individual card is manually opened**.
+3. Test multiple BG shares without clicking their cards; each should progress according to its own document/preparation task.
+4. Use the local `tech ...` stage marker to identify exactly where a failure stops if device behavior still differs from the intended lifecycle.
+5. Confirm direct -> safe browser fallback is automatic when ordinary resolution fails, while protected controls still stop at NEEDS_ATTENTION/ERROR as appropriate.
+6. Do not treat #192 as a successful BG fix until device QA confirms it.
+7. Only after BG is fixed, resume remaining #187 checks (dashboard gestures, Back navigation, HH quality, buffering) unless the user volunteers results earlier.
+8. After the BG lifecycle is solved, include the requested logo refinement in a later visual iteration.
 
 ## QA format
 Whenever asking user to test, provide EXACTLY:
