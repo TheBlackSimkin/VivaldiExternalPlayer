@@ -174,7 +174,7 @@ Current `Share operations log` uses Android's ordinary text share sheet. User re
 
 Security requirement: never embed a GitHub PAT, repository write token, OAuth client secret or other reusable credential in the APK. Creating GitHub issues through the REST API requires authenticated Issues write permission.
 
-Preferred first implementation for the next UI build:
+Preferred first implementation for a later UI build:
 - retain the existing full `Share operations log` action;
 - add a separate `Report log on GitHub` / `Reportar registro en GitHub` action;
 - open this repository's GitHub `new issue` page in the browser with build/version information and a bounded recent portion of the sanitized operations log pre-filled in the title/body;
@@ -184,7 +184,9 @@ Preferred first implementation for the next UI build:
 A future true one-tap API submission is possible only with an explicit GitHub App/OAuth authorization design and secure token handling; do not add that complexity or credential risk during the current resolver/lifecycle blocker.
 
 ### Sequencing decision
-Do **not** rebuild or modify #215 before its focused one-PH lifecycle test. #215 is intentionally a clean architecture experiment. After the one-link #215 result is captured, the next UI-oriented build may bundle the persistent-tabs wording fix, language selector, and secure GitHub-report shortcut without changing the resolver architecture.
+Do **not** rebuild or modify #215 before its focused one-PH lifecycle test. #215 is intentionally a clean architecture experiment.
+
+After the one-link #215 result is captured, the next build must bundle the persistent-tabs UX correction, explicit app-language selector, and launcher/icon refresh. The secure GitHub-report shortcut is approved but deferred until after those three required items.
 
 ## Current quality status / later fix
 Protected policy remains exact 720 -> otherwise 1080 -> otherwise best below 1080. Current PH runtime violates it by initially choosing 1080 when 720 exists.
@@ -201,12 +203,12 @@ Do not mix speculative quality changes into the BG lifecycle blocker. Once PH au
 - closing tabs WORKS from #192;
 - resume position WORKS from #192;
 - tested Back flow after manual Browser Step WORKS from #192;
-- explicit app-language selector is REQUIRED and specified above;
-- clarify persistent-open-tabs wording and optionally add genuine recently-closed restoration;
-- add secure `Report log on GitHub` shortcut while retaining full Android-share log export;
+- next build after #215 result MUST add persistent-open-tab clarity plus genuine Recently closed / Restore tab recovery;
+- next build after #215 result MUST add System default / English / Español selector;
+- next build after #215 result MUST refresh launcher/logo while preserving white-E/purple identity, making it less boxy/more refined and purple more prominent;
+- secure `Report log on GitHub` remains approved but deferred until after those three items;
 - BG absence from Android Recents PASS and preferred;
-- exportable operations log PASS/useful from #205;
-- launcher/logo refinement still required: preserve white-E/purple identity, less boxy/more refined, purple more prominent.
+- exportable operations log PASS/useful from #205.
 
 Do not request HH testing yet. PH automatic BG preparation remains the blocker.
 
@@ -218,10 +220,10 @@ Do not request HH testing yet. PH automatic BG preparation remains the blocker.
 5. Key lifecycle proof: operations log should show `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED` and should not show an immediate PAUSED/STOPPED before preparation reaches READY/ERROR/NEEDS_ATTENTION.
 6. Target: tab is READY before opening ExternalPlayer/card, with no Browser Step.
 7. If not READY, export operations log before Browser Step. `WORKER_ENQUEUED`, `BG_HOST_DESTROYED_RECOVERY_QUEUED`, or `VIRTUAL_PREP_LAUNCH_FAILED` are not expected in the normal #215 path.
-8. After the one-link #215 result, implement the UI bundle specified above: persistent-tab wording/closed-tab clarity, System/English/Español selector, and secure GitHub log-report shortcut; keep resolver behavior unchanged in that UI build.
-9. If one-link PH passes, test 2–3 PH shares for browser-slot serialization (either #215 or a later build whose resolver code is proven unchanged).
+8. After the one-link #215 result, the **very next build** must implement: (a) persistent-tab clarity + genuine Recently closed/Restore tab, (b) System/English/Español selector, and (c) launcher/icon refresh. Keep resolver architecture unchanged unless #215 itself proves a lifecycle/resolver fix is required.
+9. If one-link PH passes, test 2–3 PH shares for browser-slot serialization on #215 or a later build whose resolver code is verified unchanged.
 10. After PH BG passes, fix strict 720 preference + 480 switching, then test HH separately.
-11. Later perform launcher/logo refinement.
+11. Add secure GitHub log-report shortcut after the required three-item UI bundle.
 
 ## QA format
 Whenever asking user to test, provide exactly:
