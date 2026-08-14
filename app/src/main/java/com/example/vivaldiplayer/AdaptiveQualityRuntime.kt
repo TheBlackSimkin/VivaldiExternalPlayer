@@ -17,9 +17,15 @@ import java.util.WeakHashMap
  * Runtime controller for browser adaptive quality selection.
  *
  * Requested quality and actual decoded quality are intentionally independent.
- * A button tap stores the requested manual height. Only Media3's VideoSize
- * callback stores the actual height, so the UI can never falsely claim that a
- * rendition changed merely because a menu item was selected.
+ * A button tap / browser sibling-source switch establishes the requested manual
+ * height. Only Media3's VideoSize callback stores the actual height, so the UI
+ * can never falsely claim a rendition changed merely because a menu item moved.
+ *
+ * Build #162 gap fixed here:
+ * some browser pages expose one URL per declared quality, but a selected sibling
+ * URL can itself still contain adaptive tracks. PlayerActivity reloads that URL
+ * with a numeric requestedQuality. We now detect that numeric request on every
+ * TrackGroup refresh and force the exact Media3 track as well.
  */
 object AdaptiveQualityRuntime {
     private var installed = false
@@ -58,6 +64,10 @@ object AdaptiveQualityRuntime {
         private val activity: PlayerActivity
     ) : Player.Listener {
 
+        companion object {
+            private const val MAX_REAPPLY_ATTEMPTS = 3
+        }
+
         private data class Option(
             val group: Tracks.Group,
             val index: Int,
@@ -71,8 +81,8 @@ object AdaptiveQualityRuntime {
         private var adaptiveButtonInstalled = false
         private var manualHeight: Int? = null
         private var actualHeight: Int? = null
-        private var restoredManualPreference = false
-        private var reappliedAfterGroupRefresh = false
+        private var reapplyAttempts = 0
+        private var lastResolvedIdentity: String = ""
 
         fun attach() {
             val activePlayer = activity.findViewById<PlayerView>(R.id.player_view)?.player ?: return
@@ -80,9 +90,13 @@ object AdaptiveQualityRuntime {
             button = activity.findViewById(R.id.quality_button)
             activePlayer.addListener(this)
 
+            manualHeight = tabId()?.let { VideoTabStore.get(it)?.manualQualityHeight }
+            syncRequestedHeightFromCurrentResolved()
+
             actualHeight = activePlayer.videoSize.height.takeIf { it > 0 }
             actualHeight?.let { persistActual(it) }
             maybeInstallAdaptiveButton(activePlayer.currentTracks)
+            maybeReapplyManual(activePlayer.currentTracks, delayMs = 120L)
         }
 
         fun detach() {
@@ -96,46 +110,83 @@ object AdaptiveQualityRuntime {
             actualHeight = height
             persistActual(height)
             updateButtonLabel()
+
+            val wanted = manualHeight
+            if (wanted != null && height != wanted && reapplyAttempts < MAX_REAPPLY_ATTEMPTS) {
+                scheduleReapply(wanted, 300L + (reapplyAttempts * 350L))
+            } else if (wanted == height) {
+                reapplyAttempts = 0
+            }
         }
 
         override fun onTracksChanged(tracks: Tracks) {
+            /* A browser sibling URL reload changes PlayerActivity.currentResolved. */
+            syncRequestedHeightFromCurrentResolved()
             maybeInstallAdaptiveButton(tracks)
+            maybeReapplyManual(tracks, delayMs = 180L)
+        }
 
-            val wanted = manualHeight ?: return
-            if (options(tracks).none { it.height == wanted }) return
+        private fun syncRequestedHeightFromCurrentResolved() {
+            val resolved = currentResolved() ?: return
+            if (resolved.resolverMode != "browser") return
 
-            /*
-             * A manifest refresh can replace TrackGroup identity and silently
-             * invalidate an old override. Re-apply once to the refreshed group.
-             * Actual success is still confirmed only by onVideoSizeChanged.
-             */
-            if (!reappliedAfterGroupRefresh && actualHeight != wanted) {
-                reappliedAfterGroupRefresh = true
-                activity.window.decorView.postDelayed({ applyExactHeight(wanted, persist = false) }, 250L)
-            } else if (actualHeight == wanted) {
-                reappliedAfterGroupRefresh = false
+            val identity = listOf(
+                resolved.primarySource?.url.orEmpty(),
+                resolved.requestedQuality,
+                resolved.displayedHeight?.toString().orEmpty()
+            ).joinToString("|")
+
+            val requested = resolved.requestedQuality.toIntOrNull()?.takeIf { it > 0 }
+            if (requested != null) {
+                if (identity != lastResolvedIdentity || manualHeight != requested) {
+                    manualHeight = requested
+                    reapplyAttempts = 0
+                    tabId()?.let { VideoTabStore.setManualQuality(it, requested) }
+                }
             }
+
+            lastResolvedIdentity = identity
         }
 
         private fun maybeInstallAdaptiveButton(tracks: Tracks) {
             val available = options(tracks)
-            if (available.map { it.height }.distinct().size <= 1) return
+            if (available.map { it.height }.distinct().size <= 1) {
+                updateButtonLabel()
+                return
+            }
 
             if (!adaptiveButtonInstalled) {
                 adaptiveButtonInstalled = true
                 button?.setOnClickListener { showAdaptiveDialog() }
             }
 
-            if (!restoredManualPreference) {
-                restoredManualPreference = true
-                val saved = tabId()?.let { VideoTabStore.get(it)?.manualQualityHeight }
-                if (saved != null && available.any { it.height == saved }) {
-                    manualHeight = saved
-                    applyExactHeight(saved, persist = false)
-                }
+            /* Restore a saved manual preference if this refreshed group supports it. */
+            if (manualHeight == null) {
+                manualHeight = tabId()?.let { VideoTabStore.get(it)?.manualQualityHeight }
             }
 
             updateButtonLabel()
+        }
+
+        private fun maybeReapplyManual(tracks: Tracks, delayMs: Long) {
+            val wanted = manualHeight ?: return
+            if (actualHeight == wanted) {
+                reapplyAttempts = 0
+                return
+            }
+            if (options(tracks).none { it.height == wanted }) return
+            if (reapplyAttempts >= MAX_REAPPLY_ATTEMPTS) return
+            scheduleReapply(wanted, delayMs)
+        }
+
+        private fun scheduleReapply(height: Int, delayMs: Long) {
+            if (reapplyAttempts >= MAX_REAPPLY_ATTEMPTS) return
+            reapplyAttempts += 1
+            activity.window.decorView.postDelayed({
+                if (!activity.isFinishing && !activity.isDestroyed && manualHeight == height) {
+                    applyExactHeight(height, persist = false)
+                }
+            }, delayMs)
         }
 
         private fun showAdaptiveDialog() {
@@ -182,12 +233,14 @@ object AdaptiveQualityRuntime {
             }
 
             manualHeight = height
-            reappliedAfterGroupRefresh = false
-            if (persist) tabId()?.let { VideoTabStore.setManualQuality(it, height) }
+            if (persist) {
+                reapplyAttempts = 0
+                tabId()?.let { VideoTabStore.setManualQuality(it, height) }
+            }
 
             activePlayer.trackSelectionParameters = parameterBuilder.build()
 
-            /* Release old buffered rendition chunks promptly without changing position perceptibly. */
+            /* Release old buffered rendition chunks promptly without losing position. */
             val position = activePlayer.currentPosition.coerceAtLeast(0L)
             val duration = activePlayer.duration
             val reseek = if (duration > 0L && position + 1L >= duration) position else position + 1L
@@ -218,7 +271,7 @@ object AdaptiveQualityRuntime {
             }
 
             manualHeight = null
-            reappliedAfterGroupRefresh = false
+            reapplyAttempts = 0
             tabId()?.let { VideoTabStore.setManualQuality(it, null) }
 
             activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters
@@ -255,6 +308,14 @@ object AdaptiveQualityRuntime {
         private fun tabId(): String? =
             activity.intent.getStringExtra(TabbedPlayerApplication.EXTRA_TAB_ID)
                 ?.takeIf { VideoTabStore.get(it) != null }
+
+        /** Read only our own in-process resolved-media model; no media content inspection. */
+        private fun currentResolved(): ResolvedMedia? = runCatching {
+            PlayerActivity::class.java.getDeclaredField("currentResolved").run {
+                isAccessible = true
+                get(activity) as? ResolvedMedia
+            }
+        }.getOrNull()
 
         private fun options(tracks: Tracks): List<Option> {
             val videoGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
