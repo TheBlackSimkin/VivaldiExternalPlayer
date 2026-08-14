@@ -1,130 +1,81 @@
 # Temporary Chat Bootstrap — Vivaldi External Player
 
 Repository: `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
-GitHub `main` is authoritative. Read `PROJECT_STATE.md` completely before substantive work. Keep both state files current.
+GitHub `main` is authoritative. Read `PROJECT_STATE.md` before substantive work. Keep both state files current whenever QA, architecture, failures, priorities, or decisions change.
 
-## Communication / workflow
+## Communication / safety
 - Conversation English; Vivaldi/Windows UI normally Spanish; Android UI bilingual.
-- Explain plainly; user is not an advanced developer. Use connected GitHub tools directly whenever possible. Source should contain abundant English comments.
-- Never restart from scratch or repeat old PASS QA without a regression reason.
-
-## Safety boundary
-PH and HH are real technical playback targets tested by the user. Technical URLs/manifests/codecs/resolutions/request metadata/candidate ranking/playback states/errors/local titles are allowed. Do not inspect/describe media content or thumbnail imagery. Never bypass DRM, paywall/subscription, authentication, regional restriction, CAPTCHA/anti-bot, or import Vivaldi credentials. Never ask user for PH/HH titles or thumbnails. Only clearly identified age/18+ and cookie prompts may be auto-handled.
+- Explain plainly; user is not an advanced developer. Use connected GitHub tools directly. Source should contain abundant English comments.
+- PH and HH are real technical targets. URLs/manifests/codecs/resolutions/request metadata/candidate ranking/states/errors/local titles are allowed. Never inspect/describe media content or thumbnail imagery.
+- Never bypass DRM, paywall/subscription, authentication, regional restriction, CAPTCHA/anti-bot, or import Vivaldi credentials. Conservative automation may only handle clearly identified age/18+ and cookie prompts.
+- Never add background playback or a second ExoPlayer session.
 
 ## Protected baseline
-Quality policy: exact 720p -> otherwise 1080p -> otherwise best below 1080p. Protect Vivaldi share; yt-dlp first/browser fallback; automatic best/manual fallback; video+audio; adaptive/sibling quality switching; double-tap ±10s; seek preview; rotation; bilingual UI; candidate ranking/order protections; no imagery-based resolver decisions; one ExoPlayer playback session.
+Quality policy: exact 720p -> otherwise 1080p -> otherwise best below 1080p. Preserve yt-dlp first/browser fallback; automatic best/manual fallback; adaptive/sibling quality handling; double-tap ±10s; seek preview; rotation; bilingual UI; 80 stored/20 manual candidate limits; first-seen HLS/DASH order; no generic playlist bonus; soft child audio/video demotion; page-config family IDs; no imagery-based resolver/ranking; one actual ExoPlayer playback session.
 
-Previously verified: Bitmovin/PH/HH core baseline, #62 follow-up, #74 clean loading. Signing activation is deliberately deferred; debug APK QA continues.
-
-## #162 / #187 BG device finding — must remember
-The core device failure is stronger than simply “app had to be opened”:
-- BG share created/saved a tab but did not really prepare behind Vivaldi;
-- manually opening ExternalPlayer was not enough to prepare all pending tabs;
-- **each individual pending tab had to be clicked/opened before its own preparation began**.
-
-Build #187 passed CI but failed this runtime requirement. Never treat #187 as a successful BG fix or ask the user to re-explain that result.
-
-Other #162/#187 items remain known but BG is first: foreground share visibility, swipe close, Back -> dashboard, PH manual quality worked / HH manual quality failed, buffering felt slow, distinguish pending cards, long-press drag reorder, representative thumbnail timing.
-
-## Root cause found after #187
-The old BG path was still coupled to UI/lifecycle in two places:
-- `BackgroundShareActivity` created the tab, launched a **second** hidden `BackgroundPreparationActivity`, then finished. The user's device showed that hand-off was not reliable enough.
-- `MainActivity.performPrimaryAction()` explicitly called `UnifiedPreparationCoordinator.prepareNow()` for a non-RESOLVING card, so clicking an individual queued tab became a reliable preparation trigger.
-- WorkManager could do direct resolution without UI, but on an ordinary direct miss it handed browser continuation to `browserStageNeeded()`, which needed a usable Activity lifecycle.
-
-## Build #192 focused BG architecture
+## Build #192 architecture
 App-code commit: `a85f03a30ffdcda6d3f3c1c130ee799fd523e3f0`.
 
-Normal `BG - External Player` no longer depends on the second-Activity hand-off:
-- exported `BackgroundShareActivity` creates the persistent tab immediately;
-- records PREPARATION_REQUESTED / preparation host creation and moves the tab to RESOLVING immediately;
-- moves **its own already-created transparent document task** behind Vivaldi and stays alive;
-- starts direct/yt-dlp resolution from that same share Activity;
-- on an ordinary direct miss, automatically starts the safe hidden-WebView browser discovery stage in that same Activity;
-- local browser title is saved on success;
-- READY starts best-effort local thumbnail extraction;
-- each explicit BG share retains its own document task, allowing several shares to prepare independently;
-- `BackgroundPreparationActivity` remains for retry/preload/process-recovery only;
-- `android:noHistory` was removed from the BG share Activity because it conflicted with keeping that host alive behind Vivaldi;
-- no ExoPlayer/background playback is added.
+`BG - External Player` now launches a self-owned `BackgroundShareActivity` which creates the tab, marks preparation requested/RESOLVING, moves its own transparent task behind Vivaldi, starts direct yt-dlp, and on ordinary direct miss starts its own WebView browser discovery. Normal BG preparation no longer depends on clicking a dashboard card; QUEUED/RESOLVING cards are inert.
 
-Dashboard decoupling in #192:
-- READY -> Play/Continue;
-- NEEDS_ATTENTION -> explicit Browser Step for genuine interaction;
-- ERROR -> explicit recovery retry;
-- QUEUED/RESOLVING -> disabled/inert; clicking the card no longer calls `prepareNow()`.
+BG host is intentionally `excludeFromRecents=true`, so absence from Android Recents is expected and is not proof of failure. `ExternalPlayer` foreground chooser uses `ForegroundShareActivity` to explicitly raise `MainActivity`.
 
-This is an intentional QA safeguard: a card click cannot mask a BG lifecycle failure by starting normal preparation.
+CI #192 PASS: run `31820367544`, artifact `9226733915`, APK SHA-256 `89cafe287d0f3bcf6a63b545efaa9a89ae936e0a42ee50eb2b6f6d6a7a997960`. CI is compile/package proof only.
 
-## #192 expected preparation state path
-Normal direct success:
-`TAB_CREATED -> PREPARATION_REQUESTED -> RESOLVING -> DIRECT_STARTED -> DIRECT_FINISHED -> READY`
+## #192 PH device QA — authoritative
+User shared three PH links with `Compartir enlace` -> `BG - External Player`.
 
-Ordinary direct miss needing safe browser discovery:
-`... -> DIRECT_FINISHED -> BROWSER_REQUESTED -> BROWSER_DISCOVERY_STARTED -> READY / NEEDS_ATTENTION / ERROR`
+Improvement:
+- when ExternalPlayer was opened later, all three tabs were already in `Preparando` without clicking each individual tab first. This materially fixes the old #187 tab-click-to-start coupling.
 
-Protected browser interaction is never bypassed. Genuine challenge/login/payment/DRM/region interaction may stop at NEEDS_ATTENTION/ERROR.
+Failure:
+- all three automatic preparations eventually failed after roughly **244–270 seconds**;
+- final state: `Falta paso del navegador` / `NEEDS_ATTENTION` plus Browser Step;
+- manually clicking `Paso del navegador` succeeded for each PH link in about **5–10 seconds**;
+- Back then returned correctly to the dashboard with tab information present.
 
-## Local technical diagnostics
-`VideoTabStore` now persists lifecycle-only timestamps/stages for:
-- creation;
-- preparation requested;
-- preparation host created;
-- direct resolver started/finished;
-- browser stage requested;
-- browser WebView created;
-- browser discovery started;
-- READY;
-- last technical stage + timestamp.
+Code clue:
+- BG browser timeout itself is only 22s, so most of the 244–270s is almost certainly being spent before that, in the currently unbounded direct/yt-dlp call;
+- visible `BrowserResolverActivity` observes Service Worker requests while #192 BG copy does not;
+- #192 BG WebView is INVISIBLE and 1x1 while the successful Browser Step uses a normal visible WebView.
 
-Dashboard shows a compact local marker such as `tech DIRECT_STARTED +1s`. It contains no media imagery/content, credentials or page text.
+## Browser-fallback decision
+Do not literally fake a press of the `Paso del navegador` UI button.
 
-## Recovery caveat
-If Android unexpectedly destroys the self-owned BG Activity while still RESOLVING, the tab returns to QUEUED, records `BG_HOST_DESTROYED_RECOVERY_QUEUED`, and WorkManager direct recovery is scheduled. WorkManager can run direct resolution without UI; browser continuation after a recovery direct miss still needs a valid Activity lifecycle. The normal fresh BG-share path avoids that dependency because its own share Activity already owns the WebView.
+Instead, ordinary fallback should automatically run the **same technical browser-discovery engine/signals as the successful Browser Step behind Vivaldi**, while the dashboard/tab continues to mean `Preparando`.
 
-## CI
-- #187 app-code head `5b71129faa0f9815189b515e5e87bdd166c52216`; run `31771897702`; artifact `9208455395`; APK SHA-256 `f3915a70a5b97f22bc54a6e736155b966b8f157e54fa650b4a962dbef21f98f1`. **Device BG failed despite CI PASS.**
-- #192 app-code commit `a85f03a30ffdcda6d3f3c1c130ee799fd523e3f0`.
-- GitHub Actions **run #192 PASS**, run ID `31820367544`.
-- Debug artifact ID `9226733915`.
-- Artifact ZIP digest `sha256:76b1d2ff8c9d929d995c91d563bdb4d833996f4d50253cc29adee1dc65763a04`.
-- Extracted APK SHA-256 `89cafe287d0f3bcf6a63b545efaa9a89ae936e0a42ee50eb2b6f6d6a7a997960`.
-- Build #192 is designated for **focused BG lifecycle device QA only**. CI is not proof that BG runtime behavior passed.
-- A later state-only commit recording #192 does not supersede the #192 app-code APK.
+Required semantics:
+- direct yt-dlp remains first but must have a bounded BG deadline so it cannot stall for ~4 minutes;
+- ordinary direct miss/deadline automatically enters the shared browser-discovery path;
+- BG success stores READY metadata only and never launches Player/ExoPlayer/background playback;
+- NEEDS_ATTENTION / Browser Step is reserved for genuine human interaction such as CAPTCHA/challenge/login/payment/DRM/region restrictions;
+- an ordinary automatic browser timeout must not be mislabeled as human interaction required;
+- Service Worker handling for multiple concurrent BG browser stages must avoid cross-tab request attribution, likely by safe serialization or equivalent routing.
 
-## Share-target entry requirement — explicit verification before #192 QA
-This is a high-priority recurring failure mode and must be checked whenever share architecture changes:
-- `ExternalPlayer` must cause Android to launch `ForegroundShareActivity`, which explicitly starts/raises `MainActivity` with the shared URL. `MainActivity.acceptSharedUrl()` must immediately call the normal foreground `resolveAndPlay()` flow. The user should visibly see ExternalPlayer come to the foreground.
-- `BG - External Player` must cause Android to launch `BackgroundShareActivity`. That Activity itself must create the persistent tab and begin preparation, then move its own transparent task **into the background** so Vivaldi stays visible while preparation continues.
-- Do not describe a CI pass or a successful `startActivity()` call as device proof. Actual foreground raising and actual continued background execution still require device QA.
+## Other #192 PH observations
+- tab long-press move/reorder WORKS;
+- closing tabs WORKS;
+- resume from previous position WORKS;
+- Back flow worked in the tested manual-browser path;
+- PH quality change DOES NOT WORK in #192 and is a current regression, superseding older PH quality PASS for current-build status;
+- Settings needs an explicit app-language selector;
+- all tests in this round were PH only.
 
-English wording note: Portuguese `segundo plano` is naturally **“the background”** in this context, e.g. “the app keeps preparing the video in the background.”
+Do **not** ask for HH testing yet. PH already proves the BG automatic fallback blocker. Fix PH BG first; then use HH separately, especially for quality switching.
 
-## Future launcher/logo direction — NOT part of #192
-On the next visual iteration, preserve the current logo identity/colors and letter concept, but refine it so it is:
-- less square / less boxy;
-- more stylized and fluid;
-- still clearly recognizable as the current logo family;
-- with the purple portions more noticeable/prominent.
-Do not change build #192 for this visual request.
-
-## #192 QA clarification — Android Recents
-User shared three PH links with `BG - External Player`, then opened Android Recents (square button) and did not see ExternalPlayer there.
-
-This is **not a BG failure by itself**. `BackgroundShareActivity` is intentionally `android:excludeFromRecents="true"`, so its hidden/transparent document task should not be expected to appear in Recents even while preparation is running.
-
-Continue #192 testing. The meaningful proof is whether the three tabs progressed before ExternalPlayer or any card was manually opened. After allowing preparation time, open ExternalPlayer once and inspect states plus visible `tech ...` markers without clicking the cards. Do not use Recents visibility as the success/failure criterion.
+## Future logo direction — remember
+Next visual iteration, not the current BG fix:
+- keep current white-E / purple identity and letter concept;
+- keep it recognizable as the same family;
+- make it less square/boxy and more stylized/refined;
+- make the purple portions more prominent.
 
 ## Current priority
-1. Continue #192 focused BG QA; absence from Android Recents is expected and is not failure proof.
-2. Verify `ExternalPlayer` visibly raises/opens the app in the foreground when that chooser target is tested.
-3. For BG, verify tabs prepare before ExternalPlayer or any individual tab is manually opened.
-4. Add multiple BG tabs and do not click their cards before observing their eventual states/technical stages.
-5. If failure remains, report the exact visible `tech ...` marker for each tab; this should identify Activity/direct/browser lifecycle stopping points without media-content inspection.
-6. Do not resume broad #187 QA until BG is confirmed, unless the user volunteers results.
-7. After the BG lifecycle is solved, include the requested logo refinement in a later visual iteration, not in #192.
-
-## QA format
-Whenever asking user to test, always provide exactly:
-1. one detailed code block containing steps, EXPECTED, RESULT;
-2. one separate short code block containing only compact answer format.
+1. Fix PH automatic BG browser fallback; no HH test yet.
+2. Bound the direct stage so ordinary failure reaches browser fallback promptly.
+3. Unify/mirror successful visible Browser Step discovery in BG, including Service Worker and normal WebView initialization behavior, without background playback.
+4. Keep NEEDS_ATTENTION only for real protected/user-interaction cases.
+5. CI/code-path inspect, then give one focused PH BG QA APK.
+6. After PH BG passes, revisit current PH/HH quality switching regression.
+7. Add app-language selection in Settings in a later settings/UI pass.
+8. Later apply the recorded logo refinement.
