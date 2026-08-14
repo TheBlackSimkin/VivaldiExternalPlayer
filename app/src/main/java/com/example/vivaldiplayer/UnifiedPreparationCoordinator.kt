@@ -9,15 +9,14 @@ import java.lang.ref.WeakReference
 /**
  * One coordinator for every persistent-tab preparation path.
  *
- * Two states are deliberately tracked separately:
- * - launchingTabId: startActivity was requested, but Android has not created the
- *   BackgroundPreparationActivity yet;
- * - activeTabId: the preparation Activity really exists.
+ * Build #162 optimistically reserved one active tab before Android had actually
+ * created BackgroundPreparationActivity. If that launch was dropped, every
+ * later tab could stay QUEUED. We now distinguish requested launches from real
+ * Activity instances and use a watchdog to clear stale reservations.
  *
- * Build #162 used a single optimistic activeTabId. If Android dropped the
- * background Activity launch, that stale value blocked every later QUEUED tab.
- * The launch watchdog below prevents that deadlock and falls back to the normal
- * WorkManager direct/network stage instead of leaving tabs permanently queued.
+ * Explicit BG shares are allowed to establish their own hidden preparation
+ * attempts even when another BG tab is already preparing. User-triggered
+ * preload/retry remains serialized to avoid unnecessary hidden WebViews.
  */
 object UnifiedPreparationCoordinator {
     private const val PREPARATION_LAUNCH_WATCHDOG_MS = 2_000L
@@ -25,8 +24,12 @@ object UnifiedPreparationCoordinator {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var foregroundHost = WeakReference<Activity>(null)
     private var hostIsResumed = false
-    private var launchingTabId: String? = null
-    private var activeTabId: String? = null
+
+    /** startActivity requested, Activity not yet confirmed by lifecycle. */
+    private val launchingTabIds = mutableSetOf<String>()
+
+    /** BackgroundPreparationActivity actually exists for these tabs. */
+    private val activeTabIds = mutableSetOf<String>()
 
     @Synchronized
     fun onHostResumed(activity: Activity) {
@@ -41,7 +44,7 @@ object UnifiedPreparationCoordinator {
         if (foregroundHost.get() === activity) hostIsResumed = false
     }
 
-    /** Confirmation that Android actually created the hidden preparation host. */
+    /** Confirmation that Android actually created one hidden preparation host. */
     @Synchronized
     fun onPreparationCreated(activity: BackgroundPreparationActivity) {
         val id = activity.intent
@@ -49,36 +52,43 @@ object UnifiedPreparationCoordinator {
             ?.takeIf { it.isNotBlank() }
             ?: return
 
-        if (launchingTabId == id) launchingTabId = null
-        activeTabId = id
+        launchingTabIds.remove(id)
+        activeTabIds.add(id)
     }
 
     @Synchronized
     fun onPreparationDestroyed(activity: BackgroundPreparationActivity) {
         val id = activity.intent.getStringExtra(BackgroundPreparationActivity.EXTRA_TAB_ID)
-        if (id == null || activeTabId == id) activeTabId = null
-        if (id == null || launchingTabId == id) launchingTabId = null
+        if (id != null) {
+            activeTabIds.remove(id)
+            launchingTabIds.remove(id)
+        }
+
+        /* Foreground preload/retry may continue serially when a visible host exists. */
         mainHandler.post { launchFirstQueuedIfPossible() }
     }
 
     /**
      * Explicit BG share hand-off.
      *
-     * The preparer is started INSIDE the tiny share task first. BackgroundShareActivity
-     * then finishes itself, leaving BackgroundPreparationActivity as the task root;
-     * that Activity immediately moves the task behind Vivaldi. This avoids the
-     * build-#162 race where a separate new task could be removed before Android
-     * had actually established it.
+     * This path deliberately allows parallel hidden preparation attempts. If the
+     * user sends several links from Vivaldi, later links must not remain queued
+     * merely because the first hidden WebView is still resolving.
      */
     fun startFromShare(activity: Activity, tabId: String): Boolean =
-        startNow(activity, tabId, reuseCallerTask = true)
+        startNow(
+            activity = activity,
+            tabId = tabId,
+            reuseCallerTask = true,
+            allowParallel = true
+        )
 
     fun retry(activity: Activity, tabId: String): Boolean {
         VideoTabStore.markQueued(tabId)
         return startNow(activity, tabId)
     }
 
-    /** Feature 29: only a genuinely QUEUED next tab is preloaded automatically. */
+    /** Feature 29: automatic next-tab preload stays serialized. */
     fun preloadNext(activity: Activity, currentTabId: String): Boolean {
         if (!AppSettings.preloadNextTab(activity)) return false
         val next = VideoTabStore.nextAfter(currentTabId) ?: return false
@@ -93,16 +103,20 @@ object UnifiedPreparationCoordinator {
      */
     @Synchronized
     fun browserStageNeeded(tabId: String, technicalMessage: String = "") {
-        if (activeTabId == tabId || launchingTabId == tabId) return
+        if (tabId in activeTabIds || tabId in launchingTabIds) return
         VideoTabStore.markQueued(tabId, technicalMessage)
         mainHandler.post { launchFirstQueuedIfPossible(preferredTabId = tabId) }
     }
 
     fun prepareNow(activity: Activity, tabId: String): Boolean = startNow(activity, tabId)
 
+    /**
+     * Foreground-driven preparation is intentionally one-at-a-time. Explicit BG
+     * shares bypass this gate through allowParallel=true in startFromShare().
+     */
     @Synchronized
     private fun launchFirstQueuedIfPossible(preferredTabId: String? = null) {
-        if (!hostIsResumed || activeTabId != null || launchingTabId != null) return
+        if (!hostIsResumed || activeTabIds.isNotEmpty() || launchingTabIds.isNotEmpty()) return
         val host = foregroundHost.get() ?: return
         if (host.isFinishing || host.isDestroyed) return
 
@@ -122,16 +136,24 @@ object UnifiedPreparationCoordinator {
     private fun startNow(
         activity: Activity,
         tabId: String,
-        reuseCallerTask: Boolean = false
+        reuseCallerTask: Boolean = false,
+        allowParallel: Boolean = false
     ): Boolean {
         val tab = VideoTabStore.get(tabId) ?: return false
         if (tab.isReady || tab.sourceUrl.isBlank()) return false
+        if (tabId in activeTabIds || tabId in launchingTabIds) return true
 
-        val busyId = activeTabId ?: launchingTabId
-        if (busyId != null && busyId != tabId) return false
-        if (busyId == tabId) return true
+        if (!allowParallel && (activeTabIds.isNotEmpty() || launchingTabIds.isNotEmpty())) {
+            /*
+             * Keep it queued. Once the current hidden Activity finishes,
+             * onPreparationDestroyed() will launch the next one if a foreground
+             * host is still available.
+             */
+            VideoTabStore.markQueued(tabId)
+            return true
+        }
 
-        launchingTabId = tabId
+        launchingTabIds.add(tabId)
         VideoTabStore.markQueued(tabId)
         TabPreparationManager.cancelScheduled(activity.applicationContext, tabId)
 
@@ -154,7 +176,7 @@ object UnifiedPreparationCoordinator {
             activity.startActivity(launchIntent)
             true
         }.getOrElse {
-            launchingTabId = null
+            launchingTabIds.remove(tabId)
             VideoTabStore.markQueued(tabId, it.message.orEmpty().take(300))
             false
         }
@@ -165,28 +187,34 @@ object UnifiedPreparationCoordinator {
         }
 
         /*
-         * startActivity returning does not guarantee that Android created the
-         * Activity. Confirm via Application.onActivityCreated; otherwise clear
-         * the launch reservation and let WorkManager at least attempt direct prep.
+         * startActivity returning does not guarantee Android created the Activity.
+         * Confirmation comes through Application.onActivityCreated. If it never
+         * arrives, clear only this tab's reservation and fall back to WorkManager.
          */
         val appContext = activity.applicationContext
         mainHandler.postDelayed({
             val needsFallback = synchronized(this) {
-                if (launchingTabId != tabId) {
+                if (tabId !in launchingTabIds) {
                     false
                 } else {
-                    launchingTabId = null
+                    launchingTabIds.remove(tabId)
                     val current = VideoTabStore.get(tabId)
-                    if (current != null && !current.isReady &&
+                    if (
+                        current != null &&
+                        !current.isReady &&
                         current.preparationState != VideoTabStore.PreparationState.RESOLVING
                     ) {
-                        VideoTabStore.markQueued(tabId, "Background preparer did not start; direct retry queued")
+                        VideoTabStore.markQueued(
+                            tabId,
+                            "Background preparer did not start; direct retry queued"
+                        )
                         true
                     } else {
                         false
                     }
                 }
             }
+
             if (needsFallback) {
                 TabPreparationManager.enqueue(appContext, tabId, replace = true)
             }
