@@ -71,9 +71,19 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
         activity.findViewById<PlayerView>(R.id.player_view)?.player?.pause()
     }
 
+    override fun onActivityResumed(activity: Activity) {
+        /*
+         * READY tabs can produce thumbnails without starting playback. Warming
+         * from normal ExternalPlayer foreground screens means background-added
+         * tabs can have preview cards before the user selects them.
+         */
+        if (activity is MainActivity || activity is PlayerActivity) {
+            TabThumbnailWarmup.warm(activity.applicationContext)
+        }
+    }
+
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
     override fun onActivityStarted(activity: Activity) = Unit
-    override fun onActivityResumed(activity: Activity) = Unit
     override fun onActivityDestroyed(activity: Activity) = Unit
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 }
