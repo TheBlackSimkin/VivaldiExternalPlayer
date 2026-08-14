@@ -28,12 +28,20 @@
             android:taskAffinity="${applicationId}.backgroundprepare"
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
+        <!--
+          Each explicit BG share gets its own excluded document task. The tiny
+          share Activity starts BackgroundPreparationActivity in that SAME task,
+          then disappears. The preparer moves the task behind Vivaldi and keeps
+          working there. `singleTask` must not be used here: it would make later
+          BG shares reuse/stack on one hidden task and could stall older WebViews.
+        -->
         <activity
             android:name=".BackgroundShareActivity"
+            android:documentLaunchMode="always"
             android:excludeFromRecents="true"
             android:exported="true"
             android:label="@string/add_to_external_player"
-            android:launchMode="singleTask"
+            android:launchMode="standard"
             android:noHistory="true"
             android:taskAffinity="${applicationId}.backgroundshare"
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent">
