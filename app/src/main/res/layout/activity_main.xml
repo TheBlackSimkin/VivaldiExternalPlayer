@@ -77,12 +77,14 @@
             android:textColor="@color/app_text_secondary"
             android:textSize="13sp" />
 
-        <LinearLayout
+        <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/tab_dashboard_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:orientation="vertical" />
+            android:clipToPadding="false"
+            android:nestedScrollingEnabled="false"
+            android:overScrollMode="never" />
 
         <TextView
             android:id="@+id/dashboard_swipe_hint"
