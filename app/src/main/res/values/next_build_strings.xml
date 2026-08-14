@@ -14,7 +14,7 @@
     <string name="tab_state_ready">✓ Ready</string>
     <string name="tab_state_needs_attention">Browser step needed</string>
     <string name="tab_state_error">Error</string>
-    <string name="tab_prepare_error_explanation">This tab could not be prepared automatically. You can retry normal network resolution or open the browser-assisted method.</string>
+    <string name="tab_prepare_error_explanation">This tab could not be prepared automatically. You can retry normal preparation or open the browser-assisted method.</string>
     <string name="retry">Retry</string>
     <string name="retry_scheduled">Retry scheduled</string>
     <string name="try_browser_method">Finish in browser</string>
@@ -41,10 +41,30 @@
     <string name="temporary_network_retry">Temporary network problem — retrying…</string>
     <string name="retrying_playback">Retrying playback…</string>
 
-    <!-- Polished home/tab UI. -->
     <string name="home_brand">ExternalPlayer</string>
     <string name="home_tagline">Fast private playback from your browser</string>
     <string name="home_tabs_section">Your tabs</string>
     <string name="home_manual_section">Open a link manually</string>
-    <string name="tab_thumbnail_pending">Preview appears after playback starts</string>
+    <string name="tab_thumbnail_pending">Preview appears when the tab is ready</string>
+
+    <!-- First-class tab dashboard. -->
+    <string name="dashboard_title">Tab dashboard</string>
+    <string name="dashboard_subtitle">Ready, preparing and browser-step tabs in one place</string>
+    <string name="dashboard_play">Play</string>
+    <string name="dashboard_continue">Continue</string>
+    <string name="dashboard_prepare">Prepare now</string>
+    <string name="dashboard_browser">Browser step</string>
+    <string name="dashboard_close">Close</string>
+    <string name="dashboard_move_up">Move up</string>
+    <string name="dashboard_move_down">Move down</string>
+    <string name="dashboard_swipe_hint">Swipe a card sideways to close</string>
+    <string name="dashboard_actual_quality">Actual %1$dp</string>
+    <string name="dashboard_manual_quality">Manual %1$dp</string>
+    <string name="dashboard_auto_quality">Auto quality</string>
+
+    <!-- Requested quality vs what Media3 actually decoded. -->
+    <string name="quality_manual_verified">Quality: %1$dp ✓</string>
+    <string name="quality_manual_actual">Quality: %1$dp • actual %2$dp</string>
+    <string name="quality_manual_waiting">Quality: %1$dp • switching…</string>
+    <string name="quality_auto_actual">Quality: Auto • actual %1$dp</string>
 </resources>
