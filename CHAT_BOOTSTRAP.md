@@ -7,77 +7,72 @@ GitHub `main` is authoritative. Read `PROJECT_STATE.md` completely before substa
 - Conversation English; Vivaldi/Windows UI normally Spanish; Android UI bilingual.
 - Explain plainly; user is not an advanced developer.
 - Use connected GitHub tools directly whenever possible.
-- Source code should contain abundant English comments.
+- Source should contain abundant English comments.
 - Never restart from scratch or ask user to repeat already completed QA without a regression reason.
 
 ## Safety boundary
-PH and HH are real technical playback targets tested by the user. Technical URLs/manifests/codecs/resolutions/request metadata/candidate ranking/playback states/errors/local titles are allowed. Do not inspect/describe media content or user tab-thumbnail imagery. Never bypass DRM, paywall/subscription, authentication, regional restriction, CAPTCHA/anti-bot, or import Vivaldi credentials. Never ask user to send PH/HH title text or thumbnails.
+PH and HH are real technical playback targets tested by the user. Technical URLs/manifests/codecs/resolutions/request metadata/candidate ranking/playback states/errors/local titles are allowed. Do not inspect/describe media content or user thumbnail imagery. Never bypass DRM, paywall/subscription, authentication, regional restriction, CAPTCHA/anti-bot, or import Vivaldi credentials. Never ask for PH/HH title text or thumbnails.
 
-Conservative automation: only clearly identified 18+/age and cookie prompts may be auto-handled. Ambiguous/login/payment/region/DRM/challenge controls remain user-driven.
+Conservative automation: only clearly identified age/18+ and cookie prompts may be auto-handled.
 
 ## Protected baseline
-Quality policy: exact 720p -> otherwise 1080p -> otherwise best below 1080p.
+Quality policy: exact 720p -> otherwise 1080p -> otherwise best below 1080p. Protect Vivaldi share; yt-dlp first/browser fallback; automatic best/manual fallback; video+audio; adaptive/sibling quality switching; double-tap ±10s; seek preview; rotation; bilingual UI; candidate limits/order/ranking protections; no imagery-based resolver decisions; one ExoPlayer playback session.
 
-Protect Vivaldi share; yt-dlp first/browser fallback; automatic best candidate/manual fallback; video+audio; adaptive and sibling quality switching; double-tap ±10s; seek preview; rotation; bilingual UI; candidate limits/order/ranking protections; no media imagery inspection for resolver decisions; one ExoPlayer playback session.
+Previously verified: Bitmovin/PH/HH core baseline, build #62 follow-up, build #74 clean loading. Do not repeat old PASS items without regression reason.
 
-Bitmovin/PH/HH core playback baseline was previously device-verified. Cloudinary is not a gate. Build #62 follow-up was already validated. Build #74 clean-loading baseline PASS.
+## Signing
+Original coordinated bundle features 1,2,3,4,5,6,20,21,23,24,25,28,29,30 remain active. Permanent release signing is deliberately deferred; debug APK QA continues. Never commit the permanent key.
 
-## Selected bundle / signing
-Features 1,2,3,4,5,6,20,21,23,24,25,28,29,30 remain the coordinated iteration. Feature 24 signing activation is deliberately deferred; debug APK QA continues. Never commit the permanent release key.
+## #109 findings / #124 fixes still awaiting device validation
+#109 PASS/correct: install, icon, About/build info, Settings, no background playback, clean browser UX, local browser title. Age/cookie prompts not shown.
 
-## #109 QA already known
-PASS/correct: install, icon, About/build info, Settings, no background playback, clean browser UX, local browser title. Age/cookie prompts not shown. Do not repeat those without regression reason.
+#109 regressions: BG Add stole foreground; share action unclear; browser-assisted tabs were not truly pre-resolved; HH errored although visible browser method worked; adaptive quality menu changed but rendition did not.
 
-Found regressions: background Add stole foreground; share action unclear; browser-assisted tabs did not truly pre-resolve; HH errored although visible browser method worked; adaptive quality list was correct but manual selection did not actually switch.
+#124 compiled fixes: real background yt-dlp -> invisible-WebView preparation with no playback, and exact adaptive Media3 quality override/reapply. User postponed device testing while requesting more features.
 
-## #124 fixes awaiting device validation
-- `BackgroundShareActivity` + `BackgroundPreparationActivity`: real background yt-dlp -> invisible WebView prep, separate task, no playback, success READY, genuine interaction/timeout NEEDS_ATTENTION, no protected-access bypass.
-- `AdaptiveQualityRuntime`: exact Media3 track override + exact size constraints + tiny reseek + one TrackGroup-refresh reapply; Auto restores 720 -> 1080 -> best below 1080.
+## #143 / icon features
+Implemented local random-frame persistent thumbnails, short share labels `ExternalPlayer` / `BG - External Player`, dark Material UI, redesigned home/tabs/Settings/About. Post-#143 icon commit `3b0f173d310772278a26cb17d1a11ec7309d9e79` uses white E + hollow purple diamond; no triangle.
 
-User requested more features before testing #124, so those fixes remain unverified on-device.
+## User-approved dashboard/reliability batch — build #162
+User explicitly approved before next test:
+1. real Tab Dashboard;
+2. unified BG/preload/retry/restart preparation;
+3. verified + persistent quality state.
 
-## Additional features implemented before next test
-User requested random-frame thumbnails per tab, share entries `ExternalPlayer` and `BG - External Player`, icon V -> E, and a more attractive UI.
+### Dashboard
+MainActivity is now the canonical tab dashboard. Persistent thumbnail cards show title, preparation state, position, Manual quality, Actual quality and direct actions. Actions include Play/Continue, Prepare/Browser/Retry, move up/down, close and sideways swipe-to-close. Player floating Tabs button saves state and returns to this dashboard; the old independent popup switcher is removed.
 
-Implemented:
-- app-private JPEG thumbnail cache keyed by tab ID;
-- stable pseudo-random frame chosen from tab ID;
-- active tabs reuse PlayerActivity FrameExtractor;
-- READY tabs can extract a frame from already-resolved media without creating ExoPlayer/playback;
-- warm-up fills missing thumbnails on normal app foreground; failures remain best-effort;
-- close/clear/orphan cleanup for cached thumbnails;
-- normal share label `ExternalPlayer`, background `BG - External Player` in English and Spanish;
-- dark palette/material theme;
-- redesigned home screen;
-- thumbnail-card tab switcher with active accent, title/state/position/quality and close button;
-- refreshed Settings and About screens;
-- Spanish refresh strings.
+### Unified preparation
+`UnifiedPreparationCoordinator` routes BG Add, next-tab preload, dashboard retry/prepare and queued restart continuation through the same browser-capable `BackgroundPreparationActivity` whenever a foreground Activity is available. WorkManager is only direct/network/restart fallback when foreground Activity is unavailable. One hidden prep WebView at a time, no extra ExoPlayer, ranking unchanged, stale Worker handoff guarded. Automatic preload only takes QUEUED tabs.
 
-### Latest icon change
-Build #143 used a white E + red play triangle. User then requested a non-triangle purple geometric accent. App-code commit `3b0f173d310772278a26cb17d1a11ec7309d9e79` now uses a bold white E + hollow purple diamond on the dark launcher background. No triangle remains.
+`ForegroundPlaybackGuardProvider` uses a 200ms delayed check so the internal hidden-preparer task may move behind an already-resumed PlayerActivity without unnecessary pause. Home/lock/Vivaldi/dashboard/settings still leave PlayerActivity non-resumed and should pause; device QA required.
 
-## Current architecture still active
-Persistent `VideoTabStore` states QUEUED/RESOLVING/READY/NEEDS_ATTENTION/ERROR; foreground-only playback guard; clean browser enhancer; same-tab browser bridge; bounded network recovery; local Settings/About; optional release signing infrastructure deferred.
+### Quality proof/persistence
+`VideoTabStore` persists separate `manualQualityHeight` and `actualQualityHeight` plus tab ordering.
 
-## CI / next QA build
-- #124 PASS with background/quality regression fixes.
-- #136 PASS for main UI/tab cards + active-tab thumbnail capture.
-- #142 PASS for finalized READY-tab thumbnail engine.
-- #143 PASS on app-code commit `2af936c6f58e919c303597c19c8513185277b72e`.
-- #143 artifact ID `9203587518`.
-- Extracted #143 APK SHA-256 `c376301716ecc68b28412c4197a3e7e69c356514a1df0a974fc32b90b8fe13ea`.
-- New icon-only app-code commit after #143: `3b0f173d310772278a26cb17d1a11ec7309d9e79`. Use the next successful CI APK rather than #143 for icon QA once available.
+Adaptive HLS/DASH manual preference restores per tab; Actual height is written only from Media3 `onVideoSizeChanged`, not from the menu tap. UI can show requested vs actual/switching/verified. Concrete yt-dlp/sibling switches infer Manual from numeric `requested_quality` and Actual from the selected concrete source. Existing PlayerActivity source-switch logic was not rewritten.
 
-## Recommended next development direction
-Recommendation only, not yet user-approved:
-1. make tabs a first-class dashboard/library with thumbnail grid/list, reordering, swipe/quick close, clearer preparation states and direct retry/continue actions;
-2. unify BG Add and feature-29 next-tab preparation behind the same browser-capable background engine;
-3. show the actual Media3-selected quality after manual switches and persist manual quality per tab;
-4. add subtitle/audio-track selection where technically available;
-5. then Brave/other-browser support.
+### CI
+Build #160 failed only at resource merge because five Spanish home strings were duplicated. Duplicates were removed.
 
-## Current priority
-Finish CI for the purple-diamond icon commit. Next focused QA should cover unresolved #124 share/background-preload/quality-switch gates + #143 thumbnail/UI behavior + the new E/purple-diamond icon. Then continue remaining persistence/background-stop/recovery/tab-close gates not yet reported.
+**Build #162 PASS** on app-code head `5bd11518e44a8e146fcb9456481b562979152e0c`.
+- Run `31764372852`
+- Artifact `9205761745`
+- APK SHA-256 `fd46df0019782db4bff34bde5959f4bf7ba4049e78be69f9808b4bd93dac13e9`
+
+Use build #162 for the next device QA. State-only commits afterward do not require a newer APK.
+
+## Next QA priority
+Focused build #162 pass should verify:
+- `ExternalPlayer` / `BG - External Player` share flow and Vivaldi staying foreground;
+- HH background browser-capable pre-resolution and no background playback;
+- next-tab preload uses same engine and does not interrupt active playback;
+- dashboard cards/actions/reorder/swipe/thumbnails;
+- manual quality actually switches, dashboard Manual/Actual matches reality, and manual/Auto persists after reopen/restart;
+- Home + lock still stop playback;
+- then remaining persistence/recovery/final-tab gates.
+
+Do not ask for PH/HH titles or thumbnails.
 
 ## QA format
 Whenever asking user to test, always provide exactly:
