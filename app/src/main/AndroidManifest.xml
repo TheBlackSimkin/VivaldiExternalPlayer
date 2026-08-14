@@ -21,6 +21,11 @@
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
 
+        <!--
+          This non-exported preparer remains for foreground retry/preload and
+          process-recovery paths. The normal BG share path no longer needs to
+          launch this second Activity before it can start doing work.
+        -->
         <activity
             android:name=".BackgroundPreparationActivity"
             android:excludeFromRecents="true"
@@ -29,20 +34,23 @@
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
         <!--
-          Each explicit BG share gets its own excluded document task. The tiny
-          share Activity starts BackgroundPreparationActivity in that SAME task,
-          then disappears. The preparer moves the task behind Vivaldi and keeps
-          working there. `singleTask` must not be used here: it would make later
-          BG shares reuse/stack on one hidden task and could stall older WebViews.
+          Each explicit BG share gets its own excluded document task and THIS
+          Activity owns direct + hidden-WebView preparation itself. Do not add
+          `android:noHistory`: moving the task behind Vivaldi is intentional, and
+          noHistory would authorize Android to destroy the preparation host as
+          soon as it is no longer visible.
+
+          Common orientation/screen-size changes are handled in-place so a hidden
+          preparation host does not get recreated into a duplicate shared tab.
         -->
         <activity
             android:name=".BackgroundShareActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize"
             android:documentLaunchMode="always"
             android:excludeFromRecents="true"
             android:exported="true"
             android:label="@string/add_to_external_player"
             android:launchMode="standard"
-            android:noHistory="true"
             android:taskAffinity="${applicationId}.backgroundshare"
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent">
             <intent-filter android:order="100">

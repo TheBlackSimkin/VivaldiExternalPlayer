@@ -9,11 +9,14 @@ import java.util.UUID
 /**
  * Persistent tab/session store for ExternalPlayer.
  *
- * In addition to the resolved source and playback position, each tab now keeps
- * its user-selected manual quality (when any) and the ACTUAL video height which
- * Media3 most recently reported as selected. Keeping those two values separate
- * is important: the UI must never claim a requested quality was really playing
- * until Media3 confirms it.
+ * In addition to the resolved source and playback position, each tab keeps:
+ * - the user's requested manual quality and Media3's actually observed height;
+ * - non-content technical preparation timestamps/stages.
+ *
+ * The technical fields are deliberately boring lifecycle diagnostics. They never
+ * contain thumbnails, media frames, page text, credentials or other media
+ * content. Their purpose is to tell us whether Android reached the share host,
+ * direct resolver, browser fallback, or READY without relying on a tab click.
  */
 object VideoTabStore {
 
@@ -37,7 +40,17 @@ object VideoTabStore {
         var manualQualityHeight: Int? = null,
         var actualQualityHeight: Int? = null,
         var createdAtMs: Long = System.currentTimeMillis(),
-        var updatedAtMs: Long = System.currentTimeMillis()
+        var updatedAtMs: Long = System.currentTimeMillis(),
+        var preparationRequestedAtMs: Long = 0L,
+        var preparationHostCreatedAtMs: Long = 0L,
+        var directResolverStartedAtMs: Long = 0L,
+        var directResolverFinishedAtMs: Long = 0L,
+        var browserStageRequestedAtMs: Long = 0L,
+        var browserWebViewCreatedAtMs: Long = 0L,
+        var browserDiscoveryStartedAtMs: Long = 0L,
+        var readyAtMs: Long = 0L,
+        var lastTechnicalPreparationStage: String = "",
+        var lastTechnicalStageAtMs: Long = 0L
     ) {
         val isReady: Boolean
             get() = preparationState == PreparationState.READY && resolvedMediaJson.isNotBlank()
@@ -56,12 +69,13 @@ object VideoTabStore {
         prefs = context.applicationContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         loadLocked()
 
-        /* A killed preparation activity/worker cannot remain truthfully RESOLVING. */
+        /* A killed preparation Activity/Worker cannot remain truthfully RESOLVING. */
         var changed = false
         tabs.forEach { tab ->
             if (tab.preparationState == PreparationState.RESOLVING) {
                 tab.preparationState = PreparationState.QUEUED
                 tab.updatedAtMs = System.currentTimeMillis()
+                setTechnicalStageLocked(tab, "PROCESS_RESTART_QUEUED")
                 changed = true
             }
         }
@@ -73,6 +87,7 @@ object VideoTabStore {
         val resolved = runCatching { ResolvedMedia.fromJson(resolvedMediaJson) }.getOrNull()
         val title = resolved?.title?.trim().orEmpty().ifBlank { "Video" }
         val sourceUrl = resolved?.webpageUrl?.trim().orEmpty()
+        val now = System.currentTimeMillis()
 
         return VideoTab(
             id = UUID.randomUUID().toString(),
@@ -80,7 +95,12 @@ object VideoTabStore {
             sourceUrl = sourceUrl,
             resolvedMediaJson = resolvedMediaJson,
             actualQualityHeight = resolved?.displayedHeight?.takeIf { it > 0 },
-            preparationState = PreparationState.READY
+            preparationState = PreparationState.READY,
+            createdAtMs = now,
+            updatedAtMs = now,
+            readyAtMs = now,
+            lastTechnicalPreparationStage = "READY",
+            lastTechnicalStageAtMs = now
         ).also {
             tabs.add(it)
             persistLocked()
@@ -89,13 +109,18 @@ object VideoTabStore {
 
     @Synchronized
     fun createPendingTab(sourceUrl: String, title: String = "Video"): VideoTab {
+        val now = System.currentTimeMillis()
         return VideoTab(
             id = UUID.randomUUID().toString(),
             title = title.trim().ifBlank { "Video" },
             sourceUrl = sourceUrl.trim(),
             resolvedMediaJson = "",
             playWhenReady = true,
-            preparationState = PreparationState.QUEUED
+            preparationState = PreparationState.QUEUED,
+            createdAtMs = now,
+            updatedAtMs = now,
+            lastTechnicalPreparationStage = "TAB_CREATED",
+            lastTechnicalStageAtMs = now
         ).also {
             tabs.add(it)
             persistLocked()
@@ -107,6 +132,88 @@ object VideoTabStore {
 
     @Synchronized
     fun get(id: String): VideoTab? = tabs.firstOrNull { it.id == id }?.copy()
+
+    /** The explicit share/retry/preload path requested preparation for this tab. */
+    @Synchronized
+    fun markPreparationRequested(id: String) {
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        if (tab.preparationRequestedAtMs <= 0L) tab.preparationRequestedAtMs = now
+        tab.updatedAtMs = now
+        setTechnicalStageLocked(tab, "PREPARATION_REQUESTED", now)
+        persistLocked()
+    }
+
+    /** Android actually created the Activity which owns preparation. */
+    @Synchronized
+    fun markPreparationHostCreated(id: String) {
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        tab.preparationHostCreatedAtMs = now
+        tab.updatedAtMs = now
+        setTechnicalStageLocked(tab, "PREPARATION_HOST_CREATED", now)
+        persistLocked()
+    }
+
+    @Synchronized
+    fun markDirectResolverStarted(id: String) {
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        tab.directResolverStartedAtMs = now
+        tab.updatedAtMs = now
+        setTechnicalStageLocked(tab, "DIRECT_STARTED", now)
+        persistLocked()
+    }
+
+    @Synchronized
+    fun markDirectResolverFinished(id: String) {
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        tab.directResolverFinishedAtMs = now
+        tab.updatedAtMs = now
+        setTechnicalStageLocked(tab, "DIRECT_FINISHED", now)
+        persistLocked()
+    }
+
+    @Synchronized
+    fun markBrowserStageRequested(id: String) {
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        tab.browserStageRequestedAtMs = now
+        tab.updatedAtMs = now
+        setTechnicalStageLocked(tab, "BROWSER_REQUESTED", now)
+        persistLocked()
+    }
+
+    @Synchronized
+    fun markBrowserWebViewCreated(id: String) {
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        tab.browserWebViewCreatedAtMs = now
+        tab.updatedAtMs = now
+        setTechnicalStageLocked(tab, "BROWSER_WEBVIEW_CREATED", now)
+        persistLocked()
+    }
+
+    @Synchronized
+    fun markBrowserDiscoveryStarted(id: String) {
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        tab.browserDiscoveryStartedAtMs = now
+        tab.updatedAtMs = now
+        setTechnicalStageLocked(tab, "BROWSER_DISCOVERY_STARTED", now)
+        persistLocked()
+    }
+
+    /** Used for rare technical recovery markers which do not deserve new fields. */
+    @Synchronized
+    fun markTechnicalStage(id: String, stage: String) {
+        val tab = tabs.firstOrNull { it.id == id } ?: return
+        val now = System.currentTimeMillis()
+        tab.updatedAtMs = now
+        setTechnicalStageLocked(tab, stage, now)
+        persistLocked()
+    }
 
     @Synchronized
     fun markQueued(id: String, message: String = "") {
@@ -123,6 +230,7 @@ object VideoTabStore {
     fun markReady(id: String, resolvedMediaJson: String) {
         val tab = tabs.firstOrNull { it.id == id } ?: return
         val resolved = runCatching { ResolvedMedia.fromJson(resolvedMediaJson) }.getOrNull()
+        val now = System.currentTimeMillis()
 
         tab.resolvedMediaJson = resolvedMediaJson
         tab.sourceUrl = resolved?.webpageUrl?.trim().orEmpty().ifBlank { tab.sourceUrl }
@@ -130,18 +238,22 @@ object VideoTabStore {
         tab.actualQualityHeight = resolved?.displayedHeight?.takeIf { it > 0 } ?: tab.actualQualityHeight
         tab.preparationState = PreparationState.READY
         tab.lastError = ""
-        tab.updatedAtMs = System.currentTimeMillis()
+        tab.readyAtMs = now
+        tab.updatedAtMs = now
+        setTechnicalStageLocked(tab, "READY", now)
         persistLocked()
     }
 
     @Synchronized
     fun markNeedsAttention(id: String, message: String = "") {
         mutateState(id, PreparationState.NEEDS_ATTENTION, message)
+        markTechnicalStage(id, "NEEDS_ATTENTION")
     }
 
     @Synchronized
     fun markError(id: String, message: String = "") {
         mutateState(id, PreparationState.ERROR, message)
+        markTechnicalStage(id, "ERROR")
     }
 
     private fun mutateState(id: String, state: PreparationState, message: String) {
@@ -206,6 +318,7 @@ object VideoTabStore {
             val resolved = runCatching { ResolvedMedia.fromJson(resolvedMediaJson) }.getOrNull()
             tab.title = resolved?.title?.trim().orEmpty().ifBlank { tab.title.ifBlank { "Video" } }
             tab.sourceUrl = resolved?.webpageUrl?.trim().orEmpty().ifBlank { tab.sourceUrl }
+            if (tab.readyAtMs <= 0L) tab.readyAtMs = System.currentTimeMillis()
         }
 
         tab.positionMs = positionMs.coerceAtLeast(0L)
@@ -254,6 +367,15 @@ object VideoTabStore {
         return tabs[(index + 1) % tabs.size].copy()
     }
 
+    private fun setTechnicalStageLocked(
+        tab: VideoTab,
+        stage: String,
+        atMs: Long = System.currentTimeMillis()
+    ) {
+        tab.lastTechnicalPreparationStage = stage.trim().take(80)
+        tab.lastTechnicalStageAtMs = atMs
+    }
+
     private fun persistLocked() {
         val target = prefs ?: return
         val array = JSONArray()
@@ -273,6 +395,16 @@ object VideoTabStore {
                     .put("actual_quality_height", tab.actualQualityHeight ?: JSONObject.NULL)
                     .put("created_at_ms", tab.createdAtMs)
                     .put("updated_at_ms", tab.updatedAtMs)
+                    .put("preparation_requested_at_ms", tab.preparationRequestedAtMs)
+                    .put("preparation_host_created_at_ms", tab.preparationHostCreatedAtMs)
+                    .put("direct_resolver_started_at_ms", tab.directResolverStartedAtMs)
+                    .put("direct_resolver_finished_at_ms", tab.directResolverFinishedAtMs)
+                    .put("browser_stage_requested_at_ms", tab.browserStageRequestedAtMs)
+                    .put("browser_webview_created_at_ms", tab.browserWebViewCreatedAtMs)
+                    .put("browser_discovery_started_at_ms", tab.browserDiscoveryStartedAtMs)
+                    .put("ready_at_ms", tab.readyAtMs)
+                    .put("last_technical_preparation_stage", tab.lastTechnicalPreparationStage)
+                    .put("last_technical_stage_at_ms", tab.lastTechnicalStageAtMs)
             )
         }
 
@@ -307,7 +439,17 @@ object VideoTabStore {
                         manualQualityHeight = item.optionalPositiveInt("manual_quality_height"),
                         actualQualityHeight = item.optionalPositiveInt("actual_quality_height"),
                         createdAtMs = item.optLong("created_at_ms", System.currentTimeMillis()),
-                        updatedAtMs = item.optLong("updated_at_ms", System.currentTimeMillis())
+                        updatedAtMs = item.optLong("updated_at_ms", System.currentTimeMillis()),
+                        preparationRequestedAtMs = item.optLong("preparation_requested_at_ms", 0L),
+                        preparationHostCreatedAtMs = item.optLong("preparation_host_created_at_ms", 0L),
+                        directResolverStartedAtMs = item.optLong("direct_resolver_started_at_ms", 0L),
+                        directResolverFinishedAtMs = item.optLong("direct_resolver_finished_at_ms", 0L),
+                        browserStageRequestedAtMs = item.optLong("browser_stage_requested_at_ms", 0L),
+                        browserWebViewCreatedAtMs = item.optLong("browser_webview_created_at_ms", 0L),
+                        browserDiscoveryStartedAtMs = item.optLong("browser_discovery_started_at_ms", 0L),
+                        readyAtMs = item.optLong("ready_at_ms", 0L),
+                        lastTechnicalPreparationStage = item.optString("last_technical_preparation_stage"),
+                        lastTechnicalStageAtMs = item.optLong("last_technical_stage_at_ms", 0L)
                     )
                 }
             }

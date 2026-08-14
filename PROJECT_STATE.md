@@ -47,26 +47,21 @@ App-code head: `5b71129faa0f9815189b515e5e87bdd166c52216`.
 ### Foreground share
 New `ForegroundShareActivity` is the exported `ExternalPlayer` SEND target. It explicitly raises/starts MainActivity with the shared URL, then exits. MainActivity is launcher/singleTop rather than being the ambiguous direct SEND target.
 
-### BG semantics and handoff
-`BG - External Player` was intended to follow the user's exact requirement:
-- creates the persistent tab immediately;
-- starts `BackgroundPreparationActivity` before the tiny share Activity disappears;
-- preparer lives in the same isolated BG document task and immediately moves that task behind Vivaldi;
-- Vivaldi stays visible; no ExoPlayer or background audio/video is created;
-- yt-dlp runs first, then safe hidden WebView discovery automatically when needed;
-- each explicit BG share gets its own excluded document task (`documentLaunchMode=always`, standard launch mode), so later BG shares do not stack behind one `singleTask`;
-- coordinator tracks launch reservations separately from actually-created prep Activities and has a 2s launch watchdog;
-- a dropped hidden-Activity launch falls back to WorkManager direct/network preparation instead of leaving a stale global lock;
-- unexpectedly destroyed hidden preparation returns RESOLVING -> QUEUED and schedules direct WorkManager recovery; process restart also resumes queued work;
-- explicit BG shares can prepare independently; automatic next-tab preload remains serialized.
+### BG semantics and handoff attempted in #187
+`BG - External Player` was intended to:
+- create the persistent tab immediately;
+- start a second `BackgroundPreparationActivity` before the tiny share Activity disappears;
+- let that preparer move the isolated task behind Vivaldi;
+- perform direct resolution first, then hidden WebView fallback;
+- use document tasks, a launch watchdog and WorkManager recovery.
 
-`resolver.py` normalizes challenge/login/captcha-style direct-extractor misses into a neutral “needs normal browser assistance” failure. That permits safe browser loading but does not solve/click CAPTCHA/login/payment/DRM/geo controls. Hard protected DRM/paywall/subscription/purchase/geo signals remain terminal.
+This second-Activity handoff is now known to be unreliable on the user's device and is no longer the chosen normal BG architecture.
 
-### Identifiable BG tabs / thumbnails
+### Identifiable BG tabs / thumbnails from #187
 - Hidden browser preparation saves the local page title into the READY payload.
 - Pending generic cards display local source host as `Video • host` until a better local title exists.
-- Successful BG READY completion immediately starts best-effort local thumbnail extraction as the hidden task closes; foreground warm-up remains fallback.
-- Thumbnail timestamp is no longer pseudo-random: use meaningful saved/current position when available, otherwise ~35% of known duration, otherwise 15s. No frame-content analysis or classification occurs.
+- Successful BG READY completion starts best-effort local thumbnail extraction.
+- Thumbnail timestamp uses meaningful saved/current position when available, otherwise ~35% of known duration, otherwise 15s. No frame-content analysis or classification occurs.
 
 ### Dashboard gestures
 Dashboard uses RecyclerView + ItemTouchHelper:
@@ -86,20 +81,54 @@ Dashboard uses RecyclerView + ItemTouchHelper:
 No global Media3 LoadControl thresholds were changed in #187. The pass removes repeated quality verification re-seeks and fixes resolver/preparation delays first. If device QA still reports slow actual media buffering after the corrected path, profile/tune LoadControl separately rather than risking stalls blindly.
 
 ## Build #187 device QA — BG failure confirmed
-User tested #187 and reported the same core BG failure as #162:
-- selecting `BG - External Player` did **not** result in ExternalPlayer actually running/preparing in the background;
-- the tab was created/saved, but the video did **not** prepare while Vivaldi remained visible;
-- preparation only began after the user manually opened ExternalPlayer.
+User tested #187 and reported the same core BG failure as #162, with an important stronger clarification:
+- selecting `BG - External Player` did **not** result in real preparation behind Vivaldi;
+- the tab was created/saved but remained effectively inactive/`En cola`;
+- manually opening ExternalPlayer was not enough to make all pending tabs prepare;
+- **each individual pending tab had to be clicked/opened before its own preparation/resolution began**.
 
-Treat this as a hard device failure of the current second-hidden-Activity/task handoff model. Do not ask the user to re-explain or repeat this specific result on #187.
+Treat this as a hard device failure. CI PASS on #187 is only a compile/package result, not a successful BG fix.
 
-Important implication for the next implementation:
-- do not assume that starting `BackgroundPreparationActivity`, moving it behind Vivaldi, document-task flags, or the 2s watchdog proves that the preparation Activity actually survives/runs on the user's device;
-- inspect the Android lifecycle/task path and make progress observable in persisted tab state immediately after the BG share;
-- strongly consider simplifying the architecture so the exported BG share entry Activity itself becomes the transparent/background preparer and remains alive after moving its own task behind Vivaldi, rather than creating a second hidden Activity and destroying the share entry;
-- alternatively use an Android-supported execution mechanism that can genuinely continue the direct stage when the Activity is no longer visible, but hidden browser/WebView preparation still needs a valid lifecycle and must not bypass Android background-execution rules;
-- preserve the exact required semantics: Vivaldi remains visible, no playback, tab created immediately, preparation begins immediately, later dashboard shows progress/READY without requiring manual app open;
-- add technical lifecycle/progress diagnostics if needed (e.g. persisted stage timestamps/state transitions) so the next device test can distinguish “Activity never created”, “created then destroyed”, “direct resolver never started”, and “browser stage never started” without asking for media content.
+The exact coupling found in code was:
+- `BackgroundShareActivity` created the tab and delegated work to a second hidden Activity;
+- if that Activity handoff did not survive, the tab stayed QUEUED;
+- MainActivity's dashboard primary action explicitly called `UnifiedPreparationCoordinator.prepareNow()` for a non-RESOLVING tab, making card selection a reliable trigger;
+- WorkManager could perform direct resolution independently, but an ordinary direct miss called `browserStageNeeded()`, whose browser-capable continuation required a usable Activity lifecycle.
+
+## Current BG architecture change — self-owned share preparation
+A focused successor implementation is being prepared on top of `main` with this architecture:
+- the exported `BackgroundShareActivity` is no longer a tiny trampoline;
+- it creates the persistent tab itself, records preparation requested, immediately moves the tab to `RESOLVING`, and owns direct resolution;
+- it moves **its own already-created transparent document task** behind Vivaldi instead of launching a second preparer and then destroying the share entry;
+- the same Activity owns a hidden WebView and automatically runs the safe browser-assisted discovery stage after an ordinary direct miss;
+- no normal BG-share path needs `BackgroundPreparationActivity` to be created before work can start;
+- `BackgroundPreparationActivity` remains for retry/preload/process-recovery paths only;
+- `android:noHistory` is removed from `BackgroundShareActivity`, because noHistory conflicts with intentionally keeping that Activity alive after it is moved behind Vivaldi;
+- each explicit BG share keeps its own document task, so multiple shares may prepare independently;
+- no ExoPlayer is created and no background playback is added.
+
+### Tab-open decoupling
+Dashboard card selection is no longer the normal preparation trigger:
+- READY -> Play/Continue;
+- NEEDS_ATTENTION -> explicit Browser Step because genuine interaction may be required;
+- ERROR -> explicit retry/recovery remains available;
+- QUEUED/RESOLVING -> the primary card action is disabled/inert and does **not** call `prepareNow()`.
+
+This gives a strong code-path proof for the next QA build: ordinary BG preparation must have started at share time, because clicking a queued card can no longer start it.
+
+### Local technical diagnostics
+`VideoTabStore` now persists non-content diagnostics for new/recovery preparation attempts:
+- created timestamp;
+- preparation requested timestamp;
+- preparation host created timestamp;
+- direct resolver started/finished timestamps;
+- browser stage requested timestamp;
+- browser WebView created timestamp;
+- browser discovery started timestamp;
+- READY timestamp;
+- last technical preparation stage + timestamp.
+
+The dashboard shows a compact local marker such as `tech DIRECT_STARTED +1s` or `tech BROWSER_DISCOVERY_STARTED +4s`. These fields contain no media imagery/content, credentials, page text or thumbnail data.
 
 ## CI history for #187 pass
 - #179 FAILED at Kotlin compile only: after moving `ResolveTabWorker`, one call referenced `preloadNext` without `TabPreparationManager.`. Fixed in `4ab2c978f6e632e5cc65f4bc28533168daccccee`.
@@ -113,12 +142,13 @@ Important implication for the next implementation:
 - Build #187 is **not** considered a successful BG fix despite CI PASS.
 
 ## Current development priority
-1. Fix the BG lifecycle/execution architecture before asking for another broad QA pass.
-2. Required proof for the next build: after selecting `BG - External Player`, persisted tab state must leave QUEUED and enter a real preparation stage without the user manually opening ExternalPlayer.
-3. Prefer an architecture with fewer Activity handoffs; investigate making `BackgroundShareActivity` itself own direct + hidden-browser preparation while its transparent task is moved behind Vivaldi.
-4. Add non-content technical diagnostics/state timestamps if needed to prove where BG execution stops on-device.
-5. Preserve no-background-playback and all protected resolver/ranking behavior.
-6. Only after BG is fixed, resume the remaining #187 checks (dashboard gestures, Back navigation, HH quality, buffering) unless the user voluntarily reports them earlier.
+1. Finish and compile the self-owned `BackgroundShareActivity` BG lifecycle change.
+2. Verify by code inspection that BG share itself records PREPARATION_REQUESTED -> RESOLVING/DIRECT_STARTED without MainActivity/card selection.
+3. Verify ordinary direct failure continues automatically into the same share Activity's safe hidden-WebView browser stage.
+4. Preserve candidate ranking, quality policy, protected controls, no-background-playback, local title and thumbnail behavior.
+5. Run GitHub Actions and do not designate a QA APK until CI passes.
+6. After CI passes, update both state files with exact commit/run/artifact details and give one focused device test for BG preparation-before-app/tab-open only.
+7. Only after BG is fixed, resume remaining #187 checks (dashboard gestures, Back navigation, HH quality, buffering) unless the user volunteers results earlier.
 
 ## QA format
 Whenever asking user to test, provide EXACTLY:

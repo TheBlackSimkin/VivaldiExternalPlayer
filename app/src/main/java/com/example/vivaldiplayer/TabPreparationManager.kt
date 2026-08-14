@@ -19,10 +19,11 @@ import java.util.concurrent.TimeUnit
 /**
  * Android-managed direct/network preparation fallback.
  *
- * The browser-capable Activity remains the richer preparation engine. WorkManager
- * keeps useful progress possible after process restart or when Android refuses a
- * hidden Activity launch. Ordinary yt-dlp misses are QUEUED for browser discovery,
- * not turned into errors just because the direct route could not resolve them.
+ * Normal BG shares now prepare inside BackgroundShareActivity itself. WorkManager
+ * remains important for process restart or an unexpectedly destroyed preparation
+ * host. It can always perform the direct/network stage without any dashboard/tab
+ * selection. A normal direct miss is recorded as browser-stage-needed; the richer
+ * browser Activity may resume later when Android gives us an Activity lifecycle.
  */
 object TabPreparationManager {
     private const val WORK_PREFIX = "prepare-video-tab-"
@@ -36,6 +37,9 @@ object TabPreparationManager {
     fun enqueue(context: Context, tabId: String, replace: Boolean = false) {
         val tab = VideoTabStore.get(tabId) ?: return
         if (tab.sourceUrl.isBlank() || tab.isReady) return
+
+        VideoTabStore.markPreparationRequested(tabId)
+        VideoTabStore.markTechnicalStage(tabId, "WORKER_ENQUEUED")
 
         val request = OneTimeWorkRequestBuilder<ResolveTabWorker>()
             .setInputData(workDataOf(ResolveTabWorker.KEY_TAB_ID to tabId))
@@ -62,6 +66,7 @@ object TabPreparationManager {
 
     fun retry(context: Context, tabId: String) {
         VideoTabStore.markQueued(tabId)
+        VideoTabStore.markPreparationRequested(tabId)
         if (context is Activity) {
             UnifiedPreparationCoordinator.retry(context, tabId)
         } else {
@@ -104,6 +109,8 @@ class ResolveTabWorker(
         }
 
         VideoTabStore.markResolving(tabId)
+        VideoTabStore.markTechnicalStage(tabId, "WORKER_STARTED")
+        VideoTabStore.markDirectResolverStarted(tabId)
 
         return runCatching {
             withContext(Dispatchers.IO) {
@@ -114,6 +121,8 @@ class ResolveTabWorker(
             }
         }.fold(
             onSuccess = { json ->
+                VideoTabStore.markDirectResolverFinished(tabId)
+
                 runCatching { ResolvedMedia.fromJson(json) }
                     .onSuccess { VideoTabStore.markReady(tabId, json) }
                     .onFailure { VideoTabStore.markError(tabId, it.message ?: "Invalid resolver result") }
@@ -127,7 +136,9 @@ class ResolveTabWorker(
                 }
             },
             onFailure = { error ->
+                VideoTabStore.markDirectResolverFinished(tabId)
                 val technical = (error.message ?: error.toString()).take(500)
+
                 when {
                     isHardProtectedFailure(technical) -> {
                         VideoTabStore.markError(tabId, technical)
@@ -138,6 +149,7 @@ class ResolveTabWorker(
                         AppSettings.networkRetryEnabled(applicationContext) &&
                         runAttemptCount < AppSettings.MAX_TRANSIENT_RETRIES -> {
                         VideoTabStore.markQueued(tabId, "Temporary network failure; retry scheduled")
+                        VideoTabStore.markTechnicalStage(tabId, "WORKER_NETWORK_RETRY")
                         Result.retry()
                     }
 
@@ -153,7 +165,13 @@ class ResolveTabWorker(
                          * messages. The browser stage may load the ordinary page,
                          * but its consent automation still refuses CAPTCHA, login,
                          * payment, region and DRM controls.
+                         *
+                         * WorkManager itself does not own a WebView. Mark the exact
+                         * stage and ask the coordinator for the next valid Activity
+                         * lifecycle instead of pretending direct resolution was READY.
                          */
+                        VideoTabStore.markBrowserStageRequested(tabId)
+                        VideoTabStore.markTechnicalStage(tabId, "WORKER_BROWSER_STAGE_NEEDED")
                         UnifiedPreparationCoordinator.browserStageNeeded(tabId, technical)
                         Result.success()
                     }

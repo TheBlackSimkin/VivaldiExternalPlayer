@@ -28,6 +28,10 @@ import java.util.Locale
  * The dashboard also refreshes preparation states while visible. `gestureActive`
  * prevents that periodic refresh from calling notifyDataSetChanged in the middle
  * of a long-press drag or swipe, which would otherwise cancel the gesture.
+ *
+ * For the focused BG lifecycle QA, cards also show one compact local `tech ...`
+ * marker. It is based only on persisted lifecycle timestamps/stage names; it does
+ * not expose media content, thumbnails, page text or credentials.
  */
 class TabDashboardAdapter(
     private val context: Context,
@@ -158,7 +162,13 @@ class TabDashboardAdapter(
         }
 
         holder.primary.text = primaryActionLabel(tab)
-        holder.primary.isEnabled = tab.preparationState != VideoTabStore.PreparationState.RESOLVING
+        holder.primary.isEnabled = when (tab.preparationState) {
+            VideoTabStore.PreparationState.READY,
+            VideoTabStore.PreparationState.NEEDS_ATTENTION,
+            VideoTabStore.PreparationState.ERROR -> true
+            VideoTabStore.PreparationState.QUEUED,
+            VideoTabStore.PreparationState.RESOLVING -> false
+        }
         holder.primary.setOnClickListener { onPrimary(items.getOrNull(holder.bindingAdapterPosition) ?: tab) }
 
         val showBrowser = tab.preparationState == VideoTabStore.PreparationState.ERROR
@@ -236,7 +246,7 @@ class TabDashboardAdapter(
 
         /*
          * Pending tabs may not have a page title yet. Showing only the local host
-         * is technical metadata and makes several QUEUED tabs distinguishable
+         * is technical metadata and makes several pending tabs distinguishable
          * without pretending we already resolved their media/title.
          */
         val host = runCatching { Uri.parse(tab.sourceUrl).host.orEmpty() }.getOrDefault("")
@@ -246,6 +256,8 @@ class TabDashboardAdapter(
     private fun dashboardDetails(tab: VideoTabStore.VideoTab): String {
         val details = mutableListOf(stateLabel(tab.preparationState))
         if (tab.positionMs > 0L) details += formatPosition(tab.positionMs)
+
+        technicalStageLabel(tab)?.let(details::add)
 
         if (tab.isReady) {
             tab.manualQualityHeight?.let {
@@ -260,6 +272,18 @@ class TabDashboardAdapter(
         return details.joinToString(" • ")
     }
 
+    /**
+     * Example: `tech DIRECT_STARTED +1s`.
+     * The relative time is measured from tab creation and remains useful even if
+     * the app is opened much later, after preparation has already completed.
+     */
+    private fun technicalStageLabel(tab: VideoTabStore.VideoTab): String? {
+        val stage = tab.lastTechnicalPreparationStage.trim().takeIf { it.isNotBlank() } ?: return null
+        val at = tab.lastTechnicalStageAtMs.takeIf { it > 0L } ?: return "tech $stage"
+        val elapsedSeconds = ((at - tab.createdAtMs).coerceAtLeast(0L) / 1000L)
+        return "tech $stage +${elapsedSeconds}s"
+    }
+
     private fun primaryActionLabel(tab: VideoTabStore.VideoTab): String = when {
         tab.isReady && tab.positionMs > 0L -> context.getString(R.string.dashboard_continue)
         tab.isReady -> context.getString(R.string.dashboard_play)
@@ -268,7 +292,7 @@ class TabDashboardAdapter(
         tab.preparationState == VideoTabStore.PreparationState.RESOLVING ->
             context.getString(R.string.tab_state_resolving)
         tab.preparationState == VideoTabStore.PreparationState.ERROR -> context.getString(R.string.retry)
-        else -> context.getString(R.string.dashboard_prepare)
+        else -> context.getString(R.string.tab_state_queued)
     }
 
     private fun stateLabel(state: VideoTabStore.PreparationState): String = when (state) {

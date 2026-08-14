@@ -21,10 +21,13 @@ import kotlinx.coroutines.withContext
 /**
  * Main ExternalPlayer screen and first-class persistent tab dashboard.
  *
- * Build #162 used hand-written card touch listeners plus arrow buttons. Real
- * device QA showed that NestedScrollView could swallow the swipe and that arrow
- * reordering was uncomfortable. This screen now delegates tab interactions to
- * RecyclerView + ItemTouchHelper:
+ * The dashboard is OBSERVATION/PLAYBACK UI, not the normal BG-preparation
+ * trigger. A BG share must already have requested and started preparation before
+ * this Activity exists. Selecting a QUEUED/RESOLVING card therefore does not
+ * call prepareNow(). READY plays, NEEDS_ATTENTION exposes the genuine Browser
+ * Step, and ERROR keeps an explicit recovery retry.
+ *
+ * Dashboard gestures remain RecyclerView + ItemTouchHelper:
  * - long-press a card and drag vertically to reorder;
  * - swipe a card sideways to close;
  * - no arrow buttons.
@@ -89,6 +92,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+
+        /*
+         * This host registration is only for retry/preload/process-recovery work.
+         * Normal BG shares already own their preparation in BackgroundShareActivity.
+         */
         UnifiedPreparationCoordinator.onHostResumed(this)
         TabThumbnailWarmup.warm(this)
         refreshDashboard()
@@ -221,18 +229,21 @@ class MainActivity : AppCompatActivity() {
                     .putExtra(TabbedPlayerApplication.EXTRA_TAB_ID, tab.id)
             )
 
+            /* Genuine interaction may be required only after automatic browser work stopped safely. */
             tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION ->
                 launchBrowserResolver(tab.sourceUrl, tab.id)
 
+            /* ERROR keeps an explicit recovery path, but normal BG preparation never depends on it. */
             tab.preparationState == VideoTabStore.PreparationState.ERROR -> {
                 UnifiedPreparationCoordinator.retry(this, tab.id)
                 refreshDashboard()
             }
 
-            tab.preparationState != VideoTabStore.PreparationState.RESOLVING -> {
-                UnifiedPreparationCoordinator.prepareNow(this, tab.id)
-                refreshDashboard()
-            }
+            /*
+             * QUEUED/RESOLVING cards are deliberately inert. A card click must
+             * never be the event which makes ordinary BG preparation begin.
+             */
+            else -> Unit
         }
     }
 
