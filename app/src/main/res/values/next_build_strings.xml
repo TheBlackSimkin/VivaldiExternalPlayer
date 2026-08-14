@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="open_in_external_player">Add to External Player</string>
-    <string name="add_to_external_player">Add to External Player in background</string>
+    <string name="open_in_external_player">ExternalPlayer</string>
+    <string name="add_to_external_player">BG - External Player</string>
     <string name="added_to_external_player">Added — preparing in background</string>
     <string name="open_saved_tabs">Open saved tabs</string>
     <string name="open_saved_tabs_count">Open tabs (%1$d)</string>
@@ -40,4 +40,11 @@
     <string name="try_another_detected_video">Try another detected video</string>
     <string name="temporary_network_retry">Temporary network problem — retrying…</string>
     <string name="retrying_playback">Retrying playback…</string>
+
+    <!-- Polished home/tab UI. -->
+    <string name="home_brand">ExternalPlayer</string>
+    <string name="home_tagline">Fast private playback from your browser</string>
+    <string name="home_tabs_section">Your tabs</string>
+    <string name="home_manual_section">Open a link manually</string>
+    <string name="tab_thumbnail_pending">Preview appears after playback starts</string>
 </resources>
