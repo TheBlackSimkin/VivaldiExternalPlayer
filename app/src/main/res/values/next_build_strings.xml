@@ -31,6 +31,21 @@
     <string name="clear">Clear</string>
     <string name="saved_tabs_cleared">Saved tabs cleared</string>
 
+    <!--
+      Operations log is a QA/debugging export. It contains lifecycle/state text
+      only; source code deliberately omits page bodies, thumbnails, frames,
+      request headers, cookies and credentials.
+    -->
+    <string name="share_operations_log">Share operations log</string>
+    <string name="operations_log_subject">ExternalPlayer operations log</string>
+    <string name="operations_log_share_chooser">Share operations log</string>
+
+    <!-- Low-priority notification required while user-requested BG preparation is active. -->
+    <string name="bg_preparation_notification_title">Preparing shared tabs</string>
+    <string name="bg_preparation_notification_text">ExternalPlayer is preparing shared links in the background.</string>
+    <string name="bg_preparation_channel_name">Background preparation</string>
+    <string name="bg_preparation_channel_description">Shown while shared links are being prepared.</string>
+
     <string name="about">About / Build info</string>
     <string name="about_build_details">Vivaldi External Player\n\nVersion: %1$s (%2$d)\nGit commit: %3$s\nGitHub Actions build: %4$s\n\nPlayback is foreground-only. Tab/session data and settings are stored locally on this device.</string>
 

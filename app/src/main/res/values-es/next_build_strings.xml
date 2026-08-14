@@ -31,6 +31,15 @@
     <string name="clear">Borrar</string>
     <string name="saved_tabs_cleared">Pestañas guardadas borradas</string>
 
+    <string name="share_operations_log">Compartir registro de operaciones</string>
+    <string name="operations_log_subject">Registro de operaciones de ExternalPlayer</string>
+    <string name="operations_log_share_chooser">Compartir registro de operaciones</string>
+
+    <string name="bg_preparation_notification_title">Preparando pestañas compartidas</string>
+    <string name="bg_preparation_notification_text">ExternalPlayer está preparando enlaces compartidos en segundo plano.</string>
+    <string name="bg_preparation_channel_name">Preparación en segundo plano</string>
+    <string name="bg_preparation_channel_description">Se muestra mientras se preparan los enlaces compartidos.</string>
+
     <string name="about">Acerca de / Información de compilación</string>
     <string name="about_build_details">Vivaldi External Player\n\nVersión: %1$s (%2$d)\nCommit Git: %3$s\nCompilación de GitHub Actions: %4$s\n\nLa reproducción funciona solo en primer plano. Los datos de pestañas/sesión y los ajustes se guardan localmente en este dispositivo.</string>
 

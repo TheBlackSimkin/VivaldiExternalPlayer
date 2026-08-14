@@ -21,19 +21,61 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     companion object {
         const val EXTRA_TAB_ID = "video_tab_id"
         private const val TAB_BUTTON_TAG = "vivaldi_external_player_tabs_button"
+        private const val DESTROYED_HOST_RECOVERY_WINDOW_MS = 10_000L
     }
 
     private val activityTabs = WeakHashMap<Activity, String>()
+
+    /**
+     * Token for each user-launched BG share Activity. The token is deliberately
+     * independent from the tab ID: Activity lifecycle callbacks do not need to
+     * reach into BackgroundShareActivityV2's private fields.
+     */
+    private val bgShareTokens = WeakHashMap<Activity, String>()
+
     private var lastBrowserPageTitle: String = ""
 
     override fun onCreate() {
         super.onCreate()
         VideoTabStore.initialize(this)
+
+        /*
+         * VideoTabStore truthfully converts any stale RESOLVING state to QUEUED
+         * after a process restart. For the newer self-owned V2 BG share host we
+         * must NOT then silently hand that tab to the legacy direct-only Worker:
+         * its WebView lifecycle was interrupted, so report a technical ERROR and
+         * let QA see the interruption explicitly in the operations log.
+         *
+         * A V2 tab is distinguishable from older retry/preload paths because it
+         * records both a preparation host creation and its normally sized WebView
+         * creation before it starts work.
+         */
+        convertInterruptedV2ProcessSessionsToError()
+
         TabPreparationManager.resumePending(this)
         registerActivityLifecycleCallbacks(this)
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
+        if (activity is BackgroundShareActivityV2) {
+            /*
+             * Android calls Application.ActivityLifecycleCallbacks after the
+             * Activity's onCreate() returns. V2 has already created the persistent
+             * tab and started direct preparation, but its posted moveTaskToBack()
+             * has not run yet. Starting the foreground keep-alive here therefore
+             * remains directly tied to the user's explicit BG share action.
+             */
+            val token = "bg-${System.identityHashCode(activity)}-${System.currentTimeMillis()}"
+            bgShareTokens[activity] = token
+            OperationLog.record(
+                this,
+                event = "BG_SHARE_ACTIVITY_CREATED",
+                detail = "token=$token"
+            )
+            BackgroundPreparationKeepAliveService.acquire(this, token)
+            return
+        }
+
         if (activity is BackgroundPreparationActivity) {
             UnifiedPreparationCoordinator.onPreparationCreated(activity)
             return
@@ -57,7 +99,17 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         activity.window.decorView.post { attachTabButton(activity) }
     }
 
+    override fun onActivityStarted(activity: Activity) {
+        if (activity is BackgroundShareActivityV2) {
+            logBgLifecycle(activity, "BG_SHARE_ACTIVITY_STARTED")
+        }
+    }
+
     override fun onActivityResumed(activity: Activity) {
+        if (activity is BackgroundShareActivityV2) {
+            logBgLifecycle(activity, "BG_SHARE_ACTIVITY_RESUMED")
+            return
+        }
         if (activity !is PlayerActivity) return
 
         UnifiedPreparationCoordinator.onHostResumed(activity)
@@ -80,6 +132,11 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     }
 
     override fun onActivityPaused(activity: Activity) {
+        if (activity is BackgroundShareActivityV2) {
+            logBgLifecycle(activity, "BG_SHARE_ACTIVITY_PAUSED")
+            return
+        }
+
         if (activity is PlayerActivity) UnifiedPreparationCoordinator.onHostPaused(activity)
 
         when (activity) {
@@ -88,7 +145,66 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         }
     }
 
+    override fun onActivityStopped(activity: Activity) {
+        if (activity is BackgroundShareActivityV2) {
+            logBgLifecycle(activity, "BG_SHARE_ACTIVITY_STOPPED")
+        }
+    }
+
     override fun onActivityDestroyed(activity: Activity) {
+        if (activity is BackgroundShareActivityV2) {
+            val token = bgShareTokens.remove(activity)
+            OperationLog.record(
+                this,
+                event = "BG_SHARE_ACTIVITY_DESTROYED",
+                detail = "token=${token ?: "unknown"} changingConfig=${activity.isChangingConfigurations}"
+            )
+
+            token?.let(BackgroundPreparationKeepAliveService::release)
+
+            /*
+             * #202's Activity-level onDestroy used to silently requeue an
+             * unfinished tab through WorkManager. That returned the app to the
+             * older architecture which cannot own the browser WebView and could
+             * later end at Browser Step only when another foreground Activity
+             * appeared.
+             *
+             * Cancel that legacy recovery immediately. An unexpectedly destroyed
+             * V2 host is now a truthful technical ERROR. The operations log keeps
+             * the preceding lifecycle so QA can tell us where the interruption
+             * occurred instead of hiding it behind several minutes of retries.
+             */
+            if (!activity.isChangingConfigurations) {
+                val now = System.currentTimeMillis()
+                VideoTabStore.allTabs()
+                    .filter { tab ->
+                        tab.preparationState == VideoTabStore.PreparationState.QUEUED &&
+                            tab.lastTechnicalPreparationStage == "BG_HOST_DESTROYED_RECOVERY_QUEUED" &&
+                            now - tab.updatedAtMs in 0..DESTROYED_HOST_RECOVERY_WINDOW_MS
+                    }
+                    .forEach { tab ->
+                        TabPreparationManager.cancelScheduled(this, tab.id)
+                        VideoTabStore.markError(
+                            tab.id,
+                            "BG preparation Activity was destroyed before automatic browser discovery completed"
+                        )
+                        VideoTabStore.markTechnicalStage(
+                            tab.id,
+                            "BG_HOST_DESTROYED_NO_LEGACY_FALLBACK"
+                        )
+                        OperationLog.record(
+                            this,
+                            event = "LEGACY_RECOVERY_CANCELLED",
+                            tabId = tab.id,
+                            detail = "Destroyed V2 host is an ERROR; WorkManager/browser-step fallback was cancelled"
+                        )
+                    }
+            }
+
+            activityTabs.remove(activity)
+            return
+        }
+
         if (activity is BackgroundPreparationActivity) {
             val tabId = activity.intent
                 .getStringExtra(BackgroundPreparationActivity.EXTRA_TAB_ID)
@@ -101,23 +217,18 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
 
                 when {
                     /*
-                     * A successful BG share should be as identifiable as possible
-                     * before the user later opens the dashboard. The hidden WebView
-                     * already saved the local page title in the READY payload. Start
-                     * best-effort local frame extraction now. This creates no
-                     * ExoPlayer and no audio/video playback.
+                     * A successful retry/preload should be as identifiable as
+                     * possible before the user later opens the dashboard. The
+                     * hidden WebView already saved the local page title in READY.
                      */
                     tab?.isReady == true && TabThumbnailCache.load(this, id) == null ->
                         TabThumbnailCapture.captureResolved(this, tab)
 
                     /*
-                     * If Android destroys the hidden Activity unexpectedly while
-                     * it is still RESOLVING, never leave a permanently false
-                     * "Preparing…" state. Configuration recreation is excluded
-                     * because Android will immediately create the replacement.
-                     * A real interruption returns to QUEUED and WorkManager gets a
-                     * direct/network recovery attempt. On the next foreground host,
-                     * the normal browser-capable stage may continue as needed.
+                     * This old preparer remains only for explicit retry/preload
+                     * recovery paths. Its historical WorkManager recovery behavior
+                     * is intentionally preserved here; normal BG shares no longer
+                     * depend on this Activity.
                      */
                     tab?.preparationState == VideoTabStore.PreparationState.RESOLVING &&
                         !activity.isChangingConfigurations -> {
@@ -128,6 +239,47 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             }
         }
         activityTabs.remove(activity)
+    }
+
+    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+
+    /**
+     * A process death bypasses Activity.onDestroy(), so handle that second case
+     * before resumePending() can revive the old WorkManager path.
+     */
+    private fun convertInterruptedV2ProcessSessionsToError() {
+        VideoTabStore.allTabs()
+            .filter { tab ->
+                tab.preparationState == VideoTabStore.PreparationState.QUEUED &&
+                    tab.lastTechnicalPreparationStage == "PROCESS_RESTART_QUEUED" &&
+                    tab.preparationHostCreatedAtMs > 0L &&
+                    tab.browserWebViewCreatedAtMs > 0L &&
+                    tab.readyAtMs <= 0L
+            }
+            .forEach { tab ->
+                VideoTabStore.markError(
+                    tab.id,
+                    "BG preparation process was interrupted before completion"
+                )
+                VideoTabStore.markTechnicalStage(
+                    tab.id,
+                    "PROCESS_RESTART_BG_HOST_ERROR"
+                )
+                OperationLog.record(
+                    this,
+                    event = "PROCESS_RESTART_BG_HOST_ERROR",
+                    tabId = tab.id,
+                    detail = "V2 BG session was interrupted; legacy WorkManager recovery intentionally skipped"
+                )
+            }
+    }
+
+    private fun logBgLifecycle(activity: Activity, event: String) {
+        OperationLog.record(
+            this,
+            event = event,
+            detail = "token=${bgShareTokens[activity] ?: "unknown"} finishing=${activity.isFinishing}"
+        )
     }
 
     private fun captureBrowserPageTitle(activity: BrowserResolverActivity) {
@@ -241,8 +393,4 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
 
     private fun Int.dp(activity: Activity): Int =
         (this * activity.resources.displayMetrics.density).toInt()
-
-    override fun onActivityStarted(activity: Activity) = Unit
-    override fun onActivityStopped(activity: Activity) = Unit
-    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 }

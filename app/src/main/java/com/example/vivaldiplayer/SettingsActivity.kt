@@ -73,6 +73,22 @@ class SettingsActivity : AppCompatActivity() {
             setOnClickListener { confirmClearTabs() }
         })
 
+        /*
+         * Development/QA helper requested after build #202: export the ordered
+         * lifecycle journal as ordinary text through Android's share sheet.
+         * The log deliberately contains technical state only — no thumbnails,
+         * page body, media frames, cookies, request headers or credentials.
+         */
+        content.addView(Button(this).apply {
+            isAllCaps = false
+            text = getString(R.string.share_operations_log)
+            setTextColor(color(R.color.app_text_primary))
+            backgroundTintList = ColorStateList.valueOf(color(R.color.app_surface_raised))
+            setOnClickListener { OperationLog.share(this@SettingsActivity) }
+        }, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(8)
+        })
+
         content.addView(Button(this).apply {
             isAllCaps = false
             text = getString(R.string.about)

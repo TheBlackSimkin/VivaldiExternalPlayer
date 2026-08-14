@@ -2,6 +2,15 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+      The BG share host now gets a short foreground-process lease while it owns
+      direct/WebView preparation. This is NOT playback: the service never creates
+      ExoPlayer and is declared only as dataSync because it keeps user-requested
+      network preparation alive while Vivaldi remains in front.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
     <application
         android:name=".TabbedPlayerApplication"
         android:allowBackup="false"
@@ -20,6 +29,18 @@
         <activity android:name=".BrowserResolverActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
+
+        <!--
+          Short-lived keep-alive for a user-requested BG preparation session.
+          The Activity still owns yt-dlp/WebView discovery; this service only
+          protects process lifetime and records technical lifecycle state.
+          It never owns PlayerActivity, Media3 or ExoPlayer.
+        -->
+        <service
+            android:name=".BackgroundPreparationKeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync"
+            android:stopWithTask="false" />
 
         <!--
           This non-exported preparer remains for foreground retry/preload and
@@ -43,6 +64,10 @@
           adds a bounded direct budget plus browser-like hidden discovery (normal
           layout + Service Worker observation). The Activity remains excluded from
           Recents and moves behind Vivaldi; it never owns ExoPlayer/playback.
+
+          The application lifecycle now starts the short foreground preparation
+          lease before this Activity's posted moveTaskToBack() runs. This prevents
+          Android from silently demoting the process into the old recovery path.
 
           Do not add android:noHistory: Android must be allowed to keep this
           explicit share host alive while its preparation is in progress.
