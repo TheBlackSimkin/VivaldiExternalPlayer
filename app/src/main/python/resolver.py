@@ -1,14 +1,17 @@
 """Resolve a normal webpage URL into one or two Media3-friendly stream URLs.
 
-This module runs inside the Android app through Chaquopy.  It does NOT download
-video files.  yt-dlp is only asked to inspect the page and return a playable
+This module runs inside the Android app through Chaquopy. It does NOT download
+video files. yt-dlp is only asked to inspect the page and return a playable
 stream URL plus the request headers needed by the media server.
 
 The important policy in this file is intentionally conservative:
 - never bypass DRM;
 - never spoof geographic location;
 - prefer containers which Android Media3 commonly supports;
-- prefer 720p, then 1080p, then the best available quality below 1080p.
+- prefer 720p, then 1080p, then the best available quality below 1080p;
+- when yt-dlp reports a browser/challenge-style miss, return a neutral failure
+  so the Android layer can try its ordinary WebView resolver. The WebView layer
+  still refuses to automate CAPTCHA/login/payment/region/DRM controls.
 """
 
 import json
@@ -17,7 +20,7 @@ from typing import Any, Dict, Optional
 import yt_dlp
 
 
-# A normal mobile browser User-Agent.  This is used as an HTTP header only; it
+# A normal mobile browser User-Agent. This is used as an HTTP header only; it
 # does not enable yt-dlp's optional browser-impersonation subsystem.
 USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 "
@@ -28,8 +31,8 @@ SUPPORTED_QUALITIES = {"auto", "1080", "720", "480", "360"}
 
 
 # Media3 handles MP4 and WebM much more predictably than legacy containers such
-# as AVI.  Internet Archive exposed this weakness during testing: yt-dlp could
-# resolve a video but the player then had nothing useful to render.  These
+# as AVI. Internet Archive exposed this weakness during testing: yt-dlp could
+# resolve a video but the player then had nothing useful to render. These
 # selector fragments explicitly prefer Media3-friendly containers instead of
 # accepting any file only because its resolution is desirable.
 def _compatible_height_selector(height_expression: str) -> str:
@@ -44,7 +47,7 @@ def _compatible_height_selector(height_expression: str) -> str:
     3. WebM video + WebM audio.
     4. A combined WebM stream.
 
-    We do not add an unrestricted `/best` fallback here.  If a page only offers
+    We do not add an unrestricted `/best` fallback here. If a page only offers
     an unsupported legacy container, failing resolution and using the browser
     fallback is better than opening a blank player with an unusable source.
     """
@@ -84,7 +87,7 @@ def _format_selector(quality: str) -> str:
     height = int(quality)
 
     # A manual quality choice is treated as an upper bound after first trying
-    # the exact requested resolution.  This avoids unexpectedly jumping above
+    # the exact requested resolution. This avoids unexpectedly jumping above
     # the user's chosen limit.
     return "/".join(
         [
@@ -154,6 +157,48 @@ def _first_entry(info: Dict[str, Any]) -> Dict[str, Any]:
     return info
 
 
+def _normalize_direct_failure(error: Exception) -> Exception:
+    """Keep hard protected-access errors explicit; normalize browser misses.
+
+    Some extractors use words such as "login", "captcha" or "verify human" in
+    an error merely to explain why their direct HTTP extractor stopped. The
+    Android hidden/visible browser resolvers are allowed to load the ordinary
+    page afterwards, but they still must NOT solve or auto-click those protected
+    controls. Returning a neutral browser-fallback message avoids prematurely
+    classifying the tab as a terminal ERROR before that safe browser stage runs.
+    """
+
+    text = str(error)
+    lower = text.lower()
+
+    hard_protected_markers = (
+        "drm",
+        "paywall",
+        "subscription required",
+        "purchase required",
+        "geo-restricted",
+        "not available in your country",
+        "regional restriction",
+    )
+    if any(marker in lower for marker in hard_protected_markers):
+        return error
+
+    browser_fallback_markers = (
+        "captcha",
+        "verify you are human",
+        "verify you're human",
+        "anti-bot",
+        "login required",
+        "sign in to confirm",
+        "sign in to verify",
+        "cookies from browser",
+    )
+    if any(marker in lower for marker in browser_fallback_markers):
+        return RuntimeError("Direct resolver needs normal browser assistance")
+
+    return error
+
+
 def resolve(url: str, quality: str = "auto") -> str:
     """Resolve `url` and return a JSON string understood by PlayerActivity."""
 
@@ -182,13 +227,19 @@ def resolve(url: str, quality: str = "auto") -> str:
         "geo_bypass": False,
     }
 
-    with yt_dlp.YoutubeDL(options) as ydl:
-        raw = _first_entry(
-            ydl.extract_info(
-                url,
-                download=False,
+    try:
+        with yt_dlp.YoutubeDL(options) as ydl:
+            raw = _first_entry(
+                ydl.extract_info(
+                    url,
+                    download=False,
+                )
             )
-        )
+    except Exception as error:
+        normalized = _normalize_direct_failure(error)
+        if normalized is error:
+            raise
+        raise normalized from error
 
     if raw.get("has_drm") or raw.get("_has_drm"):
         raise ValueError(
