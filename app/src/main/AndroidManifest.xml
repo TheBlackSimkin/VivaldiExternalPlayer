@@ -44,15 +44,28 @@
             </intent-filter>
         </activity>
 
-        <activity android:name=".MainActivity" android:exported="true" android:label="@string/open_in_external_player">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+        <activity
+            android:name=".ForegroundShareActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:label="@string/open_in_external_player"
+            android:noHistory="true"
+            android:theme="@style/Theme.VivaldiExternalPlayer.Transparent">
             <intent-filter android:order="10">
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="text/plain" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:label="@string/open_in_external_player"
+            android:launchMode="singleTop">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
     </application>
