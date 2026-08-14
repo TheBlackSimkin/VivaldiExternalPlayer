@@ -142,6 +142,18 @@ After PH BG passes:
 9. If one link passes, test 2–3 PH links for browser-slot serialization on #215 or a later build whose resolver code is verified unchanged.
 10. No HH yet.
 
+## Priority override — 2026-08-14
+This section supersedes the older wording above about which UI items belong in the build immediately after #215.
+
+After the one-link #215 lifecycle result is captured, the **very next build must include all three of these items** while keeping resolver architecture unchanged unless #215 itself proves a resolver/lifecycle fix is required:
+1. persistent-tab UX correction **plus a genuine Recently closed / Restore tab feature** so closed-tab recovery is real rather than a redundant reload of the already-auto-restored open list;
+2. persistent app-language selector: System default / English / Español;
+3. launcher/logo refresh, preserving the white-E/purple identity while making the icon less boxy/more refined and purple more prominent.
+
+The secure `Report log on GitHub` shortcut remains approved, but it is **deferred until after those three required items**. Keep the existing Share operations log action in the meantime.
+
+#215 itself must remain unchanged for the current one-PH lifecycle test.
+
 ## QA format
 Whenever asking user to test, always provide exactly:
 1. one detailed code block containing steps, EXPECTED, RESULT;
