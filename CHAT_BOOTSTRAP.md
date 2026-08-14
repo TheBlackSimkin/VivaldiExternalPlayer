@@ -92,11 +92,29 @@ If Android unexpectedly destroys the self-owned BG Activity while still RESOLVIN
 - Build #192 is designated for **focused BG lifecycle device QA only**. CI is not proof that BG runtime behavior passed.
 - A later state-only commit recording #192 does not supersede the #192 app-code APK.
 
+## Share-target entry requirement — explicit verification before #192 QA
+This is a high-priority recurring failure mode and must be checked whenever share architecture changes:
+- `ExternalPlayer` must cause Android to launch `ForegroundShareActivity`, which explicitly starts/raises `MainActivity` with the shared URL. `MainActivity.acceptSharedUrl()` must immediately call the normal foreground `resolveAndPlay()` flow. The user should visibly see ExternalPlayer come to the foreground.
+- `BG - External Player` must cause Android to launch `BackgroundShareActivity`. That Activity itself must create the persistent tab and begin preparation, then move its own transparent task **into the background** so Vivaldi stays visible while preparation continues.
+- Do not describe a CI pass or a successful `startActivity()` call as device proof. Actual foreground raising and actual continued background execution still require device QA.
+
+English wording note: Portuguese `segundo plano` is naturally **“the background”** in this context, e.g. “the app keeps preparing the video in the background.”
+
+## Future launcher/logo direction — NOT part of #192
+On the next visual iteration, preserve the current logo identity/colors and letter concept, but refine it so it is:
+- less square / less boxy;
+- more stylized and fluid;
+- still clearly recognizable as the current logo family;
+- with the purple portions more noticeable/prominent.
+Do not change build #192 for this visual request.
+
 ## Current priority
-1. Test #192 only for whether BG tabs prepare before ExternalPlayer or any individual tab is manually opened.
-2. Add multiple BG tabs and do not click their cards before observing their eventual states/technical stages.
-3. If failure remains, report the exact visible `tech ...` marker for each tab; this should identify Activity/direct/browser lifecycle stopping points without media-content inspection.
-4. Do not resume broad #187 QA until BG is confirmed, unless the user volunteers results.
+1. Test #192 for both share-entry semantics first: `ExternalPlayer` visibly raises/opens the app and begins the foreground flow; `BG - External Player` leaves Vivaldi visible while the app's BG Activity actually starts preparation.
+2. For BG specifically, verify tabs prepare before ExternalPlayer or any individual tab is manually opened.
+3. Add multiple BG tabs and do not click their cards before observing their eventual states/technical stages.
+4. If failure remains, report the exact visible `tech ...` marker for each tab; this should identify Activity/direct/browser lifecycle stopping points without media-content inspection.
+5. Do not resume broad #187 QA until BG is confirmed, unless the user volunteers results.
+6. After the BG lifecycle is solved, include the requested logo refinement in a later visual iteration, not in #192.
 
 ## QA format
 Whenever asking user to test, always provide exactly:
