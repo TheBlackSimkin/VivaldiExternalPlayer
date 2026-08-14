@@ -5,13 +5,13 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Original External Player mark: a simple V silhouette. -->
+    <!-- Original ExternalPlayer mark: a bold E silhouette. -->
     <path
         android:fillColor="#FFFFFFFF"
-        android:pathData="M26,28 L40,28 L54,62 L68,28 L82,28 L61,80 L47,80 Z" />
+        android:pathData="M26,26 L80,26 L80,39 L42,39 L42,48 L70,48 L70,60 L42,60 L42,69 L80,69 L80,82 L26,82 Z" />
 
-    <!-- Play triangle identifies the app as a player without copying browser branding. -->
+    <!-- Red play triangle keeps the player purpose immediately recognizable. -->
     <path
         android:fillColor="#FFE64A3B"
-        android:pathData="M47,43 L47,65 L66,54 Z" />
+        android:pathData="M49,41 L49,67 L71,54 Z" />
 </vector>
