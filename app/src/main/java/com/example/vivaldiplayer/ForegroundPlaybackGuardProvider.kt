@@ -26,6 +26,7 @@ class ForegroundPlaybackGuardProvider : ContentProvider() {
         val app = context?.applicationContext as? Application ?: return false
         app.registerActivityLifecycleCallbacks(ForegroundPlaybackGuard)
         AdaptiveQualityRuntime.install(app)
+        PlayerNavigationRuntime.install(app)
         return true
     }
 
