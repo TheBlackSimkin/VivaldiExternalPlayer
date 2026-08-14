@@ -58,13 +58,13 @@ Implemented local-only persistent tab thumbnails:
 - no thumbnail pixels leave the device and the assistant must not inspect them.
 
 ### Share names
-English and Spanish share labels are now intentionally short:
+English and Spanish share labels are intentionally short:
 - normal: `ExternalPlayer`;
 - background: `BG - External Player`.
 Background intent-filter order remains 100 vs normal 10, but Android/Vivaldi controls final visual ordering.
 
 ### Icon
-Adaptive/legacy foreground mark changed from a white V silhouette to a bold white E silhouette while retaining the red play triangle and dark background.
+Adaptive/legacy foreground mark changed from V to a bold white E in build #143. After build #143 the user requested removing the red play triangle too. App-code commit `3b0f173d310772278a26cb17d1a11ec7309d9e79` replaces it with a hollow purple diamond accent over the E. The new icon contains no triangle.
 
 ### UI refresh
 - new dark ExternalPlayer palette and Material theme surfaces;
@@ -88,19 +88,27 @@ Adaptive/legacy foreground mark changed from a white V silhouette to a bold whit
 - #124 PASS with background-preparation and adaptive-quality fixes.
 - #136 PASS for refreshed home/tab UI plus active-tab thumbnail capture.
 - #142 PASS for finalized READY-tab thumbnail engine.
-- **#143 PASS** on app-code commit `2af936c6f58e919c303597c19c8513185277b72e`, including Settings/About refresh.
+- #143 PASS on app-code commit `2af936c6f58e919c303597c19c8513185277b72e`, including Settings/About refresh.
 - Build #143 debug artifact ID: `9203587518`.
-- GitHub artifact ZIP digest: `sha256:c44048e23ef13193a5c03169e9ed8b3e1f4dac9f4606f846fc8dd4fcfe4d8b8e`.
 - Extracted build #143 APK SHA-256: `c376301716ecc68b28412c4197a3e7e69c356514a1df0a974fc32b90b8fe13ea`.
+- Post-#143 icon-only app-code commit: `3b0f173d310772278a26cb17d1a11ec7309d9e79` (purple hollow diamond replacing red play triangle). Its next CI APK should supersede #143 for icon testing once compile/upload passes.
 
-State-file-only commits after #143 do not change the packaged Android code and do not require a new QA APK.
+## Recommended next development direction
+Before another large feature expansion, prioritize the tab/preparation experience:
+1. turn the tab switcher into a first-class visual tab dashboard/library with thumbnail grid/list modes, reordering, swipe/quick close, clearer READY/PREPARING/BROWSER STEP states, and direct retry/continue actions;
+2. unify every background/preload path behind the browser-capable preparation engine so feature 29 and explicit BG Add behave consistently;
+3. make quality state observable: show actual Media3-selected rendition after a manual switch and preserve manual quality per tab;
+4. then add player polish such as subtitle/audio-track selection where streams expose them;
+5. only after this reliability/UI pass consider Brave integration and other browsers.
+
+These are recommendations, not user-approved requirements yet.
 
 ## Current priority
-1. Next device QA should use build #143.
-2. First verify the unresolved #124 regressions: `ExternalPlayer`/`BG - External Player` share flow, Vivaldi staying foreground, real background preparation especially HH, no background playback, and actual manual quality switching.
-3. In the same focused pass verify new #143 features: E icon, refreshed home/settings/about UI, thumbnail cards, thumbnails appearing for READY tabs, tab close/cache behavior.
-4. Then resume remaining unreported persistence/background-stop/recovery/final-tab gates from the original consolidated QA.
-5. Signing activation later; Brave support later.
+1. Finish CI for the purple-diamond icon commit and use that newer APK for the next device QA.
+2. Next device QA should still verify the unresolved #124 regressions: share flow, Vivaldi staying foreground, real background preparation especially HH, no background playback, and actual manual quality switching.
+3. In the same focused pass verify the #143 thumbnail/UI features and new purple-diamond E icon.
+4. Then resume remaining unreported persistence/background-stop/recovery/final-tab gates.
+5. Signing activation later; Brave support later unless the user reprioritizes.
 
 ## QA format
 Whenever asking user to test, provide EXACTLY:
