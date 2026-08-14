@@ -24,8 +24,13 @@ import java.util.WeakHashMap
  * Build #162 gap fixed here:
  * some browser pages expose one URL per declared quality, but a selected sibling
  * URL can itself still contain adaptive tracks. PlayerActivity reloads that URL
- * with a numeric requestedQuality. We now detect that numeric request on every
+ * with a numeric requestedQuality. We detect that numeric request on every
  * TrackGroup refresh and force the exact Media3 track as well.
+ *
+ * Automatic verification re-applies do NOT re-seek. Repeated tiny re-seeks were
+ * unnecessary after a fresh TrackGroup arrived and could cause extra buffering.
+ * Only a direct user manual selection asks Media3 to discard old rendition data
+ * promptly with one tiny position refresh.
  */
 object AdaptiveQualityRuntime {
     private var installed = false
@@ -184,7 +189,7 @@ object AdaptiveQualityRuntime {
             reapplyAttempts += 1
             activity.window.decorView.postDelayed({
                 if (!activity.isFinishing && !activity.isDestroyed && manualHeight == height) {
-                    applyExactHeight(height, persist = false)
+                    applyExactHeight(height, persist = false, forceChunkRefresh = false)
                 }
             }, delayMs)
         }
@@ -208,13 +213,25 @@ object AdaptiveQualityRuntime {
                 .setTitle(R.string.video_quality)
                 .setSingleChoiceItems(labels.toTypedArray(), checkedIndex) { dialog, which ->
                     dialog.dismiss()
-                    if (which == 0) applyAutomaticPolicy() else applyExactHeight(heights[which - 1])
+                    if (which == 0) {
+                        applyAutomaticPolicy()
+                    } else {
+                        applyExactHeight(
+                            height = heights[which - 1],
+                            persist = true,
+                            forceChunkRefresh = true
+                        )
+                    }
                 }
                 .setNegativeButton(R.string.cancel, null)
                 .show()
         }
 
-        private fun applyExactHeight(height: Int, persist: Boolean = true) {
+        private fun applyExactHeight(
+            height: Int,
+            persist: Boolean = true,
+            forceChunkRefresh: Boolean = persist
+        ) {
             val activePlayer = player ?: return
             val target = options(activePlayer.currentTracks)
                 .filter { it.height == height }
@@ -240,11 +257,18 @@ object AdaptiveQualityRuntime {
 
             activePlayer.trackSelectionParameters = parameterBuilder.build()
 
-            /* Release old buffered rendition chunks promptly without losing position. */
-            val position = activePlayer.currentPosition.coerceAtLeast(0L)
-            val duration = activePlayer.duration
-            val reseek = if (duration > 0L && position + 1L >= duration) position else position + 1L
-            activePlayer.seekTo(reseek)
+            if (forceChunkRefresh) {
+                /*
+                 * One tiny refresh on an explicit user switch helps Media3 stop
+                 * consuming an already-buffered old rendition. Verification
+                 * retries skip this entirely to avoid repeated rebuffer cycles.
+                 */
+                val position = activePlayer.currentPosition.coerceAtLeast(0L)
+                val duration = activePlayer.duration
+                val reseek = if (duration > 0L && position + 1L >= duration) position else position + 1L
+                activePlayer.seekTo(reseek)
+            }
+
             updateButtonLabel()
         }
 
