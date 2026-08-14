@@ -22,90 +22,71 @@ Operations log proved this phone destroys a preparation Activity almost immediat
 Private virtual display was created, but Android denied launching the first normal app Activity onto it (`VIRTUAL_PREP_LAUNCH_FAILED`). Do not retry with privileged `ACTIVITY_EMBEDDING` or system permissions.
 
 ### #215 — first core automatic PH BG success
-App-code commit `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`.
-GitHub Actions #215 PASS; APK SHA-256 `7aea335b8a2f941898ec5737804a89ddb719deb301e156f555408da15d57133e`.
+App-code commit `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`; CI #215 PASS.
 
-Architecture: BG share creates the tab and foreground lease immediately, then launches the preparation Activity on the default display. That Activity stays RESUMED, owns a full WebView, starts direct resolution and automatic browser fallback without MainActivity/card involvement.
-
-One-PH device QA result:
-- automatic preparation **worked before ExternalPlayer/card open**;
-- dashboard later showed `READY +9s`;
+One-PH device QA:
+- automatic preparation completed **before ExternalPlayer/card open**;
+- dashboard showed `READY +9s`;
 - automatic actual quality reported 720p in this run;
-- log showed `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED`, direct miss, then automatic browser request;
-- however Vivaldi touch/scroll was blocked for ~3–5 seconds after share;
-- a brief ~0.5s visible preparation/video-frame flash appeared. Never inspect or describe that frame/content.
+- Activity reached `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED` and automatic browser fallback started after direct miss;
+- Vivaldi touch/scroll was blocked ~3–5s after share;
+- brief ~0.5s visible preparation/video-frame flash occurred. Never inspect/describe that content.
 
-Authoritative log anchors:
-- 19:16:17.962 `BG_SHARE_OVERLAY_HANDOFF_STARTED`;
-- 19:16:17.984 `PRIMARY_OVERLAY_PREP_LAUNCH_REQUESTED`;
-- 19:16:18.087 preparation Activity created on display 0 with `alpha=0.01`;
-- 19:16:18.434 `DIRECT_STARTED`;
-- 19:16:18.449 Activity RESUMED;
-- 19:16:20.138 direct finished;
-- 19:16:20.140 browser requested;
-- later dashboard proved READY around +9s.
+Interpretation: **core BG preparation PASS; alpha-0.01 overlay UX FAIL**.
 
-Interpretation: **core BG preparation PASS; transparent-overlay UX FAIL**.
+## Build #225 — current focused QA target
+App-code bundle commit `2525520b3b6c140db3818337456569f59725d584`; corrected build head `4a6a2225eae86e0dbae0e5e02ac6c1f2bc434890`.
 
-## Post-#215 app-code bundle
-App-code commit `2525520b3b6c140db3818337456569f59725d584` contains:
-- alpha `0.01 -> 0.0` while keeping the successful RESUMED + NOT_TOUCHABLE preparation model;
-- persisted Recently closed history (max 12) + restore UI;
-- System default / English / Español app-language selector;
-- refreshed white-E/purple icon with stronger purple and less-boxy geometry.
+Included changes:
+- preparation overlay alpha `0.01 -> 0.0`, retaining RESUMED lifecycle, focus and `FLAG_NOT_TOUCHABLE`;
+- real persisted Recently closed history (max 12) with Settings restore/clear UI;
+- clearer wording that open tabs restore automatically and `Clear all tabs` replaces misleading `Clear saved tabs`;
+- app-language selector: System default / English / Español using AndroidX app locales;
+- `en`/`es` locale config + compat locale storage;
+- refreshed launcher/dashboard icon preserving white-E/purple identity, with more prominent purple and less-boxy E.
 
 Do not reintroduce `moveTaskToBack()`, virtual-display Activity launch, normal BG Worker fallback, or PlayerActivity/ExoPlayer during preparation.
 
-### CI #224 — FAIL, no APK
-GitHub Actions #224, run ID `31850417827`, failed at `mergeDebugResources` before Kotlin compilation and before APK upload.
+### CI
+- #224, run `31850417827`: FAIL at `mergeDebugResources` because five Spanish `home_*`/thumbnail strings were duplicated between two resource files. No QA APK.
+- Fix head `4a6a2225eae86e0dbae0e5e02ac6c1f2bc434890` removed only those duplicate Spanish definitions.
+- **#225 PASS**, run ID `31850648050`.
+- Debug artifact ID `9237424502`.
+- Artifact ZIP size `26,005,544` bytes; digest `sha256:3f87ba2a4cdffbc248534ce0057708a29c580e5cd0ec1894d7e741e44764af34`.
+- Extracted APK size `35,512,362` bytes.
+- APK SHA-256 `ff84bbc469efc1ea62bb6b5c5abefb03cec3c45e33e7f4ff8ed56085c51e60f8`.
 
-Cause: five Spanish strings were accidentally duplicated between `values-es/next_build_strings.xml` and existing `values-es/ui_refresh_strings.xml`: `home_brand`, `home_tagline`, `home_tabs_section`, `home_manual_section`, `tab_thumbnail_pending`.
+### Post-CI code-path inspection — PASS
+Committed main confirms:
+- `BackgroundShareActivityV2.onCreate()` creates pending tab, marks preparation requested, starts foreground lease and directly launches preparation Activity at share time;
+- dashboard/card open is not involved;
+- no `moveTaskToBack()` or `launchDisplayId` in normal path;
+- preparation Activity `onCreate()` creates/configures WebView, starts direct resolver and schedules the 12s browser fallback;
+- committed overlay alpha is exactly `0.0f` with `FLAG_NOT_TOUCHABLE`;
+- ordinary BG prep does not create PlayerActivity/ExoPlayer.
 
-This is only a resource-definition error. No #224 APK exists/is a QA target. Correct by deleting only the duplicate definitions from `next_build_strings.xml` and retaining the existing translations in `ui_refresh_strings.xml`, then re-run CI.
-
-## Required next-build UI bundle — user explicitly said do not postpone
-1. **Persistent tab clarity + real Recently closed restore**
-   - open tabs restore automatically after app/process restart;
-   - Settings says this clearly;
-   - rename `Clear saved tabs` to `Clear all tabs`;
-   - closing/swiping one tab archives a bounded snapshot;
-   - Settings exposes `Recently closed (N)` and lets user restore one;
-   - preserve source/resolved payload, position and quality state;
-   - max 12 entries;
-   - bulk Clear all does not fill history.
-
-2. **App language selector**
-   - System default;
-   - English;
-   - Español;
-   - AndroidX `AppCompatDelegate.setApplicationLocales`;
-   - declare `en`/`es` locale config;
-   - persist compatibly on API 24–32 and synchronize with Android 13+ where supported.
-
-3. **Icon refresh**
-   - preserve white-E/purple identity;
-   - less boxy/more refined;
-   - purple more prominent;
-   - affect launcher and dashboard header.
-
-Secure GitHub log-report shortcut is approved but deferred until after these three. Never embed a GitHub PAT/token/client secret in the APK.
+#225 is the designated one-PH QA build.
 
 ## Quality status
-- #215 one-PH automatic result reported 720p.
-- Earlier runs chose 1080 despite 720 existing, so do not globally declare that fixed from one sample.
+- #215 automatic PH result reported 720p, but earlier runs chose 1080 despite 720 existing; do not globally mark fixed yet.
 - Manual 240p works.
 - Manual 480p still needs repair/verification.
 - No HH testing yet.
 
+## Other backlog
+Secure `Report log on GitHub` shortcut is approved but comes after current QA. Keep full Android Share log. Never embed GitHub PAT/token/client secret in the APK.
+
 ## Current priority
-1. Commit the #224 duplicate-resource correction with both state files updated.
-2. CI must pass before designating the successor APK.
-3. Post-CI inspect committed share-time path: tab + lease + preparation Activity + direct resolver + browser fallback must still start at BG share time, not dashboard/card open.
-4. Update both state files with successful build/run/artifact/hash.
-5. Next QA: ONE PH link. Verify automatic READY before app/card open, Vivaldi touch works immediately, no visible flash, log shows RESUMED with alpha=0.0, language selector works/persists, Recently closed restore works, and new icon is visible.
-6. If clean, test 2–3 PH links for browser-slot serialization.
-7. Then fix/verify 720 policy + manual 480 switching.
-8. No HH until PH blockers are cleared.
+1. Test #225 with ONE PH link.
+2. Verify Vivaldi remains visible and touch/scroll works immediately after BG share; no visible preparation/frame flash.
+3. Verify tab is READY before ExternalPlayer/card open.
+4. Export operations log even on PASS; expect RESUMED + `alpha=0.0`.
+5. Verify new icon visibly changed.
+6. Verify language selector changes UI and persists after leaving/reopening.
+7. Verify Recently closed by closing one test tab, seeing count, restoring it, and confirming it returns.
+8. If clean, test 2–3 PH shares for browser-slot serialization.
+9. Then fix/verify 720 policy + manual 480 switching.
+10. No HH until PH blockers are cleared.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
