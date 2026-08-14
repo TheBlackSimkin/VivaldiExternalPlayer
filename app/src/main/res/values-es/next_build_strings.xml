@@ -41,12 +41,6 @@
     <string name="temporary_network_retry">Problema temporal de red — reintentando…</string>
     <string name="retrying_playback">Reintentando reproducción…</string>
 
-    <string name="home_brand">ExternalPlayer</string>
-    <string name="home_tagline">Reproducción privada y rápida desde tu navegador</string>
-    <string name="home_tabs_section">Tus pestañas</string>
-    <string name="home_manual_section">Abrir un enlace manualmente</string>
-    <string name="tab_thumbnail_pending">La vista previa aparece cuando la pestaña está lista</string>
-
     <string name="dashboard_title">Panel de pestañas</string>
     <string name="dashboard_subtitle">Pestañas listas, preparando y con paso de navegador en un solo lugar</string>
     <string name="dashboard_play">Reproducir</string>
