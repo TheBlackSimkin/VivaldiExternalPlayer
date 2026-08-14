@@ -14,7 +14,7 @@
     <string name="tab_state_ready">✓ Lista</string>
     <string name="tab_state_needs_attention">Falta paso del navegador</string>
     <string name="tab_state_error">Error</string>
-    <string name="tab_prepare_error_explanation">Esta pestaña no pudo prepararse automáticamente. Puedes reintentar la resolución normal de red o abrir el método asistido por navegador.</string>
+    <string name="tab_prepare_error_explanation">Esta pestaña no pudo prepararse automáticamente. Puedes reintentar la preparación normal o abrir el método asistido por navegador.</string>
     <string name="retry">Reintentar</string>
     <string name="retry_scheduled">Reintento programado</string>
     <string name="try_browser_method">Terminar en el navegador</string>
@@ -40,4 +40,29 @@
     <string name="try_another_detected_video">Probar otro vídeo detectado</string>
     <string name="temporary_network_retry">Problema temporal de red — reintentando…</string>
     <string name="retrying_playback">Reintentando reproducción…</string>
+
+    <string name="home_brand">ExternalPlayer</string>
+    <string name="home_tagline">Reproducción privada y rápida desde tu navegador</string>
+    <string name="home_tabs_section">Tus pestañas</string>
+    <string name="home_manual_section">Abrir un enlace manualmente</string>
+    <string name="tab_thumbnail_pending">La vista previa aparece cuando la pestaña está lista</string>
+
+    <string name="dashboard_title">Panel de pestañas</string>
+    <string name="dashboard_subtitle">Pestañas listas, preparando y con paso de navegador en un solo lugar</string>
+    <string name="dashboard_play">Reproducir</string>
+    <string name="dashboard_continue">Continuar</string>
+    <string name="dashboard_prepare">Preparar ahora</string>
+    <string name="dashboard_browser">Paso del navegador</string>
+    <string name="dashboard_close">Cerrar</string>
+    <string name="dashboard_move_up">Subir</string>
+    <string name="dashboard_move_down">Bajar</string>
+    <string name="dashboard_swipe_hint">Desliza una tarjeta hacia un lado para cerrarla</string>
+    <string name="dashboard_actual_quality">Real %1$dp</string>
+    <string name="dashboard_manual_quality">Manual %1$dp</string>
+    <string name="dashboard_auto_quality">Calidad automática</string>
+
+    <string name="quality_manual_verified">Calidad: %1$dp ✓</string>
+    <string name="quality_manual_actual">Calidad: %1$dp • real %2$dp</string>
+    <string name="quality_manual_waiting">Calidad: %1$dp • cambiando…</string>
+    <string name="quality_auto_actual">Calidad: Auto • real %1$dp</string>
 </resources>
