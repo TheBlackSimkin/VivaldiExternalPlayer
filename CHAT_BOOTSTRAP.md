@@ -108,13 +108,21 @@ On the next visual iteration, preserve the current logo identity/colors and lett
 - with the purple portions more noticeable/prominent.
 Do not change build #192 for this visual request.
 
+## #192 QA clarification — Android Recents
+User shared three PH links with `BG - External Player`, then opened Android Recents (square button) and did not see ExternalPlayer there.
+
+This is **not a BG failure by itself**. `BackgroundShareActivity` is intentionally `android:excludeFromRecents="true"`, so its hidden/transparent document task should not be expected to appear in Recents even while preparation is running.
+
+Continue #192 testing. The meaningful proof is whether the three tabs progressed before ExternalPlayer or any card was manually opened. After allowing preparation time, open ExternalPlayer once and inspect states plus visible `tech ...` markers without clicking the cards. Do not use Recents visibility as the success/failure criterion.
+
 ## Current priority
-1. Test #192 for both share-entry semantics first: `ExternalPlayer` visibly raises/opens the app and begins the foreground flow; `BG - External Player` leaves Vivaldi visible while the app's BG Activity actually starts preparation.
-2. For BG specifically, verify tabs prepare before ExternalPlayer or any individual tab is manually opened.
-3. Add multiple BG tabs and do not click their cards before observing their eventual states/technical stages.
-4. If failure remains, report the exact visible `tech ...` marker for each tab; this should identify Activity/direct/browser lifecycle stopping points without media-content inspection.
-5. Do not resume broad #187 QA until BG is confirmed, unless the user volunteers results.
-6. After the BG lifecycle is solved, include the requested logo refinement in a later visual iteration, not in #192.
+1. Continue #192 focused BG QA; absence from Android Recents is expected and is not failure proof.
+2. Verify `ExternalPlayer` visibly raises/opens the app in the foreground when that chooser target is tested.
+3. For BG, verify tabs prepare before ExternalPlayer or any individual tab is manually opened.
+4. Add multiple BG tabs and do not click their cards before observing their eventual states/technical stages.
+5. If failure remains, report the exact visible `tech ...` marker for each tab; this should identify Activity/direct/browser lifecycle stopping points without media-content inspection.
+6. Do not resume broad #187 QA until BG is confirmed, unless the user volunteers results.
+7. After the BG lifecycle is solved, include the requested logo refinement in a later visual iteration, not in #192.
 
 ## QA format
 Whenever asking user to test, always provide exactly:
