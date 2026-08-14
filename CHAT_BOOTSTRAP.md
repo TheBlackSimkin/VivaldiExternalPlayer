@@ -50,14 +50,16 @@ Do not retry with privileged/system permissions and do not ship a simple `allowE
 
 #212 is no longer a QA target.
 
-## Current app architecture — transparent RESUMED preparation on default display
-Current app-code commit: `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`.
-CI is pending at this bootstrap update; do not designate its APK until CI passes.
+## Build #215 — current focused PH target
+App-code commit: `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`.
+GitHub Actions run #215 PASS; run ID `31843858363`.
+Debug artifact ID `9235240761`; artifact ZIP digest `sha256:8a942d8dc4ee50c00e2448ed4bbd54147fedd9a0432c5b920328dee29fc70e6f`; ZIP size `25,999,191` bytes.
+Extracted APK size `35,488,506` bytes; APK SHA-256 `7aea335b8a2f941898ec5737804a89ddb719deb301e156f555408da15d57133e`.
 
 Normal BG path:
 `BG share -> create tab immediately -> foreground lease -> launch preparation Activity in same excluded task on DEFAULT display -> keep it RESUMED with nearly-transparent NOT_TOUCHABLE window -> READY/ERROR/NEEDS_ATTENTION -> remove task`.
 
-Important changes:
+Important architecture:
 - no `moveTaskToBack()`;
 - no `ActivityOptions.launchDisplayId`;
 - no normal virtual-display dependency;
@@ -65,17 +67,20 @@ Important changes:
 - historical class `BackgroundVirtualPreparationActivity` is reused as the actual resolver host on the primary/default display;
 - `TabbedPlayerApplication` sets its window alpha to 0.01, transparent background and `FLAG_NOT_TOUCHABLE`;
 - it intentionally leaves focus enabled for browser equivalence;
-- lifecycle log now records `PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED/STARTED/RESUMED/PAUSED/STOPPED/DESTROYED_CALLBACK`;
+- lifecycle log records `PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED/STARTED/RESUMED/PAUSED/STOPPED/DESTROYED_CALLBACK`;
 - existing direct/browser resolver logic remains: direct first, 12s browser budget, Service Worker serialization, browser network/DOM/Performance/page-config discovery, 30s timeout, conservative cookie/18+ handling;
 - normal BG path must never silently return to `WORKER_ENQUEUED`;
 - no PlayerActivity/Media3/ExoPlayer/background playback is created by preparation.
 
-## Required code-path check before next QA
-Confirm committed `main` shows:
-- share target creates tab and starts foreground lease at share time;
-- share target directly launches the preparation Activity;
-- preparation Activity `onCreate()` marks host/resolving, creates/configures WebView, starts direct resolver and schedules 12s browser fallback;
-- MainActivity/dashboard/card open is not part of preparation startup.
+## Build #215 post-CI code inspection — PASS
+Committed app code was re-inspected after CI:
+- `BackgroundShareActivityV2.onCreate()` creates the pending tab, marks preparation requested, starts the foreground lease and directly launches the preparation Activity at share time;
+- it does not move the task behind Vivaldi and does not use a secondary display;
+- `BackgroundVirtualPreparationActivity.onCreate()` marks host/resolving, creates/configures its full-size WebView, calls direct resolution and schedules the 12s browser fallback;
+- MainActivity/dashboard/card open is not part of startup;
+- manifest keeps BG task excluded from Recents and preparation Activity transparent.
+
+Later state-file commits do not supersede #215 app code.
 
 ## Current quality/UI backlog
 After PH BG passes:
@@ -86,14 +91,15 @@ After PH BG passes:
 - later refine icon while preserving white-E/purple identity, making it less boxy/more refined and purple more prominent.
 
 ## Current priority
-1. Wait for CI on `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`.
-2. Re-inspect committed share-time path.
-3. If CI passes, one PH link only for first transparent-overlay lifecycle test.
-4. Key proof: preparation Activity reaches `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED` and does not immediately PAUSE/STOP simply because Vivaldi is visually underneath.
-5. Target READY without opening ExternalPlayer/card or pressing Browser Step.
-6. If failure, export operations log before Browser Step.
-7. If one link passes, then test 2–3 PH links for browser-slot serialization.
-8. No HH yet.
+1. Test build #215 with ONE PH link only.
+2. Clean old tabs, leave ExternalPlayer by Home/switching, return to Vivaldi; do not force-stop/swipe ExternalPlayer.
+3. Share one PH via `BG - External Player`, keep Vivaldi visually on screen for 45–60s.
+4. Try one harmless normal Vivaldi scroll/touch after share; it must still respond despite the transparent preparation Activity being technically top/resumed.
+5. Key log proof: `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED` appears and is not immediately followed by PAUSED/STOPPED before completion.
+6. Target READY before opening ExternalPlayer/card and without Browser Step.
+7. If not READY, export operations log before Browser Step. Old markers `WORKER_ENQUEUED`, `BG_HOST_DESTROYED_RECOVERY_QUEUED`, and `VIRTUAL_PREP_LAUNCH_FAILED` are not expected.
+8. If one link passes, test 2–3 PH links for browser-slot serialization.
+9. No HH yet.
 
 ## QA format
 Whenever asking user to test, always provide exactly:
