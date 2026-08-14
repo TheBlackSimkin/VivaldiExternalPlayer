@@ -47,7 +47,6 @@
     <string name="home_manual_section">Open a link manually</string>
     <string name="tab_thumbnail_pending">Preview appears when the tab is ready</string>
 
-    <!-- First-class tab dashboard. -->
     <string name="dashboard_title">Tab dashboard</string>
     <string name="dashboard_subtitle">Ready, preparing and browser-step tabs in one place</string>
     <string name="dashboard_play">Play</string>
@@ -57,12 +56,11 @@
     <string name="dashboard_close">Close</string>
     <string name="dashboard_move_up">Move up</string>
     <string name="dashboard_move_down">Move down</string>
-    <string name="dashboard_swipe_hint">Swipe a card sideways to close</string>
+    <string name="dashboard_swipe_hint">Hold and drag a card to reorder • swipe sideways to close</string>
     <string name="dashboard_actual_quality">Actual %1$dp</string>
     <string name="dashboard_manual_quality">Manual %1$dp</string>
     <string name="dashboard_auto_quality">Auto quality</string>
 
-    <!-- Requested quality vs what Media3 actually decoded. -->
     <string name="quality_manual_verified">Quality: %1$dp ✓</string>
     <string name="quality_manual_actual">Quality: %1$dp • actual %2$dp</string>
     <string name="quality_manual_waiting">Quality: %1$dp • switching…</string>
