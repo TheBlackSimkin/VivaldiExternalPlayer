@@ -22,7 +22,6 @@ object UnifiedPreparationCoordinator {
     private var hostIsResumed = false
     private var activeTabId: String? = null
 
-    /** Called by Application lifecycle callbacks for normal foreground screens. */
     @Synchronized
     fun onHostResumed(activity: Activity) {
         if (activity is BackgroundPreparationActivity || activity is BrowserResolverActivity) return
@@ -36,7 +35,6 @@ object UnifiedPreparationCoordinator {
         if (foregroundHost.get() === activity) hostIsResumed = false
     }
 
-    /** Track the hidden preparation Activity even after process recreation. */
     @Synchronized
     fun onPreparationCreated(activity: BackgroundPreparationActivity) {
         activeTabId = activity.intent
@@ -45,7 +43,6 @@ object UnifiedPreparationCoordinator {
             ?: activeTabId
     }
 
-    /** When one job finishes, continue the next queued tab only if our host is still foreground. */
     @Synchronized
     fun onPreparationDestroyed(activity: BackgroundPreparationActivity) {
         val id = activity.intent.getStringExtra(BackgroundPreparationActivity.EXTRA_TAB_ID)
@@ -53,36 +50,34 @@ object UnifiedPreparationCoordinator {
         mainHandler.post { launchFirstQueuedIfPossible() }
     }
 
-    /** Explicit BG share path: caller is a transient Activity, so launch immediately. */
-    fun startFromShare(activity: Activity, tabId: String): Boolean =
-        startNow(activity, tabId)
+    fun startFromShare(activity: Activity, tabId: String): Boolean = startNow(activity, tabId)
 
-    /** User/dashboard retry path. */
     fun retry(activity: Activity, tabId: String): Boolean {
         VideoTabStore.markQueued(tabId)
         return startNow(activity, tabId)
     }
 
-    /** Feature 29 now uses exactly the same browser-capable engine as BG Add. */
+    /** Feature 29: only a genuinely QUEUED next tab is preloaded automatically. */
     fun preloadNext(activity: Activity, currentTabId: String): Boolean {
         if (!AppSettings.preloadNextTab(activity)) return false
         val next = VideoTabStore.nextAfter(currentTabId) ?: return false
-        if (next.isReady || next.sourceUrl.isBlank()) return false
-        if (next.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION) return false
+        if (next.sourceUrl.isBlank()) return false
+        if (next.preparationState != VideoTabStore.PreparationState.QUEUED) return false
         return startNow(activity, next.id)
     }
 
     /**
-     * Worker direct-resolution miss. Keep the tab QUEUED, then continue through
-     * the browser-capable stage immediately if ExternalPlayer happens to be in
-     * foreground. Otherwise the next app resume will continue it automatically.
+     * Worker direct-resolution miss. If this tab already has the browser-capable
+     * Activity running, the cancelled Worker is stale and must not overwrite its
+     * RESOLVING state back to QUEUED.
      */
+    @Synchronized
     fun browserStageNeeded(tabId: String, technicalMessage: String = "") {
+        if (activeTabId == tabId) return
         VideoTabStore.markQueued(tabId, technicalMessage)
         mainHandler.post { launchFirstQueuedIfPossible(preferredTabId = tabId) }
     }
 
-    /** Used when a queued tab is tapped in the dashboard. */
     fun prepareNow(activity: Activity, tabId: String): Boolean = startNow(activity, tabId)
 
     @Synchronized
