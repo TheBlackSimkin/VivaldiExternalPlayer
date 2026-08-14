@@ -90,7 +90,26 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
 
     override fun onActivityDestroyed(activity: Activity) {
         if (activity is BackgroundPreparationActivity) {
+            val tabId = activity.intent
+                .getStringExtra(BackgroundPreparationActivity.EXTRA_TAB_ID)
+                ?.takeIf { it.isNotBlank() }
+
             UnifiedPreparationCoordinator.onPreparationDestroyed(activity)
+
+            /*
+             * A successful BG share should be as identifiable as possible before
+             * the user later opens the dashboard. The hidden WebView already saved
+             * the local page title in the READY payload. Start a best-effort local
+             * frame extraction now as the hidden task closes, rather than waiting
+             * for MainActivity to become visible. This creates no ExoPlayer and no
+             * audio/video playback; if Android kills the process, foreground
+             * TabThumbnailWarmup can simply retry later.
+             */
+            tabId?.let { id ->
+                VideoTabStore.get(id)
+                    ?.takeIf { it.isReady && TabThumbnailCache.load(this, id) == null }
+                    ?.let { readyTab -> TabThumbnailCapture.captureResolved(this, readyTab) }
+            }
         }
         activityTabs.remove(activity)
     }
