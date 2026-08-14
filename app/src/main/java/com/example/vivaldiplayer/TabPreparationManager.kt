@@ -120,7 +120,7 @@ class ResolveTabWorker(
 
                 if (VideoTabStore.get(tabId)?.isReady == true) {
                     /* Keep the queue moving even when no Activity is visible. */
-                    preloadNext(applicationContext, tabId)
+                    TabPreparationManager.preloadNext(applicationContext, tabId)
                     Result.success()
                 } else {
                     Result.failure()
