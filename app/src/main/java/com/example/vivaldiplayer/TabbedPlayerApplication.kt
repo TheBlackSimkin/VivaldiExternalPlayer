@@ -3,6 +3,7 @@ package com.example.vivaldiplayer
 import android.app.Activity
 import android.app.Application
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -10,26 +11,24 @@ import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import com.chaquo.python.android.PyApplication
+import com.google.android.material.card.MaterialCardView
 import java.util.Locale
 import java.util.WeakHashMap
 
 /**
- * Application-level tab coordinator.
+ * Application-level persistent-tab coordinator.
  *
- * Responsibilities now include:
- * - initialize the persistent tab store;
- * - resume queued WorkManager preparation after process restart;
- * - map each live PlayerActivity to one logical tab;
- * - restore position/foreground play intent;
- * - display a richer tab switcher with preparation state;
- * - route unfinished tabs to background retry or foreground browser assistance;
- * - preserve the validated one-ExoPlayer-at-a-time playback architecture.
+ * Playback remains one-ExoPlayer-at-a-time. The visual refresh in this class is
+ * deliberately UI-only: source selection and browser candidate ranking remain
+ * in their existing validated components.
  */
 class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCallbacks {
 
@@ -39,13 +38,10 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     }
 
     private val activityTabs = WeakHashMap<Activity, String>()
-
-    /** Last page title observed locally inside the resolver WebView. */
     private var lastBrowserPageTitle: String = ""
 
     override fun onCreate() {
         super.onCreate()
-
         VideoTabStore.initialize(this)
         TabPreparationManager.resumePending(this)
         registerActivityLifecycleCallbacks(this)
@@ -57,15 +53,9 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         val suppliedTabId = activity.intent.getStringExtra(EXTRA_TAB_ID)
         val originalJson = activity.intent.getStringExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA)
             ?: return
-
         val tabJson = withLocalBrowserTitle(originalJson)
 
         val tabId = if (suppliedTabId != null && VideoTabStore.get(suppliedTabId) != null) {
-            /*
-             * A NEEDS_ATTENTION tab may have just completed through
-             * BrowserResolverActivity. Store that resolved payload in the SAME
-             * persistent tab instead of creating a duplicate.
-             */
             VideoTabStore.markReady(suppliedTabId, tabJson)
             suppliedTabId
         } else {
@@ -73,10 +63,7 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         }
 
         activityTabs[activity] = tabId
-
-        activity.window.decorView.post {
-            attachTabButton(activity)
-        }
+        activity.window.decorView.post { attachTabButton(activity) }
     }
 
     override fun onActivityResumed(activity: Activity) {
@@ -84,17 +71,22 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
 
         val tabId = activityTabs[activity] ?: return
         val tab = VideoTabStore.get(tabId) ?: return
-
         updateTabButton(activity)
 
-        /*
-         * PlayerActivity prepares during onCreate. Its explicit restore method
-         * accepts a seek before STATE_READY and also remembers whether playback
-         * should resume only while the Activity is foregrounded.
-         */
         activity.window.decorView.post {
             activity.restoreTabSession(tab.positionMs, tab.playWhenReady)
         }
+
+        /*
+         * Generate one stable pseudo-random local frame for the tab card. A small
+         * delay keeps this cosmetic work away from the most timing-sensitive part
+         * of initial playback startup. Failure is harmless and retries next resume.
+         */
+        activity.window.decorView.postDelayed({
+            if (!activity.isFinishing && !activity.isDestroyed) {
+                TabThumbnailCapture.captureIfMissing(activity, tabId)
+            }
+        }, 1_800L)
 
         TabPreparationManager.preloadNext(activity.applicationContext, tabId)
     }
@@ -106,39 +98,24 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         }
     }
 
-    /** Read only local WebView page metadata for the tab label. */
     private fun captureBrowserPageTitle(activity: BrowserResolverActivity) {
-        val title = activity
-            .findViewById<WebView>(R.id.browser_web_view)
-            ?.title
-            ?.trim()
-            .orEmpty()
-
-        if (title.isNotBlank()) {
-            lastBrowserPageTitle = title
-        }
+        val title = activity.findViewById<WebView>(R.id.browser_web_view)
+            ?.title?.trim().orEmpty()
+        if (title.isNotBlank()) lastBrowserPageTitle = title
     }
 
-    /** Prefer a useful locally captured browser title for browser-resolved JSON. */
     private fun withLocalBrowserTitle(json: String): String {
         val pageTitle = lastBrowserPageTitle.trim()
         if (pageTitle.isBlank()) return json
 
         return runCatching {
             val resolved = ResolvedMedia.fromJson(json)
-            if (resolved.resolverMode != "browser") {
-                json
-            } else {
+            if (resolved.resolverMode == "browser") {
                 resolved.copy(title = pageTitle).toJson()
-            }
+            } else json
         }.getOrDefault(json)
     }
 
-    /**
-     * PlayerActivity exposes a small snapshot API so automatic lifecycle pause
-     * can be distinguished from a deliberate user pause. This replaces the old
-     * reflective access to private fields.
-     */
     private fun saveActivityTab(activity: PlayerActivity) {
         val tabId = activityTabs[activity] ?: return
         val existing = VideoTabStore.get(tabId) ?: return
@@ -150,11 +127,7 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
                 current.resolverMode == "browser" &&
                 existing.title.isNotBlank() &&
                 current.title != existing.title
-            ) {
-                current.copy(title = existing.title).toJson()
-            } else {
-                snapshot.resolvedMediaJson
-            }
+            ) current.copy(title = existing.title).toJson() else snapshot.resolvedMediaJson
         }.getOrDefault(snapshot.resolvedMediaJson)
 
         VideoTabStore.update(
@@ -165,7 +138,7 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         )
     }
 
-    /** Overlay a compact tab button without changing PlayerActivity's validated layout. */
+    /** Compact floating tabs control styled to match the refreshed dark UI. */
     private fun attachTabButton(activity: PlayerActivity) {
         val decor = activity.window.decorView as? ViewGroup ?: return
         if (decor.findViewWithTag<View>(TAB_BUTTON_TAG) != null) return
@@ -174,9 +147,13 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             tag = TAB_BUTTON_TAG
             isAllCaps = false
             minWidth = 0
-            minHeight = 40.dp(activity)
-            setPadding(12.dp(activity), 0, 12.dp(activity), 0)
+            minHeight = 42.dp(activity)
+            setPadding(14.dp(activity), 0, 14.dp(activity), 0)
             textSize = 13f
+            setTextColor(ContextCompat.getColor(activity, R.color.app_text_primary))
+            backgroundTintList = ColorStateList.valueOf(
+                ContextCompat.getColor(activity, R.color.app_surface_active)
+            )
             setOnClickListener { showTabSwitcher(activity) }
         }
 
@@ -184,9 +161,7 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             FrameLayout.LayoutParams.WRAP_CONTENT,
             FrameLayout.LayoutParams.WRAP_CONTENT,
             Gravity.TOP or Gravity.CENTER_HORIZONTAL
-        ).apply {
-            topMargin = 12.dp(activity)
-        }
+        ).apply { topMargin = 12.dp(activity) }
 
         activity.addContentView(button, params)
         updateTabButton(activity)
@@ -200,10 +175,7 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         button.text = activity.getString(R.string.tabs_button_ready_count, ready, tabs.size)
     }
 
-    /**
-     * More browser-like tab switcher. Each row shows title plus preparation,
-     * position and quality information without exposing technical URLs.
-     */
+    /** Thumbnail-card tab switcher. */
     private fun showTabSwitcher(activity: PlayerActivity) {
         saveActivityTab(activity)
 
@@ -222,81 +194,131 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             if (tabs.isEmpty()) {
                 rows.addView(TextView(activity).apply {
                     text = activity.getString(R.string.no_video_tabs)
-                    setPadding(12.dp(activity), 18.dp(activity), 12.dp(activity), 18.dp(activity))
+                    setTextColor(ContextCompat.getColor(activity, R.color.app_text_secondary))
+                    setPadding(12.dp(activity), 20.dp(activity), 12.dp(activity), 20.dp(activity))
                 })
                 return
             }
 
             tabs.forEach { tab ->
-                val card = LinearLayout(activity).apply {
+                val active = tab.id == currentId
+                val card = MaterialCardView(activity).apply {
+                    radius = 16.dp(activity).toFloat()
+                    cardElevation = 0f
+                    strokeWidth = if (active) 2.dp(activity) else 1.dp(activity)
+                    strokeColor = ContextCompat.getColor(
+                        activity,
+                        if (active) R.color.app_accent else R.color.app_outline
+                    )
+                    setCardBackgroundColor(
+                        ContextCompat.getColor(
+                            activity,
+                            if (active) R.color.app_surface_active else R.color.app_surface
+                        )
+                    )
+                    isClickable = true
+                    isFocusable = true
+                    setOnClickListener {
+                        dialog?.dismiss()
+                        if (!active) openTab(activity, tab)
+                    }
+                }
+
+                val row = LinearLayout(activity).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
-                    setPadding(4.dp(activity), 4.dp(activity), 4.dp(activity), 8.dp(activity))
+                    setPadding(10.dp(activity), 10.dp(activity), 8.dp(activity), 10.dp(activity))
                 }
+
+                val thumbnailCard = MaterialCardView(activity).apply {
+                    radius = 12.dp(activity).toFloat()
+                    cardElevation = 0f
+                    setCardBackgroundColor(ContextCompat.getColor(activity, R.color.app_surface_raised))
+                }
+
+                val thumbnail = ImageView(activity).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    contentDescription = tab.title
+                    val bitmap = TabThumbnailCache.load(activity, tab.id)
+                    if (bitmap != null) {
+                        setImageBitmap(bitmap)
+                    } else {
+                        scaleType = ImageView.ScaleType.CENTER_INSIDE
+                        setPadding(18.dp(activity), 10.dp(activity), 18.dp(activity), 10.dp(activity))
+                        setImageResource(R.drawable.ic_launcher_foreground)
+                        alpha = 0.62f
+                    }
+                }
+                thumbnailCard.addView(
+                    thumbnail,
+                    FrameLayout.LayoutParams(112.dp(activity), 72.dp(activity))
+                )
 
                 val textColumn = LinearLayout(activity).apply {
                     orientation = LinearLayout.VERTICAL
+                    setPadding(12.dp(activity), 0, 8.dp(activity), 0)
                 }
 
-                val titleButton = Button(activity).apply {
-                    isAllCaps = false
-                    gravity = Gravity.START or Gravity.CENTER_VERTICAL
-                    text = if (tab.id == currentId) {
-                        activity.getString(R.string.tab_active_title, tab.title)
-                    } else {
-                        tab.title
-                    }
-                    setOnClickListener {
-                        dialog?.dismiss()
-                        if (tab.id != currentId) {
-                            openTab(activity, tab)
-                        }
-                    }
+                val titleView = TextView(activity).apply {
+                    text = if (active) activity.getString(R.string.tab_active_title, tab.title) else tab.title
+                    setTextColor(ContextCompat.getColor(activity, R.color.app_text_primary))
+                    textSize = 15f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    maxLines = 2
                 }
 
                 val details = TextView(activity).apply {
                     text = buildTabSubtitle(activity, tab)
+                    setTextColor(ContextCompat.getColor(activity, R.color.app_text_secondary))
                     textSize = 12f
-                    alpha = 0.82f
-                    setPadding(14.dp(activity), 0, 10.dp(activity), 4.dp(activity))
+                    setPadding(0, 5.dp(activity), 0, 0)
                 }
 
-                textColumn.addView(
-                    titleButton,
-                    LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    )
-                )
+                textColumn.addView(titleView)
                 textColumn.addView(details)
 
                 val closeButton = Button(activity).apply {
                     isAllCaps = false
                     text = "×"
+                    textSize = 20f
                     contentDescription = activity.getString(R.string.close_tab_named, tab.title)
-                    minWidth = 48.dp(activity)
+                    minWidth = 44.dp(activity)
+                    minHeight = 44.dp(activity)
+                    setTextColor(ContextCompat.getColor(activity, R.color.app_text_secondary))
+                    backgroundTintList = ColorStateList.valueOf(
+                        ContextCompat.getColor(activity, R.color.app_surface_raised)
+                    )
                     setOnClickListener {
-                        if (tab.id == currentId) {
+                        if (active) {
                             dialog?.dismiss()
                             closeActiveTab(activity, currentId)
                         } else {
                             VideoTabStore.close(tab.id)
+                            TabThumbnailCache.delete(activity, tab.id)
                             rebuildRows()
                             updateTabButton(activity)
                         }
                     }
                 }
 
-                card.addView(
+                row.addView(thumbnailCard)
+                row.addView(
                     textColumn,
                     LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 )
-                card.addView(closeButton)
-                rows.addView(card)
+                row.addView(closeButton)
+                card.addView(row)
+
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = 10.dp(activity) }
+                rows.addView(card, params)
             }
         }
 
         val scroll = ScrollView(activity).apply {
+            setBackgroundColor(ContextCompat.getColor(activity, R.color.app_background))
             addView(rows)
         }
 
@@ -327,9 +349,7 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
 
         if (tab.resolvedMediaJson.isNotBlank()) {
             runCatching { ResolvedMedia.fromJson(tab.resolvedMediaJson) }
-                .getOrNull()
-                ?.displayedHeight
-                ?.takeIf { it > 0 }
+                .getOrNull()?.displayedHeight?.takeIf { it > 0 }
                 ?.let { details += "${it}p" }
         }
 
@@ -374,13 +394,10 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
                 showTabPreparationError(activity, tab)
             }
 
-            else -> {
-                Toast.makeText(activity, R.string.tab_not_ready_yet, Toast.LENGTH_SHORT).show()
-            }
+            else -> Toast.makeText(activity, R.string.tab_not_ready_yet, Toast.LENGTH_SHORT).show()
         }
     }
 
-    /** Recovery for a failed background-preparation tab. */
     private fun showTabPreparationError(activity: PlayerActivity, tab: VideoTabStore.VideoTab) {
         AlertDialog.Builder(activity)
             .setTitle(R.string.tab_state_error)
@@ -403,6 +420,7 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
 
     private fun closeActiveTab(activity: PlayerActivity, currentId: String) {
         val next = VideoTabStore.neighborAfterClose(currentId)
+        TabThumbnailCache.delete(activity, currentId)
 
         if (next == null) {
             activity.startActivity(
