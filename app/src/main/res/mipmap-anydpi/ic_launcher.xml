@@ -4,7 +4,12 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- Legacy/pre-adaptive launcher fallback uses the same refined identity. -->
     <path android:fillColor="#FF17191F" android:pathData="M0,0 L108,0 L108,108 L0,108 Z" />
-    <path android:fillColor="#FFFFFFFF" android:pathData="M26,28 L40,28 L54,62 L68,28 L82,28 L61,80 L47,80 Z" />
-    <path android:fillColor="#FFE64A3B" android:pathData="M47,43 L47,65 L66,54 Z" />
+    <path android:fillColor="#FFB05CFF" android:pathData="M54,17 L91,54 L54,91 L17,54 Z" />
+    <path android:fillColor="#FF17191F" android:pathData="M54,29 L79,54 L54,79 L29,54 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M34,31 Q34,28 37,28 L70,28 Q73,28 73,31 L73,36 Q73,39 70,39 L47,39 L47,48 L64,48 Q67,48 67,51 L67,56 Q67,59 64,59 L47,59 L47,69 L70,69 Q73,69 73,72 L73,77 Q73,80 70,80 L37,80 Q34,80 34,77 Z" />
+    <path android:fillColor="#FFB05CFF" android:pathData="M54,45 L63,54 L54,63 L45,54 Z" />
+    <path android:fillColor="#FF17191F" android:pathData="M54,50 L58,54 L54,58 L50,54 Z" />
 </vector>

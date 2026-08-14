@@ -20,14 +20,30 @@
     <string name="try_browser_method">Finish in browser</string>
 
     <string name="settings">Settings</string>
-    <string name="settings_intro">Local External Player preferences. These settings stay on this device.</string>
+    <string name="settings_intro">Local ExternalPlayer preferences. These settings stay on this device.</string>
+    <string name="app_language">App language</string>
+    <string name="app_language_value">App language: %1$s</string>
+    <string name="language_system_default">System default</string>
+    <string name="language_english">English</string>
+    <string name="language_spanish">Español</string>
     <string name="setting_clear_age_prompts">Automatically confirm clearly identified 18+ prompts</string>
     <string name="setting_clear_cookie_prompts">Automatically accept clearly identified cookie prompts</string>
     <string name="setting_network_retry">Retry temporary network failures automatically</string>
     <string name="setting_preload_next_tab">Prepare the next queued tab in background when possible</string>
-    <string name="setting_persistent_tabs_info">Open tabs, positions, qualities and preparation states are saved locally across app/process restarts.</string>
+    <string name="setting_persistent_tabs_info">Open tabs are saved locally and restored automatically after app/process restarts. Closing or swiping one tab moves it to Recently closed so you can restore it.</string>
+    <string name="recently_closed_tabs_count">Recently closed (%1$d)</string>
+    <string name="restore_recently_closed_tab">Restore recently closed tab</string>
+    <string name="no_recently_closed_tabs">There are no recently closed tabs.</string>
+    <string name="tab_restored">Tab restored</string>
+    <string name="clear_recently_closed">Clear history</string>
+    <string name="recently_closed_cleared">Recently closed history cleared</string>
+    <string name="clear_all_tabs">Clear all tabs</string>
+    <string name="clear_all_tabs_confirmation">Close and forget all currently open ExternalPlayer tabs?</string>
+    <string name="all_tabs_cleared">All open tabs cleared</string>
+
+    <!-- Legacy wording kept for compatibility with older code/resources. -->
     <string name="clear_saved_tabs">Clear saved tabs</string>
-    <string name="clear_saved_tabs_confirmation">Close and forget all saved External Player tabs?</string>
+    <string name="clear_saved_tabs_confirmation">Close and forget all saved ExternalPlayer tabs?</string>
     <string name="clear">Clear</string>
     <string name="saved_tabs_cleared">Saved tabs cleared</string>
 

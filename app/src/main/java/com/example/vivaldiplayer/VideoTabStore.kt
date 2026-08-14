@@ -9,6 +9,17 @@ import java.util.UUID
 /**
  * Persistent tab/session store for ExternalPlayer.
  *
+ * There are intentionally TWO local lists:
+ *
+ * 1. [tabs] contains the tabs which are still open. These are restored
+ *    automatically after an app/process restart. There is no manual "reload"
+ *    step because MainActivity always reads this persisted list directly.
+ *
+ * 2. [recentlyClosed] is a small recovery history. Swiping/closing one tab moves
+ *    a snapshot here so the user can restore it from Settings. "Clear all tabs"
+ *    is different: it intentionally clears the current open list without filling
+ *    Recently closed with every tab at once.
+ *
  * In addition to the resolved source and playback position, each tab keeps:
  * - the user's requested manual quality and Media3's actually observed height;
  * - non-content technical preparation timestamps/stages.
@@ -58,8 +69,11 @@ object VideoTabStore {
 
     private const val PREFS_NAME = "video_tab_store"
     private const val KEY_TABS = "tabs_json_v2"
+    private const val KEY_RECENTLY_CLOSED = "recently_closed_tabs_json_v1"
+    private const val MAX_RECENTLY_CLOSED = 12
 
     private val tabs = mutableListOf<VideoTab>()
+    private val recentlyClosed = mutableListOf<VideoTab>()
     private var prefs: SharedPreferences? = null
 
     @Synchronized
@@ -131,7 +145,33 @@ object VideoTabStore {
     fun allTabs(): List<VideoTab> = tabs.map { it.copy() }
 
     @Synchronized
+    fun recentlyClosedTabs(): List<VideoTab> = recentlyClosed.map { it.copy() }
+
+    @Synchronized
     fun get(id: String): VideoTab? = tabs.firstOrNull { it.id == id }?.copy()
+
+    /**
+     * Restore one genuinely closed tab. Its same id is reused so its position,
+     * resolved payload and quality preference survive the round trip.
+     */
+    @Synchronized
+    fun restoreClosed(id: String): VideoTab? {
+        val index = recentlyClosed.indexOfFirst { it.id == id }
+        if (index < 0) return null
+
+        val restored = recentlyClosed.removeAt(index)
+        if (tabs.any { it.id == restored.id }) {
+            persistLocked()
+            return tabs.first { it.id == restored.id }.copy()
+        }
+
+        val now = System.currentTimeMillis()
+        restored.updatedAtMs = now
+        setTechnicalStageLocked(restored, "RESTORED_FROM_RECENTLY_CLOSED", now)
+        tabs.add(restored)
+        persistLocked()
+        return restored.copy()
+    }
 
     /** The explicit share/retry/preload path requested preparation for this tab. */
     @Synchronized
@@ -336,15 +376,31 @@ object VideoTabStore {
         persistLocked()
     }
 
+    /**
+     * Closing one tab means the user may reasonably want an Undo/Restore path.
+     * Keep a bounded local snapshot rather than silently deleting it forever.
+     */
     @Synchronized
     fun close(id: String) {
-        tabs.removeAll { it.id == id }
+        val index = tabs.indexOfFirst { it.id == id }
+        if (index < 0) return
+        archiveClosedLocked(tabs.removeAt(index))
+        persistLocked()
+    }
+
+    /**
+     * "Clear all tabs" is deliberate bulk cleanup, not twelve separate closes.
+     * Do not flood Recently closed with every item the user explicitly cleared.
+     */
+    @Synchronized
+    fun clearAll() {
+        tabs.clear()
         persistLocked()
     }
 
     @Synchronized
-    fun clearAll() {
-        tabs.clear()
+    fun clearRecentlyClosed() {
+        recentlyClosed.clear()
         persistLocked()
     }
 
@@ -353,7 +409,7 @@ object VideoTabStore {
         val index = tabs.indexOfFirst { it.id == id }
         if (index < 0) return tabs.lastOrNull()?.copy()
 
-        tabs.removeAt(index)
+        archiveClosedLocked(tabs.removeAt(index))
         persistLocked()
         if (tabs.isEmpty()) return null
         return tabs[index.coerceAtMost(tabs.lastIndex)].copy()
@@ -367,6 +423,14 @@ object VideoTabStore {
         return tabs[(index + 1) % tabs.size].copy()
     }
 
+    private fun archiveClosedLocked(tab: VideoTab) {
+        recentlyClosed.removeAll { it.id == tab.id }
+        recentlyClosed.add(0, tab.copy())
+        while (recentlyClosed.size > MAX_RECENTLY_CLOSED) {
+            recentlyClosed.removeAt(recentlyClosed.lastIndex)
+        }
+    }
+
     private fun setTechnicalStageLocked(
         tab: VideoTab,
         stage: String,
@@ -378,85 +442,104 @@ object VideoTabStore {
 
     private fun persistLocked() {
         val target = prefs ?: return
-        val array = JSONArray()
+        val openArray = JSONArray()
+        val closedArray = JSONArray()
 
-        tabs.forEach { tab ->
-            array.put(
-                JSONObject()
-                    .put("id", tab.id)
-                    .put("title", tab.title)
-                    .put("source_url", tab.sourceUrl)
-                    .put("resolved_media_json", tab.resolvedMediaJson)
-                    .put("position_ms", tab.positionMs)
-                    .put("play_when_ready", tab.playWhenReady)
-                    .put("preparation_state", tab.preparationState.name)
-                    .put("last_error", tab.lastError)
-                    .put("manual_quality_height", tab.manualQualityHeight ?: JSONObject.NULL)
-                    .put("actual_quality_height", tab.actualQualityHeight ?: JSONObject.NULL)
-                    .put("created_at_ms", tab.createdAtMs)
-                    .put("updated_at_ms", tab.updatedAtMs)
-                    .put("preparation_requested_at_ms", tab.preparationRequestedAtMs)
-                    .put("preparation_host_created_at_ms", tab.preparationHostCreatedAtMs)
-                    .put("direct_resolver_started_at_ms", tab.directResolverStartedAtMs)
-                    .put("direct_resolver_finished_at_ms", tab.directResolverFinishedAtMs)
-                    .put("browser_stage_requested_at_ms", tab.browserStageRequestedAtMs)
-                    .put("browser_webview_created_at_ms", tab.browserWebViewCreatedAtMs)
-                    .put("browser_discovery_started_at_ms", tab.browserDiscoveryStartedAtMs)
-                    .put("ready_at_ms", tab.readyAtMs)
-                    .put("last_technical_preparation_stage", tab.lastTechnicalPreparationStage)
-                    .put("last_technical_stage_at_ms", tab.lastTechnicalStageAtMs)
-            )
-        }
+        tabs.forEach { tab -> openArray.put(tab.toJsonObject()) }
+        recentlyClosed.forEach { tab -> closedArray.put(tab.toJsonObject()) }
 
-        target.edit().putString(KEY_TABS, array.toString()).apply()
+        target.edit()
+            .putString(KEY_TABS, openArray.toString())
+            .putString(KEY_RECENTLY_CLOSED, closedArray.toString())
+            .apply()
     }
 
     private fun loadLocked() {
         tabs.clear()
-        val raw = prefs?.getString(KEY_TABS, null).orEmpty()
+        recentlyClosed.clear()
+        loadListLocked(KEY_TABS, tabs)
+        loadListLocked(KEY_RECENTLY_CLOSED, recentlyClosed)
+
+        while (recentlyClosed.size > MAX_RECENTLY_CLOSED) {
+            recentlyClosed.removeAt(recentlyClosed.lastIndex)
+        }
+    }
+
+    private fun loadListLocked(key: String, target: MutableList<VideoTab>) {
+        val raw = prefs?.getString(key, null).orEmpty()
         if (raw.isBlank()) return
 
         runCatching { JSONArray(raw) }
             .onSuccess { array ->
                 for (index in 0 until array.length()) {
-                    val item = array.optJSONObject(index) ?: continue
-                    val id = item.optString("id").trim()
-                    if (id.isBlank()) continue
-
-                    val state = runCatching {
-                        PreparationState.valueOf(item.optString("preparation_state", "READY"))
-                    }.getOrDefault(PreparationState.ERROR)
-
-                    tabs += VideoTab(
-                        id = id,
-                        title = item.optString("title", "Video").trim().ifBlank { "Video" },
-                        sourceUrl = item.optString("source_url").trim(),
-                        resolvedMediaJson = item.optString("resolved_media_json"),
-                        positionMs = item.optLong("position_ms", 0L).coerceAtLeast(0L),
-                        playWhenReady = item.optBoolean("play_when_ready", true),
-                        preparationState = state,
-                        lastError = item.optString("last_error"),
-                        manualQualityHeight = item.optionalPositiveInt("manual_quality_height"),
-                        actualQualityHeight = item.optionalPositiveInt("actual_quality_height"),
-                        createdAtMs = item.optLong("created_at_ms", System.currentTimeMillis()),
-                        updatedAtMs = item.optLong("updated_at_ms", System.currentTimeMillis()),
-                        preparationRequestedAtMs = item.optLong("preparation_requested_at_ms", 0L),
-                        preparationHostCreatedAtMs = item.optLong("preparation_host_created_at_ms", 0L),
-                        directResolverStartedAtMs = item.optLong("direct_resolver_started_at_ms", 0L),
-                        directResolverFinishedAtMs = item.optLong("direct_resolver_finished_at_ms", 0L),
-                        browserStageRequestedAtMs = item.optLong("browser_stage_requested_at_ms", 0L),
-                        browserWebViewCreatedAtMs = item.optLong("browser_webview_created_at_ms", 0L),
-                        browserDiscoveryStartedAtMs = item.optLong("browser_discovery_started_at_ms", 0L),
-                        readyAtMs = item.optLong("ready_at_ms", 0L),
-                        lastTechnicalPreparationStage = item.optString("last_technical_preparation_stage"),
-                        lastTechnicalStageAtMs = item.optLong("last_technical_stage_at_ms", 0L)
-                    )
+                    array.optJSONObject(index)
+                        ?.toVideoTabOrNull()
+                        ?.let(target::add)
                 }
             }
             .onFailure {
-                tabs.clear()
-                prefs?.edit()?.remove(KEY_TABS)?.apply()
+                target.clear()
+                prefs?.edit()?.remove(key)?.apply()
             }
+    }
+
+    private fun VideoTab.toJsonObject(): JSONObject =
+        JSONObject()
+            .put("id", id)
+            .put("title", title)
+            .put("source_url", sourceUrl)
+            .put("resolved_media_json", resolvedMediaJson)
+            .put("position_ms", positionMs)
+            .put("play_when_ready", playWhenReady)
+            .put("preparation_state", preparationState.name)
+            .put("last_error", lastError)
+            .put("manual_quality_height", manualQualityHeight ?: JSONObject.NULL)
+            .put("actual_quality_height", actualQualityHeight ?: JSONObject.NULL)
+            .put("created_at_ms", createdAtMs)
+            .put("updated_at_ms", updatedAtMs)
+            .put("preparation_requested_at_ms", preparationRequestedAtMs)
+            .put("preparation_host_created_at_ms", preparationHostCreatedAtMs)
+            .put("direct_resolver_started_at_ms", directResolverStartedAtMs)
+            .put("direct_resolver_finished_at_ms", directResolverFinishedAtMs)
+            .put("browser_stage_requested_at_ms", browserStageRequestedAtMs)
+            .put("browser_webview_created_at_ms", browserWebViewCreatedAtMs)
+            .put("browser_discovery_started_at_ms", browserDiscoveryStartedAtMs)
+            .put("ready_at_ms", readyAtMs)
+            .put("last_technical_preparation_stage", lastTechnicalPreparationStage)
+            .put("last_technical_stage_at_ms", lastTechnicalStageAtMs)
+
+    private fun JSONObject.toVideoTabOrNull(): VideoTab? {
+        val id = optString("id").trim()
+        if (id.isBlank()) return null
+
+        val state = runCatching {
+            PreparationState.valueOf(optString("preparation_state", "READY"))
+        }.getOrDefault(PreparationState.ERROR)
+
+        return VideoTab(
+            id = id,
+            title = optString("title", "Video").trim().ifBlank { "Video" },
+            sourceUrl = optString("source_url").trim(),
+            resolvedMediaJson = optString("resolved_media_json"),
+            positionMs = optLong("position_ms", 0L).coerceAtLeast(0L),
+            playWhenReady = optBoolean("play_when_ready", true),
+            preparationState = state,
+            lastError = optString("last_error"),
+            manualQualityHeight = optionalPositiveInt("manual_quality_height"),
+            actualQualityHeight = optionalPositiveInt("actual_quality_height"),
+            createdAtMs = optLong("created_at_ms", System.currentTimeMillis()),
+            updatedAtMs = optLong("updated_at_ms", System.currentTimeMillis()),
+            preparationRequestedAtMs = optLong("preparation_requested_at_ms", 0L),
+            preparationHostCreatedAtMs = optLong("preparation_host_created_at_ms", 0L),
+            directResolverStartedAtMs = optLong("direct_resolver_started_at_ms", 0L),
+            directResolverFinishedAtMs = optLong("direct_resolver_finished_at_ms", 0L),
+            browserStageRequestedAtMs = optLong("browser_stage_requested_at_ms", 0L),
+            browserWebViewCreatedAtMs = optLong("browser_webview_created_at_ms", 0L),
+            browserDiscoveryStartedAtMs = optLong("browser_discovery_started_at_ms", 0L),
+            readyAtMs = optLong("ready_at_ms", 0L),
+            lastTechnicalPreparationStage = optString("last_technical_preparation_stage"),
+            lastTechnicalStageAtMs = optLong("last_technical_stage_at_ms", 0L)
+        )
     }
 
     private fun JSONObject.optionalPositiveInt(key: String): Int? {

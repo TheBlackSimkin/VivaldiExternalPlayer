@@ -25,12 +25,16 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         private const val TAB_BUTTON_TAG = "vivaldi_external_player_tabs_button"
 
         /**
-         * The preparation window must be effectively invisible while remaining a
-         * real top/resumed Activity window. A tiny non-zero alpha avoids relying
-         * on compositor behavior for a completely zero-alpha surface, while being
-         * far below Android's obscuring-opacity threshold for touch pass-through.
+         * Build #215 proved the preparation Activity can stay RESUMED and resolve
+         * PH before ExternalPlayer is opened. It also proved that alpha=0.01 is
+         * wrong for an Activity overlay above another app on Android 12+:
+         * FLAG_NOT_TOUCHABLE pass-through is only trusted for a fully transparent
+         * Activity window, not merely a very translucent one.
+         *
+         * Keep the window exactly 0.0 alpha. The Activity/WebView still owns a
+         * real laid-out, RESUMED host; only compositor output is suppressed.
          */
-        private const val BG_PREPARATION_WINDOW_ALPHA = 0.01f
+        private const val BG_PREPARATION_WINDOW_ALPHA = 0.0f
     }
 
     private val activityTabs = WeakHashMap<Activity, String>()
@@ -70,14 +74,15 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
              * private virtual display.
              *
              * Keep this Activity on the normal/default display and keep it
-             * RESUMED. Its window is almost fully transparent and NOT_TOUCHABLE,
-             * so Vivaldi remains what the user sees underneath while WebView keeps
+             * RESUMED. Its window is fully transparent and NOT_TOUCHABLE, so
+             * Vivaldi remains what the user sees underneath while WebView keeps
              * the real Activity context and full viewport which the successful
              * manual Browser Step uses.
              *
              * We intentionally do NOT add FLAG_NOT_FOCUSABLE: browser/page code
-             * can depend on focus. NOT_TOUCHABLE is enough to prevent accidental
-             * invisible interaction with the WebView during automatic discovery.
+             * can depend on focus. Build #215 showed the resolver completed in
+             * this resumed architecture; this build changes only compositor/touch
+             * transparency from alpha 0.01 to the platform-safe alpha 0.0.
              */
             configureTransparentPreparationWindow(activity)
             OperationLog.record(
@@ -243,6 +248,11 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     /**
      * Make the preparation host visually disappear without putting its Activity
      * into the STOPPED state which #205 proved this phone aggressively destroys.
+     *
+     * Android 12+ treats pass-through touches under a NOT_TOUCHABLE Activity as
+     * untrusted unless the window is completely transparent. Build #215 used
+     * alpha 0.01 and the real phone blocked Vivaldi touches for several seconds.
+     * Exact alpha 0.0 is therefore a functional requirement, not cosmetic polish.
      */
     private fun configureTransparentPreparationWindow(activity: Activity) {
         activity.window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)

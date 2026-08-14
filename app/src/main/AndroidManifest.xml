@@ -14,9 +14,23 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="External Video Player"
+        android:localeConfig="@xml/locales_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.VivaldiExternalPlayer"
         android:usesCleartextTraffic="false">
+
+        <!--
+          AndroidX app-language persistence for API 24-32. Android 13+ also sees
+          the same supported languages through android:localeConfig above.
+        -->
+        <service
+            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
+            android:enabled="false"
+            android:exported="false">
+            <meta-data
+                android:name="autoStoreLocales"
+                android:value="true" />
+        </service>
 
         <provider android:name=".BrowserAssistEnhancerProvider" android:authorities="${applicationId}.browserassist" android:exported="false" />
         <provider android:name=".PendingBrowserTabBridgeProvider" android:authorities="${applicationId}.pendingtabbridge" android:exported="false" />
@@ -47,7 +61,7 @@
           third-party Activity launch onto an untrusted private virtual display.
           The normal path now launches this Activity on the DEFAULT display in the
           same excluded task. Its application lifecycle callback makes the window
-          almost fully transparent and NOT_TOUCHABLE while keeping the Activity
+          fully transparent and NOT_TOUCHABLE while keeping the Activity
           top/resumed, so Vivaldi remains visually underneath without putting the
           WebView host into the STOPPED state that #205 showed this phone destroys.
         -->

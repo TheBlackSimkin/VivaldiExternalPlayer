@@ -20,14 +20,30 @@
     <string name="try_browser_method">Terminar en el navegador</string>
 
     <string name="settings">Ajustes</string>
-    <string name="settings_intro">Preferencias locales de External Player. Estos ajustes permanecen en este dispositivo.</string>
+    <string name="settings_intro">Preferencias locales de ExternalPlayer. Estos ajustes permanecen en este dispositivo.</string>
+    <string name="app_language">Idioma de la aplicación</string>
+    <string name="app_language_value">Idioma de la aplicación: %1$s</string>
+    <string name="language_system_default">Predeterminado del sistema</string>
+    <string name="language_english">English</string>
+    <string name="language_spanish">Español</string>
     <string name="setting_clear_age_prompts">Confirmar automáticamente avisos claramente identificados de 18+</string>
     <string name="setting_clear_cookie_prompts">Aceptar automáticamente avisos de cookies claramente identificados</string>
     <string name="setting_network_retry">Reintentar automáticamente fallos temporales de red</string>
     <string name="setting_preload_next_tab">Preparar en segundo plano la siguiente pestaña en cola cuando sea posible</string>
-    <string name="setting_persistent_tabs_info">Las pestañas abiertas, posiciones, calidades y estados de preparación se guardan localmente entre reinicios de la aplicación o del proceso.</string>
+    <string name="setting_persistent_tabs_info">Las pestañas abiertas se guardan localmente y se restauran automáticamente después de reinicios de la aplicación o del proceso. Al cerrar o deslizar una pestaña pasa a Cerradas recientemente para poder restaurarla.</string>
+    <string name="recently_closed_tabs_count">Cerradas recientemente (%1$d)</string>
+    <string name="restore_recently_closed_tab">Restaurar pestaña cerrada recientemente</string>
+    <string name="no_recently_closed_tabs">No hay pestañas cerradas recientemente.</string>
+    <string name="tab_restored">Pestaña restaurada</string>
+    <string name="clear_recently_closed">Borrar historial</string>
+    <string name="recently_closed_cleared">Historial de cerradas recientemente borrado</string>
+    <string name="clear_all_tabs">Borrar todas las pestañas</string>
+    <string name="clear_all_tabs_confirmation">¿Cerrar y olvidar todas las pestañas actualmente abiertas de ExternalPlayer?</string>
+    <string name="all_tabs_cleared">Todas las pestañas abiertas fueron borradas</string>
+
+    <!-- Texto antiguo conservado por compatibilidad con recursos/código anteriores. -->
     <string name="clear_saved_tabs">Borrar pestañas guardadas</string>
-    <string name="clear_saved_tabs_confirmation">¿Cerrar y olvidar todas las pestañas guardadas de External Player?</string>
+    <string name="clear_saved_tabs_confirmation">¿Cerrar y olvidar todas las pestañas guardadas de ExternalPlayer?</string>
     <string name="clear">Borrar</string>
     <string name="saved_tabs_cleared">Pestañas guardadas borradas</string>
 
@@ -49,6 +65,12 @@
     <string name="try_another_detected_video">Probar otro vídeo detectado</string>
     <string name="temporary_network_retry">Problema temporal de red — reintentando…</string>
     <string name="retrying_playback">Reintentando reproducción…</string>
+
+    <string name="home_brand">ExternalPlayer</string>
+    <string name="home_tagline">Reproducción privada y rápida desde tu navegador</string>
+    <string name="home_tabs_section">Tus pestañas</string>
+    <string name="home_manual_section">Abrir un enlace manualmente</string>
+    <string name="tab_thumbnail_pending">La vista previa aparece cuando la pestaña está lista</string>
 
     <string name="dashboard_title">Panel de pestañas</string>
     <string name="dashboard_subtitle">Pestañas listas, preparando y con paso de navegador en un solo lugar</string>
