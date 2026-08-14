@@ -12,6 +12,12 @@ The important policy in this file is intentionally conservative:
 - when yt-dlp reports a browser/challenge-style miss, return a neutral failure
   so the Android layer can try its ordinary WebView resolver. The WebView layer
   still refuses to automate CAPTCHA/login/payment/region/DRM controls.
+
+Because this app has a normal browser-assisted fallback, direct extraction is
+also intentionally bounded. Long HTTP/extractor retry chains are counterproductive
+on Android: real-device PH QA showed them occupying roughly four minutes before
+the browser stage even got a chance. A short socket timeout and small retry count
+let ordinary misses hand off promptly while still preserving yt-dlp-first order.
 """
 
 import json
@@ -222,6 +228,14 @@ def resolve(url: str, quality: str = "auto") -> str:
         "http_headers": {
             "User-Agent": USER_AGENT,
         },
+
+        # The app already has a browser-assisted fallback. Keep direct extraction
+        # responsive instead of allowing yt-dlp's much larger default HTTP retry
+        # chains to occupy minutes on a browser/challenge-style miss.
+        "socket_timeout": 12,
+        "retries": 1,
+        "extractor_retries": 1,
+        "fragment_retries": 1,
 
         # Never spoof X-Forwarded-For in order to bypass geographic restrictions.
         "geo_bypass": False,
