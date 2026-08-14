@@ -183,15 +183,23 @@ For the next visual iteration, preserve the current logo identity, colors, and l
 - with the purple portions more noticeable/prominent.
 Do not change build #192 for this request; handle it in a later visual iteration after the BG lifecycle priority is resolved.
 
+## Build #192 QA clarification — Android Recents is not a BG proof
+During #192 device QA, the user shared three PH links through `BG - External Player`, then opened Android Recents with the square button and did not see an ExternalPlayer task there.
+
+This is **expected by current design and is not a failure signal by itself**: `BackgroundShareActivity` is intentionally declared with `android:excludeFromRecents="true"`. Its transparent document task may therefore continue preparation while being intentionally absent from the Recents UI.
+
+Do not use Recents visibility as the BG success criterion. The real criterion remains: without manually opening ExternalPlayer or clicking individual cards, the three tabs must advance from QUEUED/RESOLVING through their technical stages and preferably reach READY. The user should continue the focused test and later open ExternalPlayer once only to observe the already-existing tab states/`tech ...` markers.
+
 ## Current development priority
 1. Device-test build #192 first for **both share-entry semantics**: `ExternalPlayer` must visibly raise/open the app and begin the foreground flow; `BG - External Player` must leave Vivaldi visible while the app's already-launched BG Activity actually begins preparation.
-2. For BG specifically, verify tabs leave QUEUED and prepare **before ExternalPlayer or the individual card is manually opened**.
-3. Test multiple BG shares without clicking their cards; each should progress according to its own document/preparation task.
-4. Use the local `tech ...` stage marker to identify exactly where a failure stops if device behavior still differs from the intended lifecycle.
-5. Confirm direct -> safe browser fallback is automatic when ordinary resolution fails, while protected controls still stop at NEEDS_ATTENTION/ERROR as appropriate.
-6. Do not treat #192 as a successful BG fix until device QA confirms it.
-7. Only after BG is fixed, resume remaining #187 checks (dashboard gestures, Back navigation, HH quality, buffering) unless the user volunteers results earlier.
-8. After the BG lifecycle is solved, include the requested logo refinement in a later visual iteration.
+2. Do **not** require the BG Activity to appear in Android Recents; it is intentionally excluded there.
+3. For BG specifically, verify tabs leave QUEUED and prepare **before ExternalPlayer or the individual card is manually opened**.
+4. Test multiple BG shares without clicking their cards; each should progress according to its own document/preparation task.
+5. Use the local `tech ...` stage marker to identify exactly where a failure stops if device behavior still differs from the intended lifecycle.
+6. Confirm direct -> safe browser fallback is automatic when ordinary resolution fails, while protected controls still stop at NEEDS_ATTENTION/ERROR as appropriate.
+7. Do not treat #192 as a successful BG fix until device QA confirms it.
+8. Only after BG is fixed, resume remaining #187 checks (dashboard gestures, Back navigation, HH quality, buffering) unless the user volunteers results earlier.
+9. After the BG lifecycle is solved, include the requested logo refinement in a later visual iteration.
 
 ## QA format
 Whenever asking user to test, provide EXACTLY:
