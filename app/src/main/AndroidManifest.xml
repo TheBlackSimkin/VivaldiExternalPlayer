@@ -34,17 +34,21 @@
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
         <!--
-          Each explicit BG share gets its own excluded document task and THIS
-          Activity owns direct + hidden-WebView preparation itself. Do not add
-          `android:noHistory`: moving the task behind Vivaldi is intentional, and
-          noHistory would authorize Android to destroy the preparation host as
-          soon as it is no longer visible.
+          #192 proved that a self-owned share Activity starts preparation without
+          requiring a dashboard/tab click, but PH device QA also proved that its
+          automatic browser copy was not equivalent to the successful visible
+          Browser Step.
 
-          Common orientation/screen-size changes are handled in-place so a hidden
-          preparation host does not get recreated into a duplicate shared tab.
+          BackgroundShareActivityV2 keeps the self-owned document-task model and
+          adds a bounded direct budget plus browser-like hidden discovery (normal
+          layout + Service Worker observation). The Activity remains excluded from
+          Recents and moves behind Vivaldi; it never owns ExoPlayer/playback.
+
+          Do not add android:noHistory: Android must be allowed to keep this
+          explicit share host alive while its preparation is in progress.
         -->
         <activity
-            android:name=".BackgroundShareActivity"
+            android:name=".BackgroundShareActivityV2"
             android:configChanges="keyboardHidden|orientation|screenSize"
             android:documentLaunchMode="always"
             android:excludeFromRecents="true"
@@ -59,6 +63,14 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
+
+        <!-- Old #192 implementation is kept only as source history/reference. -->
+        <activity
+            android:name=".BackgroundShareActivity"
+            android:configChanges="keyboardHidden|orientation|screenSize"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
         <activity
             android:name=".ForegroundShareActivity"
