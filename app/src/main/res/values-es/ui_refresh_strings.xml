@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_brand">ExternalPlayer</string>
+    <string name="home_tagline">Reproducción rápida desde tu navegador</string>
+    <string name="home_tabs_section">Tus pestañas</string>
+    <string name="home_manual_section">Abrir un enlace manualmente</string>
+    <string name="tab_thumbnail_pending">La vista previa aparecerá al iniciar la reproducción</string>
+</resources>
