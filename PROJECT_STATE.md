@@ -101,25 +101,32 @@ Conclusion:
 - **UX requirement FAIL:** alpha `0.01` + `FLAG_NOT_TOUCHABLE` still interferes with touches to Vivaldi and leaks a brief visible frame.
 - One 720p result is encouraging but does **not** yet close the previously observed 1080-vs-720 regression globally.
 
-## Current architecture change after #215
-Android 12+ official window behavior says pass-through touches under an Activity window using `FLAG_NOT_TOUCHABLE` are allowed when that window is **fully transparent** (`LayoutParams.alpha == 0`). A merely translucent Activity window such as #215's 0.01 is not the same exception.
+## Post-#215 app-code bundle
+App-code commit `2525520b3b6c140db3818337456569f59725d584` introduced the required next-step bundle:
+- preparation window compositor alpha `0.01f -> 0.0f`, retaining `FLAG_NOT_TOUCHABLE`, focus and RESUMED lifecycle;
+- real persisted Recently closed tab history (max 12) with restore from Settings;
+- explicit System default / English / Español app-language selector;
+- refreshed white-E/purple icon with more prominent purple and less-boxy shape.
 
-Current code change therefore keeps the successful #215 RESUMED preparation architecture but changes only the preparation window compositor alpha:
-- `BG_PREPARATION_WINDOW_ALPHA`: `0.01f -> 0.0f`;
-- keep `FLAG_NOT_TOUCHABLE`;
-- keep focus enabled because browser equivalence may depend on focus;
-- keep preparation Activity RESUMED;
-- no `moveTaskToBack()`;
-- no virtual display;
-- no legacy Worker fallback for normal BG preparation.
+Normal BG architecture remains intentionally unchanged otherwise: no `moveTaskToBack()`, no virtual-display Activity launch, no normal BG Worker fallback, and no PlayerActivity/ExoPlayer during preparation.
 
-Goal: preserve #215's ~9s automatic READY behavior while eliminating the 3–5s touch block and visible flash.
+### CI #224 — FAIL, no APK designated
+GitHub Actions run #224, run ID `31850417827`, failed during `mergeDebugResources` before Kotlin compilation and before any APK upload.
 
-## Required UX bundle — being implemented in the next app-code build
-The user explicitly required these items in the very next build after #215; they must not be postponed again.
+Cause: five Spanish strings were accidentally defined in both `values-es/next_build_strings.xml` and the existing `values-es/ui_refresh_strings.xml`:
+- `home_brand`;
+- `home_tagline`;
+- `home_tabs_section`;
+- `home_manual_section`;
+- `tab_thumbnail_pending`.
 
+This is a resource-definition mistake only; it does not change the #215 lifecycle diagnosis. No #224 APK is a QA target.
+
+Correction: remove only those duplicate Spanish definitions from `next_build_strings.xml` and keep their existing translations in `ui_refresh_strings.xml`. Re-run CI; do not designate the successor until CI passes and the committed BG share-time path is re-inspected.
+
+## Required UX bundle details
 ### 1. Persistent/open tabs clarity + real Recently closed restore
-Current/open tabs already persist in local SharedPreferences and reload automatically after app/process restart. There is no manual reload requirement.
+Current/open tabs persist in local SharedPreferences and reload automatically after app/process restart. There is no manual reload requirement.
 
 New implementation:
 - Settings wording explicitly says open tabs restore automatically;
@@ -134,7 +141,7 @@ New implementation:
 If an OPEN tab disappears after a real restart without being closed/cleared, treat that separately as a persistence bug.
 
 ### 2. Explicit app-language selector
-New Settings selector:
+Settings selector:
 - System default;
 - English;
 - Español.
@@ -142,12 +149,12 @@ New Settings selector:
 Implementation uses AndroidX `AppCompatDelegate.setApplicationLocales`, declares `en`/`es` in `res/xml/locales_config.xml`, and enables AndroidX locale auto-storage for API 24–32. Android 13+ can also synchronize the app locale with system per-app language settings.
 
 ### 3. Launcher/header icon refresh
-Required visual direction:
+Required direction:
 - preserve white-E + purple identity;
 - less boxy / more refined;
 - purple more prominent.
 
-New vector mark uses a larger purple diamond, dark cutout, rounded compact white E, and purple center accent. Both adaptive foreground and pre-adaptive launcher fallback use the refreshed mark. Main dashboard header already uses the same foreground drawable, so it will update too.
+New vector mark uses a larger purple diamond, dark cutout, rounded compact white E, and purple center accent. Both adaptive foreground and pre-adaptive launcher fallback use the refreshed mark. Main dashboard header uses the same foreground drawable.
 
 ### Secure GitHub log reporting
 Approved idea but deferred until after the three required items above. Keep ordinary Share operations log. Never embed a PAT/repository token/OAuth client secret in the APK.
@@ -161,7 +168,7 @@ Current known findings:
 - manual 240 works;
 - manual 480 still needs repair/verification.
 
-Do not mix a speculative 480-quality rewrite into the current touch/UX build unless a clearly isolated safe fix is found. After BG touch/visibility is clean, verify 720 policy and 480 switching before HH regression testing.
+Do not mix a speculative 480-quality rewrite into the current touch/UX build. After BG touch/visibility is clean, verify 720 policy and 480 switching before HH regression testing.
 
 ## Current UI / backlog
 - long-press tab move/reorder WORKS from #192;
@@ -170,14 +177,14 @@ Do not mix a speculative 480-quality rewrite into the current touch/UX build unl
 - tested Back flow after manual Browser Step WORKS;
 - BG absence from Android Recents PASS/preferred;
 - exportable operations log PASS/useful;
-- required next-build Recently closed / language / icon work is implemented in current pending app-code changes;
+- post-#215 Recently closed / language / icon bundle is implemented but awaiting corrected CI;
 - secure `Report log on GitHub` shortcut comes later.
 
 ## Current development priority
-1. Commit the post-#215 app-code bundle: alpha 0.0 touch/flash fix + Recently closed restore + app-language selector + icon refresh.
-2. Run CI and do not designate an APK merely because local edits exist.
+1. Correct #224 duplicate Spanish resources and commit the fix to `main` together with this state update.
+2. Run CI; no QA APK until PASS.
 3. Re-inspect committed share-time path after CI: tab/lease/preparation Activity/direct resolver/browser fallback must still start from BG share time, never dashboard/card opening.
-4. Update both state files with exact CI run/artifact/hash.
+4. Update both state files with exact successful CI run/artifact/hash.
 5. Next focused device QA should use ONE PH link first and verify simultaneously:
    - automatic READY before app/card open remains working;
    - Vivaldi touch/scroll works immediately after BG share;

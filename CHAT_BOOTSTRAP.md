@@ -47,59 +47,62 @@ Authoritative log anchors:
 
 Interpretation: **core BG preparation PASS; transparent-overlay UX FAIL**.
 
-## Current pending architecture change after #215
-Keep the successful RESUMED preparation model but change the preparation window from alpha `0.01` to **exactly `0.0`** while retaining `FLAG_NOT_TOUCHABLE` and focus.
+## Post-#215 app-code bundle
+App-code commit `2525520b3b6c140db3818337456569f59725d584` contains:
+- alpha `0.01 -> 0.0` while keeping the successful RESUMED + NOT_TOUCHABLE preparation model;
+- persisted Recently closed history (max 12) + restore UI;
+- System default / English / Español app-language selector;
+- refreshed white-E/purple icon with stronger purple and less-boxy geometry.
 
-Reason: Android 12+ pass-through touch rules treat a fully transparent (`alpha == 0`) Activity window as an explicit safe exception; a merely translucent Activity window is not the same exception. Goal is to preserve automatic READY while eliminating the touch block and visible flash.
+Do not reintroduce `moveTaskToBack()`, virtual-display Activity launch, normal BG Worker fallback, or PlayerActivity/ExoPlayer during preparation.
 
-Do not reintroduce:
-- `moveTaskToBack()`;
-- virtual-display Activity launch;
-- normal BG Worker fallback;
-- PlayerActivity/ExoPlayer during preparation.
+### CI #224 — FAIL, no APK
+GitHub Actions #224, run ID `31850417827`, failed at `mergeDebugResources` before Kotlin compilation and before APK upload.
+
+Cause: five Spanish strings were accidentally duplicated between `values-es/next_build_strings.xml` and existing `values-es/ui_refresh_strings.xml`: `home_brand`, `home_tagline`, `home_tabs_section`, `home_manual_section`, `tab_thumbnail_pending`.
+
+This is only a resource-definition error. No #224 APK exists/is a QA target. Correct by deleting only the duplicate definitions from `next_build_strings.xml` and retaining the existing translations in `ui_refresh_strings.xml`, then re-run CI.
 
 ## Required next-build UI bundle — user explicitly said do not postpone
-The same post-#215 app-code build must include all three:
-
 1. **Persistent tab clarity + real Recently closed restore**
    - open tabs restore automatically after app/process restart;
    - Settings says this clearly;
    - rename `Clear saved tabs` to `Clear all tabs`;
    - closing/swiping one tab archives a bounded snapshot;
-   - Settings exposes `Recently closed (N)` and lets the user restore one;
+   - Settings exposes `Recently closed (N)` and lets user restore one;
    - preserve source/resolved payload, position and quality state;
-   - max 12 recently closed entries;
-   - bulk Clear all does not fill recently closed history.
+   - max 12 entries;
+   - bulk Clear all does not fill history.
 
 2. **App language selector**
    - System default;
    - English;
    - Español;
-   - use AndroidX `AppCompatDelegate.setApplicationLocales`;
+   - AndroidX `AppCompatDelegate.setApplicationLocales`;
    - declare `en`/`es` locale config;
-   - persist compatibly on API 24–32 and synchronize with Android 13+ per-app locale where supported.
+   - persist compatibly on API 24–32 and synchronize with Android 13+ where supported.
 
 3. **Icon refresh**
    - preserve white-E/purple identity;
    - less boxy/more refined;
    - purple more prominent;
-   - refreshed vector should affect launcher and dashboard header.
+   - affect launcher and dashboard header.
 
 Secure GitHub log-report shortcut is approved but deferred until after these three. Never embed a GitHub PAT/token/client secret in the APK.
 
 ## Quality status
 - #215 one-PH automatic result reported 720p.
-- Earlier runs chose 1080 despite 720 existing, so do not declare that regression globally fixed from one sample.
+- Earlier runs chose 1080 despite 720 existing, so do not globally declare that fixed from one sample.
 - Manual 240p works.
 - Manual 480p still needs repair/verification.
 - No HH testing yet.
 
 ## Current priority
-1. Commit alpha-0.0 touch/flash fix + Recently closed + language selector + icon refresh to `main`.
-2. CI must pass before designating the next QA APK.
+1. Commit the #224 duplicate-resource correction with both state files updated.
+2. CI must pass before designating the successor APK.
 3. Post-CI inspect committed share-time path: tab + lease + preparation Activity + direct resolver + browser fallback must still start at BG share time, not dashboard/card open.
-4. Update both state files with exact build/run/artifact/hash.
-5. Next QA: ONE PH link first. Verify automatic READY still happens before app/card open, Vivaldi touch works immediately, no visible flash, log shows RESUMED with alpha=0.0, language selector works/persists, Recently closed restore works, and new icon is visible.
+4. Update both state files with successful build/run/artifact/hash.
+5. Next QA: ONE PH link. Verify automatic READY before app/card open, Vivaldi touch works immediately, no visible flash, log shows RESUMED with alpha=0.0, language selector works/persists, Recently closed restore works, and new icon is visible.
 6. If clean, test 2–3 PH links for browser-slot serialization.
 7. Then fix/verify 720 policy + manual 480 switching.
 8. No HH until PH blockers are cleared.
