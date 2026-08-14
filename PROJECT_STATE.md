@@ -91,9 +91,8 @@ Decision: do **not** ship a fake `allowEmbedded=true` retry that would simply fa
 
 #212 is no longer a QA target.
 
-## Current architecture after #212 — transparent primary-display RESUMED preparation
-Current app-code commit: `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`.
-CI for this commit is pending at the time of this state update; do not designate an APK until CI passes.
+## Build #215 — transparent primary-display RESUMED preparation
+App-code commit: `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`.
 
 Normal BG path is now:
 `BG share -> create persistent tab at share time -> foreground process lease -> launch real preparation Activity in the same excluded task on DEFAULT display -> keep preparation Activity RESUMED with nearly-transparent NOT_TOUCHABLE window -> READY/ERROR/NEEDS_ATTENTION -> finish/remove task`.
@@ -103,7 +102,7 @@ Key design points:
 - no `ActivityOptions.launchDisplayId`;
 - no normal virtual-display dependency;
 - the short exported share Activity owns no resolver work and uses `finish()`, not `finishAndRemoveTask()`, after starting the preparer;
-- the existing resolver Activity (historical class name `BackgroundVirtualPreparationActivity`) retains its already-tested direct/browser logic;
+- the existing resolver Activity (historical class name `BackgroundVirtualPreparationActivity`) retains its direct/browser logic;
 - `TabbedPlayerApplication` makes that preparation window alpha 0.01 and `FLAG_NOT_TOUCHABLE`, with transparent background;
 - it deliberately does not set `FLAG_NOT_FOCUSABLE`, because browser/page code may depend on focus;
 - the Activity stays top/resumed instead of entering the STOPPED state which #205 proved this phone destroys;
@@ -122,12 +121,26 @@ New operations-log lifecycle markers include:
 
 The existing preparation host still records direct/browser markers such as `DIRECT_STARTED`, `DIRECT_BUDGET_EXPIRED`, `BROWSER_AUTO_REQUESTED`, `BROWSER_DISCOVERY_STARTED`, `BROWSER_CANDIDATE`, and `BG_PREPARATION_READY`.
 
-### Code-path requirement before next QA designation
-Before giving the next APK, verify committed `main` still does all preparation scheduling at BG-share time:
-- share target creates the tab and starts the lease immediately;
-- it launches the preparation Activity directly from the share flow;
-- preparation Activity's `onCreate()` marks host/resolving, creates/configures WebView, calls direct resolver and schedules the 12s fallback;
-- opening MainActivity/dashboard/card is not part of startup.
+### Build #215 post-CI code-path inspection — PASS
+Inspection of committed app-code commit `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7` confirms normal preparation is started from the BG share itself:
+- `BackgroundShareActivityV2.onCreate()` creates the persistent pending tab, marks preparation requested, starts the foreground lease, and directly launches `BackgroundVirtualPreparationActivity` in the same task on the default display;
+- the share handoff does not call `moveTaskToBack()`, does not use `launchDisplayId`, and does not involve MainActivity/dashboard/card selection;
+- `BackgroundVirtualPreparationActivity.onCreate()` marks preparation host/resolving, creates/configures its full-size WebView, calls `attemptDirectFirst()`, and schedules the 12-second direct-browser fallback timer;
+- `TabbedPlayerApplication` applies the transparent/NOT_TOUCHABLE window behavior and journals CREATED/STARTED/RESUMED/PAUSED/STOPPED lifecycle transitions;
+- the manifest keeps both BG Activities excluded from Recents and gives the preparation host the transparent theme.
+
+### Build #215 CI / focused QA artifact
+- GitHub Actions run **#215 PASS**.
+- Run ID: `31843858363`.
+- App-code commit: `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`.
+- Debug artifact ID: `9235240761`.
+- Artifact ZIP size: `25,999,191` bytes.
+- Artifact ZIP digest: `sha256:8a942d8dc4ee50c00e2448ed4bbd54147fedd9a0432c5b920328dee29fc70e6f`.
+- Extracted debug APK size: `35,488,506` bytes.
+- Extracted APK SHA-256: `7aea335b8a2f941898ec5737804a89ddb719deb301e156f555408da15d57133e`.
+- #215 is the designated focused **one-PH transparent-overlay lifecycle QA APK**.
+- Later state-only commits do not supersede #215 app code.
+- CI proves compile/package integrity only; device QA is still required for lifecycle/visibility/touch behavior and automatic PH completion.
 
 ## Current quality status / later fix
 Protected policy remains exact 720 -> otherwise 1080 -> otherwise best below 1080. Current PH runtime violates it by initially choosing 1080 when 720 exists.
@@ -152,16 +165,16 @@ Do not mix speculative quality changes into the BG lifecycle blocker. Once PH au
 Do not request HH testing yet. PH automatic BG preparation remains the blocker.
 
 ## Current development priority
-1. Wait for CI on app-code commit `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`.
-2. Inspect committed share/preparation path after CI; confirm preparation starts at share time and there is no virtual-display/Worker dependency in the normal path.
-3. If CI passes, designate one focused PH one-link QA APK for the transparent-primary-overlay lifecycle.
-4. First proof should be lifecycle: `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED` must appear and must not be immediately followed by PAUSED/STOPPED while the user simply leaves Vivaldi visible.
-5. Target: READY without opening ExternalPlayer/card or pressing Browser Step.
-6. If it fails, export operations log before Browser Step.
-7. If one-link PH passes, test 2–3 PH shares for browser-slot serialization.
-8. After PH BG passes, fix strict 720 preference + 480 switching, then test HH separately.
-9. Add app-language selector after BG blocker.
-10. Later perform launcher/logo refinement.
+1. Device-test build #215 with **one PH link only**.
+2. Before the real share, clean old tabs, leave ExternalPlayer with Home/switching, and return to Vivaldi; do not force-stop or swipe ExternalPlayer from Recents.
+3. Share one PH URL via `BG - External Player` and keep looking at Vivaldi for about 45–60 seconds.
+4. Verify Vivaldi remains visually on screen and perform one harmless normal scroll/touch to confirm the transparent `NOT_TOUCHABLE` preparation window does not block browser interaction.
+5. Key lifecycle proof: operations log should show `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED` and should not show an immediate PAUSED/STOPPED before preparation reaches READY/ERROR/NEEDS_ATTENTION.
+6. Target: tab is READY before opening ExternalPlayer/card, with no Browser Step.
+7. If not READY, export operations log before Browser Step. `WORKER_ENQUEUED`, `BG_HOST_DESTROYED_RECOVERY_QUEUED`, or `VIRTUAL_PREP_LAUNCH_FAILED` are not expected in the normal #215 path.
+8. If one-link PH passes, test 2–3 PH shares for browser-slot serialization.
+9. After PH BG passes, fix strict 720 preference + 480 switching, then test HH separately.
+10. Add app-language selector after BG blocker; later perform launcher/logo refinement.
 
 ## QA format
 Whenever asking user to test, provide exactly:
