@@ -10,26 +10,21 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.ui.PlayerView
+import java.util.WeakHashMap
 
 /**
- * Privacy guard which guarantees that PlayerActivity cannot continue audio/video
- * after Android moves it out of the foreground.
+ * Privacy guard for foreground-only playback.
  *
- * The pause is posted to the main queue from onActivityPaused. This lets the tab
- * coordinator first save the user's foreground play intention, then applies the
- * automatic privacy pause. Returning to the same tab can therefore restore the
- * saved intention without confusing it with a deliberate user pause.
+ * Unified preload may briefly foreground BackgroundPreparationActivity before
+ * that excluded task moves behind the player. A small delayed check prevents
+ * that internal hand-off from pausing playback if the SAME PlayerActivity has
+ * already resumed. Home, lock, browser/app switching and dashboard/settings
+ * navigation leave the player non-resumed, so they still pause reliably.
  */
 class ForegroundPlaybackGuardProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return false
         app.registerActivityLifecycleCallbacks(ForegroundPlaybackGuard)
-
-        /*
-         * Reuse this already-registered process entry point to install the
-         * adaptive quality switching correction without another manifest
-         * provider. The quality helper changes only Media3 track selection.
-         */
         AdaptiveQualityRuntime.install(app)
         return true
     }
@@ -48,42 +43,42 @@ class ForegroundPlaybackGuardProvider : ContentProvider() {
 }
 
 private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks {
+    private const val PRIVACY_PAUSE_DELAY_MS = 200L
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    override fun onActivityPaused(activity: Activity) {
-        if (activity !is PlayerActivity) return
-
-        /*
-         * Run after all synchronous onActivityPaused callbacks. The persistent
-         * tab coordinator has then captured position and playWhenReady already.
-         */
-        mainHandler.post {
-            if (!activity.isDestroyed) {
-                activity.findViewById<PlayerView>(R.id.player_view)?.player?.pause()
-            }
-        }
-    }
-
-    override fun onActivityStopped(activity: Activity) {
-        if (activity !is PlayerActivity) return
-
-        // Belt-and-suspenders enforcement for Home/app switch/lock transitions.
-        activity.findViewById<PlayerView>(R.id.player_view)?.player?.pause()
-    }
+    private val resumedPlayers = WeakHashMap<PlayerActivity, Boolean>()
 
     override fun onActivityResumed(activity: Activity) {
-        /*
-         * READY tabs can produce thumbnails without starting playback. Warming
-         * from normal ExternalPlayer foreground screens means background-added
-         * tabs can have preview cards before the user selects them.
-         */
+        if (activity is PlayerActivity) resumedPlayers[activity] = true
+
         if (activity is MainActivity || activity is PlayerActivity) {
             TabThumbnailWarmup.warm(activity.applicationContext)
         }
     }
 
+    override fun onActivityPaused(activity: Activity) {
+        if (activity !is PlayerActivity) return
+        resumedPlayers.remove(activity)
+        schedulePrivacyPause(activity)
+    }
+
+    override fun onActivityStopped(activity: Activity) {
+        if (activity !is PlayerActivity) return
+        schedulePrivacyPause(activity)
+    }
+
+    private fun schedulePrivacyPause(activity: PlayerActivity) {
+        mainHandler.postDelayed({
+            if (!activity.isDestroyed && resumedPlayers[activity] != true) {
+                activity.findViewById<PlayerView>(R.id.player_view)?.player?.pause()
+            }
+        }, PRIVACY_PAUSE_DELAY_MS)
+    }
+
+    override fun onActivityDestroyed(activity: Activity) {
+        if (activity is PlayerActivity) resumedPlayers.remove(activity)
+    }
+
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
     override fun onActivityStarted(activity: Activity) = Unit
-    override fun onActivityDestroyed(activity: Activity) = Unit
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 }
