@@ -31,9 +31,22 @@ object TabThumbnailCache {
     }
 
     fun clear(context: Context) {
-        runCatching { File(context.applicationContext.filesDir, DIRECTORY).deleteRecursively() }
+        runCatching { directory(context).deleteRecursively() }
     }
 
+    /** Remove thumbnails whose persistent tab no longer exists. */
+    fun prune(context: Context, validTabIds: Set<String>) {
+        directory(context).listFiles()?.forEach { file ->
+            val tabId = file.name.removeSuffix(".jpg")
+            if (file.extension.equals("jpg", ignoreCase = true) && tabId !in validTabIds) {
+                runCatching { file.delete() }
+            }
+        }
+    }
+
+    private fun directory(context: Context): File =
+        File(context.applicationContext.filesDir, DIRECTORY)
+
     private fun file(context: Context, tabId: String): File =
-        File(File(context.applicationContext.filesDir, DIRECTORY), "$tabId.jpg")
+        File(directory(context), "$tabId.jpg")
 }
