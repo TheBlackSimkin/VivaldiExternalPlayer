@@ -15,13 +15,7 @@ import androidx.core.content.ContextCompat
 import com.chaquo.python.android.PyApplication
 import java.util.WeakHashMap
 
-/**
- * Application-level persistent-tab coordinator.
- *
- * The home dashboard is the canonical tab UI. PlayerActivity keeps only a
- * compact floating Tabs button which saves the current session and returns to
- * MainActivity; there is no second tab-popup implementation to drift out of sync.
- */
+/** Application-level persistent-tab coordinator. */
 class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCallbacks {
 
     companion object {
@@ -126,13 +120,24 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             ResolvedMedia.fromJson(snapshot.resolvedMediaJson)
         }.getOrNull()
 
-        /*
-         * Direct and sibling-URL quality changes produce a concrete resolved
-         * source height, so that value is also a trustworthy actual quality.
-         * Adaptive HLS/DASH remains verified separately by Media3 VideoSize.
-         */
         currentResolved?.displayedHeight?.takeIf { it > 0 }?.let {
             VideoTabStore.setActualQuality(tabId, it)
+        }
+
+        /*
+         * yt-dlp and browser sibling-URL switches already write a numeric
+         * requested_quality into the resolved payload. Persist that as the manual
+         * preference without modifying PlayerActivity's validated switch logic.
+         * Adaptive masters keep requested_quality=auto and are handled by
+         * AdaptiveQualityRuntime, so do not clear its manual preference here.
+         */
+        currentResolved?.let { resolved ->
+            val requestedHeight = resolved.requestedQuality.toIntOrNull()?.takeIf { it > 0 }
+            when {
+                requestedHeight != null -> VideoTabStore.setManualQuality(tabId, requestedHeight)
+                resolved.resolverMode != "browser" || resolved.browserVariants.isNotEmpty() ->
+                    VideoTabStore.setManualQuality(tabId, null)
+            }
         }
 
         val json = if (
