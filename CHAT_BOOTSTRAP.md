@@ -18,7 +18,7 @@ Conservative automation: only clearly identified 18+/age and cookie prompts may 
 ## Protected baseline
 Quality policy: exact 720p -> otherwise 1080p -> otherwise best below 1080p.
 
-Protect Vivaldi share; yt-dlp first/browser fallback; automatic best candidate/manual fallback; video+audio; adaptive and sibling quality switching; double-tap ±10s; seek preview; rotation; bilingual UI; candidate limits/order/ranking protections; no media imagery inspection for resolver decisions; one actual ExoPlayer playback session.
+Protect Vivaldi share; yt-dlp first/browser fallback; automatic best candidate/manual fallback; video+audio; adaptive and sibling quality switching; double-tap ±10s; seek preview; rotation; bilingual UI; candidate limits/order/ranking protections; no media imagery inspection for resolver decisions; one ExoPlayer playback session.
 
 Bitmovin/PH/HH core playback baseline was previously device-verified. Cloudinary is not a gate. Build #62 follow-up was already validated. Build #74 clean-loading baseline PASS.
 
@@ -37,11 +37,7 @@ Found regressions: background Add stole foreground; share action unclear; browse
 User requested more features before testing #124, so those fixes remain unverified on-device.
 
 ## Additional features implemented before next test
-User requested:
-1. random-frame thumbnail per tab;
-2. rename share entries to `ExternalPlayer` and `BG - External Player`;
-3. change icon V to E;
-4. more attractive UI.
+User requested random-frame thumbnails per tab, share entries `ExternalPlayer` and `BG - External Player`, icon V -> E, and a more attractive UI.
 
 Implemented:
 - app-private JPEG thumbnail cache keyed by tab ID;
@@ -51,12 +47,14 @@ Implemented:
 - warm-up fills missing thumbnails on normal app foreground; failures remain best-effort;
 - close/clear/orphan cleanup for cached thumbnails;
 - normal share label `ExternalPlayer`, background `BG - External Player` in English and Spanish;
-- adaptive icon foreground now bold white E + red play triangle;
 - dark palette/material theme;
 - redesigned home screen;
 - thumbnail-card tab switcher with active accent, title/state/position/quality and close button;
 - refreshed Settings and About screens;
 - Spanish refresh strings.
+
+### Latest icon change
+Build #143 used a white E + red play triangle. User then requested a non-triangle purple geometric accent. App-code commit `3b0f173d310772278a26cb17d1a11ec7309d9e79` now uses a bold white E + hollow purple diamond on the dark launcher background. No triangle remains.
 
 ## Current architecture still active
 Persistent `VideoTabStore` states QUEUED/RESOLVING/READY/NEEDS_ATTENTION/ERROR; foreground-only playback guard; clean browser enhancer; same-tab browser bridge; bounded network recovery; local Settings/About; optional release signing infrastructure deferred.
@@ -65,13 +63,21 @@ Persistent `VideoTabStore` states QUEUED/RESOLVING/READY/NEEDS_ATTENTION/ERROR; 
 - #124 PASS with background/quality regression fixes.
 - #136 PASS for main UI/tab cards + active-tab thumbnail capture.
 - #142 PASS for finalized READY-tab thumbnail engine.
-- **#143 PASS** on app-code commit `2af936c6f58e919c303597c19c8513185277b72e`.
+- #143 PASS on app-code commit `2af936c6f58e919c303597c19c8513185277b72e`.
 - #143 artifact ID `9203587518`.
-- Extracted APK SHA-256 `c376301716ecc68b28412c4197a3e7e69c356514a1df0a974fc32b90b8fe13ea`.
+- Extracted #143 APK SHA-256 `c376301716ecc68b28412c4197a3e7e69c356514a1df0a974fc32b90b8fe13ea`.
+- New icon-only app-code commit after #143: `3b0f173d310772278a26cb17d1a11ec7309d9e79`. Use the next successful CI APK rather than #143 for icon QA once available.
 
-Use build #143 for the next device QA. State-only commits after it do not require a newer APK.
+## Recommended next development direction
+Recommendation only, not yet user-approved:
+1. make tabs a first-class dashboard/library with thumbnail grid/list, reordering, swipe/quick close, clearer preparation states and direct retry/continue actions;
+2. unify BG Add and feature-29 next-tab preparation behind the same browser-capable background engine;
+3. show the actual Media3-selected quality after manual switches and persist manual quality per tab;
+4. add subtitle/audio-track selection where technically available;
+5. then Brave/other-browser support.
 
-Next focused QA: unresolved #124 share/background-preload/quality-switch gates + new #143 E icon/UI/tab-thumbnail behavior. Then continue remaining persistence/background-stop/recovery/tab-close gates not yet reported.
+## Current priority
+Finish CI for the purple-diamond icon commit. Next focused QA should cover unresolved #124 share/background-preload/quality-switch gates + #143 thumbnail/UI behavior + the new E/purple-diamond icon. Then continue remaining persistence/background-stop/recovery/tab-close gates not yet reported.
 
 ## QA format
 Whenever asking user to test, always provide exactly:
