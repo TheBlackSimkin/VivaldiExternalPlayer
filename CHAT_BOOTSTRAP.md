@@ -82,24 +82,65 @@ Committed app code was re-inspected after CI:
 
 Later state-file commits do not supersede #215 app code.
 
+## New UX requirements recorded before #215 test
+These were explicitly raised before proceeding and are now required for the next UI-oriented build after the one-link #215 lifecycle result.
+
+### Persistent tabs / stored tabs clarity
+Current code persists the **currently open** tab list automatically in `VideoTabStore` and `MainActivity` shows that list directly. There is no separate archive of previously closed tabs. Closing/swiping a tab removes it from the persisted list, and `Clear saved tabs` clears that same current list.
+
+The current wording is misleading because `saved tabs` / `pestañas guardadas` sounds like a hidden history/library. Required next UI build:
+- state clearly that currently open tabs are automatically restored after app/process restart;
+- rename `Clear saved tabs` to `Clear all tabs` (Spanish equivalent too);
+- explain that closing/swiping forgets a tab;
+- do not add a redundant manual reload button for the same auto-loaded store;
+- optionally add a real `Recently closed` / restore feature later if closed-tab recovery is wanted.
+
+If an open tab disappears after a real restart without being closed/cleared, treat that separately as an actual persistence bug.
+
+### App language selector
+Promised but still not implemented. Required persistent Settings selector:
+- System default;
+- English;
+- Español.
+It should apply app-wide and survive restart.
+
+### GitHub log reporting
+Current operations-log button uses Android's normal share sheet. User wants a more convenient GitHub route.
+
+Never embed a PAT/repository token/OAuth client secret in the APK. GitHub issue creation through the REST API requires authenticated Issues write permission.
+
+Preferred secure first implementation:
+- retain full `Share operations log`;
+- add `Report log on GitHub` / `Reportar registro en GitHub`;
+- open this repository's GitHub new-issue page with version/build plus a bounded recent sanitized log section pre-filled;
+- user reviews and submits in GitHub, so ExternalPlayer stores no GitHub credential;
+- keep the prefilled log bounded to avoid an oversized URL; full log remains available through Android Share.
+
+True automatic one-tap API submission can be considered later only with an explicit GitHub App/OAuth authorization and safe token handling.
+
+## Sequencing
+Do not rebuild #215 with these UI changes before its first focused PH lifecycle test. #215 is a clean architecture experiment. Capture the one-link result first; then the next UI build can bundle the persistent-tab wording fix, language selector and secure GitHub-report shortcut while leaving resolver code unchanged.
+
 ## Current quality/UI backlog
 After PH BG passes:
 - fix strict initial 720 preference;
 - fix/verify manual 480 switching;
 - test HH separately;
-- add app-language selector;
+- UI bundle immediately after #215 one-link result: persistent-tab wording, System/English/Español selector, secure GitHub log-report shortcut;
+- optionally implement a genuine recently-closed-tab restore feature;
 - later refine icon while preserving white-E/purple identity, making it less boxy/more refined and purple more prominent.
 
 ## Current priority
-1. Test build #215 with ONE PH link only.
+1. Test build #215 with ONE PH link only, before changing #215 app code.
 2. Clean old tabs, leave ExternalPlayer by Home/switching, return to Vivaldi; do not force-stop/swipe ExternalPlayer.
 3. Share one PH via `BG - External Player`, keep Vivaldi visually on screen for 45–60s.
 4. Try one harmless normal Vivaldi scroll/touch after share; it must still respond despite the transparent preparation Activity being technically top/resumed.
 5. Key log proof: `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED` appears and is not immediately followed by PAUSED/STOPPED before completion.
 6. Target READY before opening ExternalPlayer/card and without Browser Step.
 7. If not READY, export operations log before Browser Step. Old markers `WORKER_ENQUEUED`, `BG_HOST_DESTROYED_RECOVERY_QUEUED`, and `VIRTUAL_PREP_LAUNCH_FAILED` are not expected.
-8. If one link passes, test 2–3 PH links for browser-slot serialization.
-9. No HH yet.
+8. After that one-link result, implement the three-item UI bundle above without changing the resolver architecture.
+9. If one link passes, test 2–3 PH links for browser-slot serialization on #215 or a later build whose resolver code is verified unchanged.
+10. No HH yet.
 
 ## QA format
 Whenever asking user to test, always provide exactly:
