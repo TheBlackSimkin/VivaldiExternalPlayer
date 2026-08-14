@@ -13,92 +13,100 @@ GitHub `main` is authoritative. Read `PROJECT_STATE.md` before substantive work.
 ## Protected baseline
 Quality policy: exact 720p -> otherwise 1080p -> otherwise best below 1080p. Preserve yt-dlp first/browser fallback; automatic best/manual fallback; adaptive/sibling quality handling; double-tap ±10s; seek preview; rotation; bilingual UI; 80 stored/20 manual candidate limits; first-seen HLS/DASH order; no generic playlist bonus; soft child audio/video demotion; page-config family IDs; no imagery-based resolver/ranking; one actual ExoPlayer playback session.
 
-## Build #202 PH device QA — authoritative FAIL for automatic completion
-Three PH BG shares were tested without opening/clicking individual cards while preparation was running.
+## Authoritative PH BG history
+### #192
+Self-owned share Activity proved preparation starts before tab/card clicks, but three PH tabs took ~244–270s and ended Browser Step. Manual Browser Step worked in ~5–10s.
 
-Results:
-- after ~120s before first opening ExternalPlayer, all three were still `Preparing`;
-- around another ~120s they started showing errors/other methods;
-- around another ~120s they all ended `Paso del Navegador` / `NEEDS_ATTENTION`;
-- final visible tech marker NEEDS_ATTENTION on all three;
-- no tab/card clicked before automatic processing stopped, so share-time decoupling still works;
-- manual Browser Step then reached READY in about 5–7 seconds per PH tab;
-- no Android Recents entry = PASS and preferred;
-- multi-minute timing is unacceptable for normal use; 120s was diagnostic only.
+### #202
+Added V2 with 12s direct budget, normal-size hidden WebView and Service Worker observation. Device QA still took minutes and ended `NEEDS_ATTENTION`; manual Browser Step worked in ~5–7s. Recents absence PASS/preferred. Current quality regressions: 240p works, 480p fails, Auto can pick 1080 despite 720 existing. Icon unchanged.
 
-Current #202 PH quality observations:
-- manual 240p works;
-- manual 480p does not;
-- Auto chooses 1080p even when 720p exists, violating protected 720-first policy.
+### #205 — authoritative FAIL with decisive operations log
+#205 added a foreground keep-alive service and exportable operations log.
 
-Icon remained unchanged in #202; refinement is still required later but is deliberately not mixed into the BG blocker.
+Device log proved the exact failure:
+- first BG Activity RESUMED at `16:42:00.800`;
+- service CREATED `16:42:01.113`;
+- Activity STOPPED `16:42:01.422`;
+- by `16:42:01.529` tab was already QUEUED with destroyed-host recovery;
+- `BG_HOST_DESTROYED_RECOVERY_QUEUED` at `16:42:01.546`;
+- `WORKER_ENQUEUED` at `16:42:01.569`;
+- Activity DESTROYED `16:42:01.599`;
+- Worker direct resolution restarted `16:42:01.831`.
 
-Do not request HH testing yet.
+Screenshots at ~60 seconds showed all three still Preparing. Later two were `NEEDS_ATTENTION` around +149/+165s and one still `DIRECT_STARTED +161s`.
 
-## #202 failure diagnosis
-The code explains how V2 could start correctly and still end in the old path:
-- V2 `onDestroy()` while RESOLVING marks `BG_HOST_DESTROYED_RECOVERY_QUEUED` and enqueues WorkManager;
-- Worker can do direct resolution but cannot own WebView;
-- on direct miss it waits for `UnifiedPreparationCoordinator` to obtain an Activity;
-- older `BackgroundPreparationActivity` can then run and still ends its browser timeout as NEEDS_ATTENTION.
+Conclusion: the foreground service kept the process alive but did not keep a stopped Activity/WebView alive. The phone destroys that stopped share Activity almost immediately. #205 also still had the old Worker enqueue inside V2 `onDestroy()`, which won the race before application-level cancellation. Operations log itself is a PASS and should be retained.
 
-This matches the device result better than V2's own intended 30-second ERROR behavior.
+Do not request HH yet.
 
-## Build #205 — current focused PH BG-lifecycle target
-App-code commit: `48605a4c1eb8972d6275478993db5ce7b104478e`.
+## Architectural decision after #205
+Do not try another stopped-Activity-behind-Vivaldi variant.
+Do not put WebView directly in a Service; WebView should retain a genuine Activity context.
 
-### BG architecture changes
-- Added short-lived foreground `dataSync` `BackgroundPreparationKeepAliveService`.
-- Service is process-lifetime protection/diagnostics only: no WebView ownership, no PlayerActivity, no Media3/ExoPlayer, no playback.
-- V2 remains the actual preparation owner.
-- One service lease is acquired for each user-launched V2 share from `TabbedPlayerApplication.onActivityCreated(BackgroundShareActivityV2)`.
-- V2 `onCreate()` has already created/marked its tab and started direct preparation at that point; the keep-alive request happens before V2's queued `moveTaskToBack()` runs.
-- Android may show a low-priority preparation notification while active; BG still remains excluded from Recents.
+Current model:
+`BG chooser handoff -> foreground process lease -> app-private virtual display -> real preparation Activity/WebView on secondary display -> READY/ERROR -> release display/service`
 
-### Stop silent legacy fallback
-- if V2 is destroyed unresolved, application callback cancels the WorkManager recovery V2 just queued and marks explicit technical ERROR `BG_HOST_DESTROYED_NO_LEGACY_FALLBACK`;
-- if whole process dies, startup recognizes restored V2 host/WebView timestamps and converts it to `PROCESS_RESTART_BG_HOST_ERROR` before `resumePending()` can enqueue the old Worker;
-- explicit retry/preload recovery remains separate.
+Vivaldi stays on the physical display. The exported share Activity owns no resolver work and may finish immediately.
 
-### Exportable operations log
-Settings now includes `Share operations log` / `Compartir registro de operaciones`.
-- plain text via Android share sheet; WhatsApp can be selected if installed;
-- records BG Activity lifecycle, keep-alive service/leases, tab states/tech/timestamps, bounded errors;
-- never logs thumbnails, frames, page/body text, resolved payloads, headers, cookies, authorization or credentials; common credential-shaped values are redacted.
+## Build #212 — current focused PH BG target
+App-code head: `2052aaa7af4dc02e59b7f90acefca0368d2fd0fe`.
 
-## Build #205 code-path inspection — PASS
-Committed `main` was inspected after implementation:
-- `BackgroundShareActivityV2.onCreate()` creates pending tab, marks preparation, creates/configures WebView, queues task-behind move, calls `attemptDirectFirst()`, and schedules the 12-second browser-fallback timer;
-- `TabbedPlayerApplication.onActivityCreated(V2)` then requests the keep-alive for that share before the posted task-behind move executes;
-- MainActivity/dashboard card open is not part of preparation startup;
-- keep-alive service contains no playback ownership.
+App commits:
+- `cab9656c...` — `BackgroundShareActivityV2` becomes short handoff only;
+- `cb01c96a...` — private `BackgroundVirtualDisplayRegistry`;
+- `e9fd2d63...` — real `BackgroundVirtualPreparationActivity` on private display;
+- `55e661f6...` — manifest registration;
+- `2052aaa7...` — lifecycle callbacks cannot revive normal virtual BG sessions through legacy Worker.
 
-## Build #205 CI / artifact
-- GitHub Actions run #205 **PASS**; run ID `31838190231`.
-- Debug artifact ID `9233311193`.
-- Artifact ZIP size `25,991,863` bytes.
-- Artifact ZIP digest `sha256:c9b8473fab112aaa525111505389726724e50be8979d993777fa1355bccc930b`.
-- Extracted APK size `35,486,970` bytes.
-- APK SHA-256 `635b100073068f1062ef660fb9b61d46fb62613e7c71aa4e3814c158aeb71d72`.
-- #205 is the designated focused PH BG-lifecycle QA APK. Later state-only commits do not supersede its app code.
-- CI proves compile/package integrity only; device QA is required.
+### #212 behavior
+`BackgroundShareActivityV2`:
+- creates pending tab at share time;
+- checks secondary-display Activity support;
+- starts foreground preparation lease;
+- creates private `OWN_CONTENT_ONLY | PRESENTATION` virtual display;
+- launches `BackgroundVirtualPreparationActivity` there with `ActivityOptions.launchDisplayId`;
+- finishes immediately.
+
+`BackgroundVirtualPreparationActivity`:
+- non-exported real Activity/WebView on the private secondary display;
+- no PlayerActivity/ExoPlayer/background playback;
+- direct yt-dlp first, 12s browser fallback budget;
+- Service Worker browser slot serialized;
+- WebView/network/DOM/Performance/page-config discovery retained;
+- conservative exact cookie/18+ handling retained;
+- ordinary 30s browser timeout -> ERROR;
+- genuine protected/human interaction -> NEEDS_ATTENTION;
+- unexpected destruction -> explicit `VIRTUAL_PREP_ACTIVITY_DESTROYED`, never Worker fallback;
+- process restart -> `PROCESS_RESTART_VIRTUAL_BG_ERROR`, never silent Worker revival.
+
+The virtual display uses ImageReader only as a Surface sink. Frames are drained/closed without reading pixel planes, saving, classifying or logging imagery.
+
+### #212 CI / artifact
+- GitHub Actions run #212 PASS; run ID `31841938130`.
+- Debug artifact ID `9234596372`.
+- ZIP size `25,999,143` bytes.
+- ZIP digest `sha256:5ae996f3c443cbc54d72e240fe31e79824ee60de162979c6790229a935c9f734`.
+- APK size `35,487,666` bytes.
+- APK SHA-256 `a350995bb2b4040f2571c3d8aebb92b0dbc0eb8f2a6fc77dc530a32537765125`.
+- #212 is the current focused PH architecture QA APK. CI proves build/package only; device must prove the private-display Activity launches and survives on this phone.
 
 ## Current quality / UI backlog
 After PH BG passes:
-- fix strict initial 720 preference (currently 1080 can win despite 720 existing);
-- fix/verify manual 480 switching (240 currently works on tested PH path);
+- fix strict initial 720 preference (currently 1080 may win despite 720 existing);
+- fix/verify manual 480 switching (240 works on tested PH path);
 - test HH separately;
 - add explicit app-language selector in Settings;
 - later refine icon while preserving white-E/purple identity, making it less boxy/more refined and purple more prominent.
 
 ## Current priority
-1. Test build #205 with PH only; no HH.
-2. Share 2–3 links through `BG - External Player`; do not open/click cards first.
-3. Keep Vivaldi foreground; no Recents entry remains expected/preferred.
-4. Use about 60 seconds as the first focused observation window for three shares, not the old 120-second diagnostic wait as normal UX.
-5. Target is READY before ExternalPlayer/card open, with no manual Browser Step.
-6. If any tab is not READY or ends ERROR/NEEDS_ATTENTION, export `Settings -> Share operations log` **before** pressing Browser Step.
-7. If PH #205 passes, update both state files, then address 720/480 and test HH separately.
+1. Test build #212 with PH only; no HH.
+2. **Use one PH BG share first**, not three. Keep Vivaldi on the physical display; do not open/click the card.
+3. Wait ~45–60 seconds, then open ExternalPlayer once.
+4. Key lifecycle proof: log should contain `VIRTUAL_DISPLAY_CREATED` and `VIRTUAL_PREP_ACTIVITY_CREATED`. Normal share must not show `BG_HOST_DESTROYED_RECOVERY_QUEUED` or `WORKER_ENQUEUED`.
+5. Target: READY without Browser Step.
+6. If secondary-display Activity support is unavailable, expect quick explicit ERROR (`VIRTUAL_DISPLAY_UNSUPPORTED`, create/launch failure), not minutes of Preparing.
+7. If one share passes, repeat later with 2–3 PH shares to test browser-slot serialization.
+8. If anything fails, export Settings -> Share operations log before pressing Browser Step.
 
 ## QA format
 Whenever asking user to test, always provide exactly:
