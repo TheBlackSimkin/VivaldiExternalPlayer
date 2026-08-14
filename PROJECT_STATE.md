@@ -55,7 +55,7 @@ New `ForegroundShareActivity` is the exported `ExternalPlayer` SEND target. It e
 - perform direct resolution first, then hidden WebView fallback;
 - use document tasks, a launch watchdog and WorkManager recovery.
 
-This second-Activity handoff is now known to be unreliable on the user's device and is no longer the chosen normal BG architecture.
+This second-Activity handoff is known to be unreliable on the user's device and is no longer the chosen normal BG architecture.
 
 ### Identifiable BG tabs / thumbnails from #187
 - Hidden browser preparation saves the local page title into the READY payload.
@@ -78,7 +78,7 @@ Dashboard uses RecyclerView + ItemTouchHelper:
 `AdaptiveQualityRuntime` detects numeric requested quality after browser sibling-URL reloads and re-applies an exact Media3 video track/size constraint when that replacement source itself has adaptive tracks. Actual quality remains confirmed only through Media3 `VideoSize`; up to 3 bounded verification re-applies. Verification retries no longer re-seek, reducing unnecessary rebuffering. One tiny refresh remains only for an explicit adaptive manual choice.
 
 ### Buffering decision
-No global Media3 LoadControl thresholds were changed in #187. The pass removes repeated quality verification re-seeks and fixes resolver/preparation delays first. If device QA still reports slow actual media buffering after the corrected path, profile/tune LoadControl separately rather than risking stalls blindly.
+No global Media3 LoadControl thresholds were changed in #187. Fix resolver/preparation delays first. If device QA still reports slow actual media buffering after the corrected path, profile/tune LoadControl separately rather than risking stalls blindly.
 
 ## Build #187 device QA — BG failure confirmed
 User tested #187 and reported the same core BG failure as #162, with an important stronger clarification:
@@ -95,29 +95,44 @@ The exact coupling found in code was:
 - MainActivity's dashboard primary action explicitly called `UnifiedPreparationCoordinator.prepareNow()` for a non-RESOLVING tab, making card selection a reliable trigger;
 - WorkManager could perform direct resolution independently, but an ordinary direct miss called `browserStageNeeded()`, whose browser-capable continuation required a usable Activity lifecycle.
 
-## Current BG architecture change — self-owned share preparation
-A focused successor implementation is being prepared on top of `main` with this architecture:
-- the exported `BackgroundShareActivity` is no longer a tiny trampoline;
-- it creates the persistent tab itself, records preparation requested, immediately moves the tab to `RESOLVING`, and owns direct resolution;
-- it moves **its own already-created transparent document task** behind Vivaldi instead of launching a second preparer and then destroying the share entry;
-- the same Activity owns a hidden WebView and automatically runs the safe browser-assisted discovery stage after an ordinary direct miss;
-- no normal BG-share path needs `BackgroundPreparationActivity` to be created before work can start;
-- `BackgroundPreparationActivity` remains for retry/preload/process-recovery paths only;
-- `android:noHistory` is removed from `BackgroundShareActivity`, because noHistory conflicts with intentionally keeping that Activity alive after it is moved behind Vivaldi;
-- each explicit BG share keeps its own document task, so multiple shares may prepare independently;
+## Build #192 BG architecture — self-owned share preparation
+App-code head: `a85f03a30ffdcda6d3f3c1c130ee799fd523e3f0`.
+
+The normal BG share path is redesigned so the exported `BackgroundShareActivity` owns preparation itself:
+- it creates the persistent tab immediately;
+- records PREPARATION_REQUESTED and moves the tab to RESOLVING immediately;
+- records the already-created share Activity as the preparation host;
+- moves **that same transparent document task** behind Vivaldi instead of launching a second preparer and then destroying the share entry;
+- starts direct/yt-dlp resolution from the share Activity independently of MainActivity/dashboard selection;
+- after an ordinary direct miss, the same Activity automatically starts its hidden WebView browser-assisted discovery stage;
+- local page title is saved when browser resolution succeeds;
+- READY starts best-effort local thumbnail extraction;
+- `BackgroundPreparationActivity` remains only for retry/preload/process-recovery paths;
+- `android:noHistory` was removed from `BackgroundShareActivity`, because noHistory conflicts with intentionally keeping that preparation host alive behind Vivaldi;
+- common orientation/screen-size changes are handled in-place to avoid duplicate share tabs;
+- each explicit BG share retains its own document task, so multiple BG shares can prepare independently;
 - no ExoPlayer is created and no background playback is added.
 
-### Tab-open decoupling
+### Tab-open preparation coupling removed
 Dashboard card selection is no longer the normal preparation trigger:
 - READY -> Play/Continue;
 - NEEDS_ATTENTION -> explicit Browser Step because genuine interaction may be required;
 - ERROR -> explicit retry/recovery remains available;
-- QUEUED/RESOLVING -> the primary card action is disabled/inert and does **not** call `prepareNow()`.
+- QUEUED/RESOLVING -> primary card action is disabled/inert and does **not** call `prepareNow()`.
 
-This gives a strong code-path proof for the next QA build: ordinary BG preparation must have started at share time, because clicking a queued card can no longer start it.
+This is intentional proof for device QA: if a BG tab fails to prepare before the dashboard is opened, clicking the card can no longer hide the failure by starting normal preparation.
+
+### State transition expected in #192
+Normal BG share should persist:
+`TAB_CREATED -> PREPARATION_REQUESTED -> RESOLVING -> DIRECT_STARTED -> DIRECT_FINISHED -> READY`
+
+If direct resolution has an ordinary miss:
+`... -> DIRECT_FINISHED -> BROWSER_REQUESTED -> BROWSER_DISCOVERY_STARTED -> READY / NEEDS_ATTENTION / ERROR`
+
+`NEEDS_ATTENTION` is reserved for genuine interaction such as a protected browser challenge which automation must not bypass.
 
 ### Local technical diagnostics
-`VideoTabStore` now persists non-content diagnostics for new/recovery preparation attempts:
+`VideoTabStore` persists non-content diagnostics:
 - created timestamp;
 - preparation requested timestamp;
 - preparation host created timestamp;
@@ -130,25 +145,34 @@ This gives a strong code-path proof for the next QA build: ordinary BG preparati
 
 The dashboard shows a compact local marker such as `tech DIRECT_STARTED +1s` or `tech BROWSER_DISCOVERY_STARTED +4s`. These fields contain no media imagery/content, credentials, page text or thumbnail data.
 
-## CI history for #187 pass
+### Recovery behavior
+If Android unexpectedly destroys the self-owned BG Activity while it is still RESOLVING, that tab is returned to QUEUED, records `BG_HOST_DESTROYED_RECOVERY_QUEUED`, and schedules WorkManager direct recovery. WorkManager can run the direct stage without UI. If that recovery direct stage has an ordinary miss, browser continuation still needs a valid Activity lifecycle; the normal fresh BG-share path avoids this dependency because its own share Activity already owns the WebView.
+
+## CI history
+### #187
 - #179 FAILED at Kotlin compile only: after moving `ResolveTabWorker`, one call referenced `preloadNext` without `TabPreparationManager.`. Fixed in `4ab2c978f6e632e5cc65f4bc28533168daccccee`.
 - #182 passed Android build/upload after that compile fix.
 - #185 PASS with the per-BG-share document-task model.
-- **#187 PASS through Android build and debug APK upload** on app-code head `5b71129faa0f9815189b515e5e87bdd166c52216`, but device QA proves the BG runtime behavior still fails.
-- Run ID `31771897702`.
-- Debug artifact ID `9208455395`.
-- GitHub artifact ZIP digest `sha256:09488226ed025f3b22f5540e8b7740d8dff0424cf03936e9ae4d9877bd7293b9`.
-- Extracted APK SHA-256 `f3915a70a5b97f22bc54a6e736155b966b8f157e54fa650b4a962dbef21f98f1`.
-- Build #187 is **not** considered a successful BG fix despite CI PASS.
+- #187 PASS through Android build and debug APK upload on app-code head `5b71129faa0f9815189b515e5e87bdd166c52216`, but device QA proves the BG runtime behavior still fails.
+- #187 run ID `31771897702`, debug artifact ID `9208455395`, artifact digest `sha256:09488226ed025f3b22f5540e8b7740d8dff0424cf03936e9ae4d9877bd7293b9`, extracted APK SHA-256 `f3915a70a5b97f22bc54a6e736155b966b8f157e54fa650b4a962dbef21f98f1`.
+
+### #192 focused BG successor
+- App-code commit: `a85f03a30ffdcda6d3f3c1c130ee799fd523e3f0` (`Fix BG preparation ownership and tab-open coupling`).
+- GitHub Actions **run #192 PASS**: Android/Gradle build succeeded and debug APK upload succeeded.
+- Run ID: `31820367544`.
+- Debug artifact ID: `9226733915`.
+- GitHub artifact ZIP digest: `sha256:76b1d2ff8c9d929d995c91d563bdb4d833996f4d50253cc29adee1dc65763a04`.
+- Extracted debug APK SHA-256: `89cafe287d0f3bcf6a63b545efaa9a89ae936e0a42ee50eb2b6f6d6a7a997960`.
+- Build #192 is designated for **focused BG lifecycle device QA only**. CI proves compilation/package integrity, not the BG runtime result.
+- A later state-only commit which records these #192 facts does not supersede the #192 app-code APK.
 
 ## Current development priority
-1. Finish and compile the self-owned `BackgroundShareActivity` BG lifecycle change.
-2. Verify by code inspection that BG share itself records PREPARATION_REQUESTED -> RESOLVING/DIRECT_STARTED without MainActivity/card selection.
-3. Verify ordinary direct failure continues automatically into the same share Activity's safe hidden-WebView browser stage.
-4. Preserve candidate ranking, quality policy, protected controls, no-background-playback, local title and thumbnail behavior.
-5. Run GitHub Actions and do not designate a QA APK until CI passes.
-6. After CI passes, update both state files with exact commit/run/artifact details and give one focused device test for BG preparation-before-app/tab-open only.
-7. Only after BG is fixed, resume remaining #187 checks (dashboard gestures, Back navigation, HH quality, buffering) unless the user volunteers results earlier.
+1. Device-test build #192 specifically for whether BG tabs leave QUEUED and prepare **before ExternalPlayer or the individual card is manually opened**.
+2. Test multiple BG shares without clicking their cards; each should progress according to its own document/preparation task.
+3. Use the local `tech ...` stage marker to identify exactly where a failure stops if device behavior still differs from the intended lifecycle.
+4. Confirm direct -> safe browser fallback is automatic when ordinary resolution fails, while protected controls still stop at NEEDS_ATTENTION/ERROR as appropriate.
+5. Do not treat #192 as a successful BG fix until device QA confirms it.
+6. Only after BG is fixed, resume remaining #187 checks (dashboard gestures, Back navigation, HH quality, buffering) unless the user volunteers results earlier.
 
 ## QA format
 Whenever asking user to test, provide EXACTLY:
