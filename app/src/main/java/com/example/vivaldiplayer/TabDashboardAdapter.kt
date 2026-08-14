@@ -24,6 +24,10 @@ import java.util.Locale
  *   unreliable on real devices.
  * - ItemTouchHelper has native long-press drag and horizontal swipe arbitration.
  * - Reordering can happen directly on the card, with no tiny arrow buttons.
+ *
+ * The dashboard also refreshes preparation states while visible. `gestureActive`
+ * prevents that periodic refresh from calling notifyDataSetChanged in the middle
+ * of a long-press drag or swipe, which would otherwise cancel the gesture.
  */
 class TabDashboardAdapter(
     private val context: Context,
@@ -35,12 +39,16 @@ class TabDashboardAdapter(
 ) : RecyclerView.Adapter<TabDashboardAdapter.TabViewHolder>() {
 
     private val items = mutableListOf<VideoTabStore.VideoTab>()
+    private var gestureActive = false
 
     init {
         setHasStableIds(true)
     }
 
+    fun isUserInteracting(): Boolean = gestureActive
+
     fun submitTabs(tabs: List<VideoTabStore.VideoTab>) {
+        if (gestureActive) return
         items.clear()
         items.addAll(tabs)
         notifyDataSetChanged()
@@ -191,16 +199,31 @@ class TabDashboardAdapter(
             override fun isLongPressDragEnabled(): Boolean = true
             override fun isItemViewSwipeEnabled(): Boolean = true
 
+            override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
+                gestureActive = actionState != ItemTouchHelper.ACTION_STATE_IDLE
+                super.onSelectedChanged(viewHolder, actionState)
+            }
+
+            override fun clearView(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder) {
+                super.clearView(recyclerView, viewHolder)
+                gestureActive = false
+            }
+
             override fun onMove(
                 recyclerView: RecyclerView,
                 viewHolder: RecyclerView.ViewHolder,
                 target: RecyclerView.ViewHolder
             ): Boolean {
-                return moveItem(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
+                val from = viewHolder.bindingAdapterPosition
+                val to = target.bindingAdapterPosition
+                if (from == RecyclerView.NO_POSITION || to == RecyclerView.NO_POSITION) return false
+                return moveItem(from, to)
             }
 
             override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) {
-                removeAt(viewHolder.bindingAdapterPosition)
+                val position = viewHolder.bindingAdapterPosition
+                if (position != RecyclerView.NO_POSITION) removeAt(position)
+                gestureActive = false
             }
         }
 
