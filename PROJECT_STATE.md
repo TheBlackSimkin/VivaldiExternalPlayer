@@ -56,11 +56,11 @@ Technical lifecycle markers are persisted and shown locally as `tech ... +Xs`; t
 
 ## Share-entry semantics
 - `ExternalPlayer` chooser target is exported `ForegroundShareActivity`, which explicitly starts/raises `MainActivity` with the shared URL. `MainActivity.acceptSharedUrl()` enters normal visible `resolveAndPlay()`.
-- `BG - External Player` chooser target is exported `BackgroundShareActivity`, which is a real launched Activity but intentionally moves its task behind Vivaldi.
+- Current `BG - External Player` chooser target is exported `BackgroundShareActivityV2`; it is a real launched Activity but intentionally moves its task behind Vivaldi.
 - BG host is `android:excludeFromRecents="true"`; absence from the Android square/Recents screen is therefore expected by current design and is not a BG success/failure criterion.
 - Portuguese `segundo plano` is naturally “the background” in this context.
 
-## Build #192 PH device QA — authoritative new result
+## Build #192 PH device QA — authoritative
 User tested three PH links shared through `Compartir enlace` -> `BG - External Player`.
 
 Important improvement versus #187:
@@ -73,36 +73,82 @@ Remaining failure:
 - clicking `Paso del navegador` manually then succeeded in roughly **5–10 seconds** for each tested PH URL;
 - after successful visible browser resolution, Back returned to the tab dashboard and the tab contained its information correctly.
 
-Code inspection after this result found a strong timing clue:
-- `BackgroundShareActivity` browser timeout is only 22 seconds;
-- therefore the ~244–270 second total strongly indicates most delay occurs before browser timeout, inside the direct/yt-dlp stage, which currently has no hard wall-clock deadline;
-- visible `BrowserResolverActivity` also observes Service Worker requests, while the #192 BG browser copy does not;
-- the #192 BG WebView is `INVISIBLE` and only 1x1, whereas the visible Browser Step uses a normal visible WebView. Modern pages may defer normal player/config initialization when their WebView is not technically visible.
+Code inspection after this result found the likely divergence:
+- #192 browser timeout itself was only 22 seconds, so most delay happened before that in the direct/yt-dlp stage;
+- visible `BrowserResolverActivity` observes Service Worker requests while #192 BG did not;
+- #192 BG WebView was `INVISIBLE` and only 1x1, unlike the normally laid-out visible Browser Step.
 
 ### Browser-fallback architectural decision after #192 QA
 Do **not** solve this by literally faking a UI click on `Paso del navegador`.
 
 The intended behavior is equivalent from the user's perspective but cleaner technically:
-1. direct/yt-dlp remains first but receives a bounded BG deadline so one extractor cannot monopolize several minutes;
-2. on ordinary miss/deadline, automatically run the **same technical browser-discovery engine/signals as the successful visible Browser Step** behind Vivaldi;
-3. BG discovery must store READY metadata only; it must never launch PlayerActivity/ExoPlayer or produce background audio/video;
-4. ordinary browser discovery timeout/failure must not be mislabeled as NEEDS_ATTENTION;
+1. direct/yt-dlp remains first but is bounded enough that it cannot monopolize several minutes;
+2. on ordinary miss/budget expiry, automatically run browser discovery behind Vivaldi;
+3. BG discovery stores READY metadata only and never launches PlayerActivity/ExoPlayer or produces background audio/video;
+4. ordinary browser discovery timeout/failure is technical ERROR, not NEEDS_ATTENTION;
 5. NEEDS_ATTENTION / `Paso del navegador` is reserved for genuine user interaction such as CAPTCHA/challenge/login/payment/DRM/region controls that automation must not bypass;
-6. because Android exposes process-wide Service Worker observation, multiple simultaneous BG browser stages must avoid cross-tab request attribution (serialize or otherwise route safely).
+6. process-wide Service Worker observation must avoid cross-tab request attribution.
 
-This eliminates duplicated browser behavior drifting apart between BG and visible Browser Step.
+## Build #202 implementation — automatic Browser Step semantics behind Vivaldi
+App-code head: `b02561ed0c154b7f8abe66bd4e3212ba780b7fdf`.
+
+Three app-code commits produced this focused successor:
+- `b970a60e4ab639feb550695ad69815f85aa06a02` — add `BackgroundShareActivityV2`;
+- `08a8729b87498f68b6edce68bdd75cda93799dd7` — route `BG - External Player` manifest target to V2;
+- `b02561ed0c154b7f8abe66bd4e3212ba780b7fdf` — bound direct resolver socket/retry behavior.
+
+### V2 lifecycle
+`BG - External Player` now launches `BackgroundShareActivityV2`, which retains the self-owned share/task behavior that #192 device QA proved starts without card clicks.
+
+Direct stage:
+- yt-dlp/direct still starts first;
+- after 12 seconds, if normal preparation has not completed, V2 automatically requests browser fallback even if the blocking direct call has not returned yet;
+- resolver.py now uses `socket_timeout=12`, `retries=1`, `extractor_retries=1`, `fragment_retries=1` so direct misses do not use yt-dlp's large default retry chains;
+- hard DRM/paywall/subscription/purchase/geo markers remain hard stops;
+- challenge/login-style extractor messages remain normalized into ordinary browser assistance rather than being treated as a bypassable access control.
+
+Automatic browser stage:
+- there is no fake UI click;
+- the hidden WebView is technically `VISIBLE`, normally laid out at Activity size, and the entire transparent Activity task is moved behind Vivaldi before browser loading;
+- `mediaPlaybackRequiresUserGesture=true`; no PlayerActivity or ExoPlayer is created;
+- discovery observes ordinary WebView requests plus Service Worker requests, DOM VIDEO/SOURCE URLs, Performance API resources, and page-config URLs/declared qualities;
+- candidate protections/ranking remain: max 80, first-seen HLS/DASH preference, page-config family IDs, ad demotion, soft audio/video child demotion, no imagery decisions, 720 -> 1080 -> best below 1080;
+- exact cookie/18+ automation remains conservative; CAPTCHA/challenge/login/payment/subscription/DRM/region controls are not automated.
+
+Multiple BG tabs:
+- Android ServiceWorkerController is process-wide, so hidden browser discovery is serialized into one browser slot at a time;
+- direct attempts can still run independently;
+- waiting tabs show `tech BROWSER_WAITING_FOR_SLOT` and start browser discovery when the previous BG browser releases the slot;
+- this prevents Service Worker requests from one simultaneous BG tab being attributed to another.
+
+State semantics:
+- browser success -> READY;
+- explicit detected protected/human-interaction challenge -> NEEDS_ATTENTION;
+- ordinary automatic browser timeout/no candidate -> ERROR, not NEEDS_ATTENTION;
+- dashboard card clicks remain irrelevant for QUEUED/RESOLVING normal BG work.
+
+### Build #202 CI / artifact
+- GitHub Actions **run #202 PASS**; run ID `31830708434`.
+- Build step succeeded; debug APK upload succeeded.
+- Debug artifact ID `9230598176`.
+- Artifact ZIP size `25,979,380` bytes.
+- Artifact ZIP digest `sha256:6b08abecf71c650b8844d44ba4bc664642127d986bee009fe1b2318fee95302a`.
+- Extracted debug APK size `35,466,650` bytes.
+- Extracted APK SHA-256 `dab7f1a312d838e966eb552867679b696f887cf6a71a94c2d0c354fd99458114`.
+- #202 is the designated focused PH BG QA APK. Later state-only commits do not supersede its app code.
+- CI proves compilation/package integrity only; device QA is still required to prove automatic PH BG completion.
 
 ## Additional #192 device observations (PH only)
-Treat these as authoritative for #192:
+Treat these as authoritative until retested:
 - long-press tab moving/reorder: WORKS;
 - closing tabs: WORKS;
 - playback resumes from where the user left off: WORKS;
 - Back after the manually successful Browser Step/player returned to dashboard correctly in the tested flow;
-- attempting to change quality: DOES NOT WORK in this #192 PH test. This is a current regression and supersedes older PH quality PASS for current-build status;
+- attempting to change quality: DOES NOT WORK in #192 PH. This is a current regression and supersedes older PH quality PASS for current-build status;
 - Settings currently has four options enabled, but user wants an explicit **app language selector** in Settings;
-- tests in this round were PH only.
+- tests in that round were PH only.
 
-Do not request HH testing yet. PH already provides enough evidence to fix the BG automatic browser path first. After PH automatic BG preparation is confirmed, use HH as a separate regression target, especially for quality switching.
+Do not request HH testing yet. PH automatic BG preparation must pass first. After that, use HH as a separate regression target, especially for quality switching.
 
 ## Future logo / launcher visual direction
 Keep this requirement even while BG work has priority. For the next visual iteration:
@@ -113,12 +159,17 @@ Keep this requirement even while BG work has priority. For the next visual itera
 Do not mix this visual change into the focused BG lifecycle fix.
 
 ## Current development priority
-1. Stop broad #192 testing; no HH test is needed yet.
-2. Fix PH automatic BG fallback so it reaches the same technical discovery success as manual Browser Step without the user pressing it.
-3. Add a bounded direct-stage deadline; avoid the observed ~4-minute extractor stall before browser work.
-4. Unify/mirror visible Browser Step discovery signals in the BG path, including Service Worker handling and normal WebView initialization behavior, without background playback.
-5. Keep NEEDS_ATTENTION only for genuine protected/user-interaction cases.
-6. Build/CI and inspect the code path, then ask for one focused PH BG re-test.
-7. Once PH BG automatic preparation passes, test HH separately and revisit current quality-switch regression.
-8. Add app-language choice in Settings after the BG blocker unless it is naturally bundled with a later UI/settings pass.
+1. Device-test build #202 with PH only for automatic `BG - External Player` preparation.
+2. Add 2–3 PH BG tabs without opening/clicking their cards; Vivaldi should remain foreground.
+3. Expect ordinary direct misses to enter automatic browser fallback around the 12-second BG budget rather than ~4 minutes.
+4. Expect successful PH automatic browser discovery to become READY without pressing `Paso del navegador`.
+5. If multiple tabs need browser fallback, `BROWSER_WAITING_FOR_SLOT` is acceptable temporarily; each should later acquire the slot and continue automatically.
+6. `NEEDS_ATTENTION` is acceptable only for a genuine detected human/protected interaction. Ordinary no-candidate timeout should be ERROR instead.
+7. Do not test HH yet. If PH #202 passes, record that result in both state files, then test HH and revisit the current quality-switch regression.
+8. Add app-language choice in Settings after the BG blocker.
 9. Later perform the recorded logo refinement.
+
+## QA format
+Whenever asking user to test, provide exactly:
+1. one detailed code block containing steps, EXPECTED, RESULT;
+2. one separate short code block containing only compact answer format.
