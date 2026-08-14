@@ -9,14 +9,17 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
 import androidx.media3.ui.PlayerView
 import java.util.WeakHashMap
 
 /**
- * Runtime installer for the browser adaptive-quality fix.
+ * Runtime controller for browser adaptive quality selection.
  *
- * The existing foreground privacy provider calls [install] during process start,
- * so no extra manifest component is needed.
+ * Requested quality and actual decoded quality are intentionally independent.
+ * A button tap stores the requested manual height. Only Media3's VideoSize
+ * callback stores the actual height, so the UI can never falsely claim that a
+ * rendition changed merely because a menu item was selected.
  */
 object AdaptiveQualityRuntime {
     private var installed = false
@@ -33,7 +36,6 @@ object AdaptiveQualityRuntime {
 
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
             if (activity !is PlayerActivity) return
-
             activity.window.decorView.post {
                 if (!activity.isFinishing && !activity.isDestroyed) {
                     controllers.getOrPut(activity) { QualityController(activity) }.attach()
@@ -42,9 +44,7 @@ object AdaptiveQualityRuntime {
         }
 
         override fun onActivityDestroyed(activity: Activity) {
-            if (activity is PlayerActivity) {
-                controllers.remove(activity)?.detach()
-            }
+            if (activity is PlayerActivity) controllers.remove(activity)?.detach()
         }
 
         override fun onActivityStarted(activity: Activity) = Unit
@@ -54,11 +54,6 @@ object AdaptiveQualityRuntime {
         override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
     }
 
-    /**
-     * Intercepts the quality button only when Media3 exposes multiple adaptive
-     * video renditions. Direct/yt-dlp and sibling-URL quality switching remain in
-     * PlayerActivity exactly as before.
-     */
     private class QualityController(
         private val activity: PlayerActivity
     ) : Player.Listener {
@@ -75,6 +70,8 @@ object AdaptiveQualityRuntime {
         private var button: Button? = null
         private var adaptiveButtonInstalled = false
         private var manualHeight: Int? = null
+        private var actualHeight: Int? = null
+        private var restoredManualPreference = false
         private var reappliedAfterGroupRefresh = false
 
         fun attach() {
@@ -82,6 +79,9 @@ object AdaptiveQualityRuntime {
             player = activePlayer
             button = activity.findViewById(R.id.quality_button)
             activePlayer.addListener(this)
+
+            actualHeight = activePlayer.videoSize.height.takeIf { it > 0 }
+            actualHeight?.let { persistActual(it) }
             maybeInstallAdaptiveButton(activePlayer.currentTracks)
         }
 
@@ -91,46 +91,59 @@ object AdaptiveQualityRuntime {
             button = null
         }
 
+        override fun onVideoSizeChanged(videoSize: VideoSize) {
+            val height = videoSize.height.takeIf { it > 0 } ?: return
+            actualHeight = height
+            persistActual(height)
+            updateButtonLabel()
+        }
+
         override fun onTracksChanged(tracks: Tracks) {
             maybeInstallAdaptiveButton(tracks)
 
             val wanted = manualHeight ?: return
-            val actual = selectedVideoHeight(tracks)
-
-            if (actual == wanted) {
-                reappliedAfterGroupRefresh = false
-                button?.text = activity.getString(R.string.quality_value, wanted)
-                return
-            }
+            if (options(tracks).none { it.height == wanted }) return
 
             /*
-             * Some live manifests replace their TrackGroup during a refresh.
-             * Re-apply once against the new group instead of silently falling
-             * back to the old/automatic rendition.
+             * A manifest refresh can replace TrackGroup identity and silently
+             * invalidate an old override. Re-apply once to the refreshed group.
+             * Actual success is still confirmed only by onVideoSizeChanged.
              */
-            if (
-                !reappliedAfterGroupRefresh &&
-                options(tracks).any { it.height == wanted }
-            ) {
+            if (!reappliedAfterGroupRefresh && actualHeight != wanted) {
                 reappliedAfterGroupRefresh = true
-                activity.window.decorView.postDelayed({
-                    applyExactHeight(wanted)
-                }, 250L)
+                activity.window.decorView.postDelayed({ applyExactHeight(wanted, persist = false) }, 250L)
+            } else if (actualHeight == wanted) {
+                reappliedAfterGroupRefresh = false
             }
         }
 
         private fun maybeInstallAdaptiveButton(tracks: Tracks) {
-            if (adaptiveButtonInstalled) return
-            if (options(tracks).map { it.height }.distinct().size <= 1) return
+            val available = options(tracks)
+            if (available.map { it.height }.distinct().size <= 1) return
 
-            adaptiveButtonInstalled = true
-            button?.setOnClickListener { showAdaptiveDialog() }
+            if (!adaptiveButtonInstalled) {
+                adaptiveButtonInstalled = true
+                button?.setOnClickListener { showAdaptiveDialog() }
+            }
+
+            if (!restoredManualPreference) {
+                restoredManualPreference = true
+                val saved = tabId()?.let { VideoTabStore.get(it)?.manualQualityHeight }
+                if (saved != null && available.any { it.height == saved }) {
+                    manualHeight = saved
+                    applyExactHeight(saved, persist = false)
+                }
+            }
+
+            updateButtonLabel()
         }
 
         private fun showAdaptiveDialog() {
             val activePlayer = player ?: return
-            val available = options(activePlayer.currentTracks)
-            val heights = available.map { it.height }.distinct().sortedDescending()
+            val heights = options(activePlayer.currentTracks)
+                .map { it.height }
+                .distinct()
+                .sortedDescending()
             if (heights.size <= 1) return
 
             val labels = mutableListOf(activity.getString(R.string.quality_auto_prefer_720))
@@ -144,25 +157,13 @@ object AdaptiveQualityRuntime {
                 .setTitle(R.string.video_quality)
                 .setSingleChoiceItems(labels.toTypedArray(), checkedIndex) { dialog, which ->
                     dialog.dismiss()
-                    if (which == 0) {
-                        applyAutomaticPolicy()
-                    } else {
-                        applyExactHeight(heights[which - 1])
-                    }
+                    if (which == 0) applyAutomaticPolicy() else applyExactHeight(heights[which - 1])
                 }
                 .setNegativeButton(R.string.cancel, null)
                 .show()
         }
 
-        /**
-         * Force one exact adaptive rendition.
-         *
-         * The single-track override is the primary mechanism. Exact min/max
-         * video-size constraints reinforce the choice, and a practically
-         * invisible re-seek discards already-buffered chunks from the previous
-         * rendition so the visual change happens promptly.
-         */
-        private fun applyExactHeight(height: Int) {
+        private fun applyExactHeight(height: Int, persist: Boolean = true) {
             val activePlayer = player ?: return
             val target = options(activePlayer.currentTracks)
                 .filter { it.height == height }
@@ -172,12 +173,7 @@ object AdaptiveQualityRuntime {
             val parameterBuilder = activePlayer.trackSelectionParameters
                 .buildUpon()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
-                .setOverrideForType(
-                    TrackSelectionOverride(
-                        target.group.mediaTrackGroup,
-                        target.index
-                    )
-                )
+                .setOverrideForType(TrackSelectionOverride(target.group.mediaTrackGroup, target.index))
 
             if (target.width > 0 && target.height > 0) {
                 parameterBuilder
@@ -187,18 +183,18 @@ object AdaptiveQualityRuntime {
 
             manualHeight = height
             reappliedAfterGroupRefresh = false
+            if (persist) tabId()?.let { VideoTabStore.setManualQuality(it, height) }
+
             activePlayer.trackSelectionParameters = parameterBuilder.build()
 
+            /* Release old buffered rendition chunks promptly without changing position perceptibly. */
             val position = activePlayer.currentPosition.coerceAtLeast(0L)
             val duration = activePlayer.duration
-            val reseekPosition =
-                if (duration > 0L && position + 1L >= duration) position else position + 1L
-            activePlayer.seekTo(reseekPosition)
-
-            button?.text = activity.getString(R.string.quality_value, height)
+            val reseek = if (duration > 0L && position + 1L >= duration) position else position + 1L
+            activePlayer.seekTo(reseek)
+            updateButtonLabel()
         }
 
-        /** Restore the project default 720 -> 1080 -> best-below-1080 policy. */
         private fun applyAutomaticPolicy() {
             val activePlayer = player ?: return
             val available = options(activePlayer.currentTracks)
@@ -206,47 +202,65 @@ object AdaptiveQualityRuntime {
             val preferred = preferredHeight(heights) ?: return
             val group = available.firstOrNull()?.group ?: return
 
-            val indices: List<Int> =
-                if (group.isAdaptiveSupported) {
-                    available
-                        .filter { it.height <= preferred }
-                        .map { it.index }
-                        .distinct()
-                        .ifEmpty {
-                            listOf(available.first { it.height == preferred }.index)
-                        }
-                } else {
-                    listOf(
-                        available
-                            .filter { it.height == preferred }
-                            .maxByOrNull { it.bitrate }
-                            ?.index
-                            ?: return
-                    )
-                }
+            val indices: List<Int> = if (group.isAdaptiveSupported) {
+                available
+                    .filter { it.height <= preferred }
+                    .map { it.index }
+                    .distinct()
+                    .ifEmpty { listOf(available.first { it.height == preferred }.index) }
+            } else {
+                listOf(
+                    available.filter { it.height == preferred }
+                        .maxByOrNull { it.bitrate }
+                        ?.index
+                        ?: return
+                )
+            }
 
             manualHeight = null
             reappliedAfterGroupRefresh = false
+            tabId()?.let { VideoTabStore.setManualQuality(it, null) }
 
             activePlayer.trackSelectionParameters = activePlayer.trackSelectionParameters
                 .buildUpon()
                 .clearOverridesOfType(C.TRACK_TYPE_VIDEO)
                 .setMinVideoSize(0, 0)
                 .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
-                .setOverrideForType(
-                    TrackSelectionOverride(group.mediaTrackGroup, indices)
-                )
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, indices))
                 .build()
 
-            button?.text = activity.getString(R.string.quality_auto_limit, preferred)
+            updateButtonLabel()
         }
+
+        private fun updateButtonLabel() {
+            val target = manualHeight
+            val actual = actualHeight
+            button?.text = when {
+                target != null && actual != null && target == actual ->
+                    activity.getString(R.string.quality_manual_verified, target)
+                target != null && actual != null ->
+                    activity.getString(R.string.quality_manual_actual, target, actual)
+                target != null ->
+                    activity.getString(R.string.quality_manual_waiting, target)
+                actual != null ->
+                    activity.getString(R.string.quality_auto_actual, actual)
+                else -> activity.getString(R.string.quality_auto)
+            }
+        }
+
+        private fun persistActual(height: Int) {
+            tabId()?.let { VideoTabStore.setActualQuality(it, height) }
+        }
+
+        private fun tabId(): String? =
+            activity.intent.getStringExtra(TabbedPlayerApplication.EXTRA_TAB_ID)
+                ?.takeIf { VideoTabStore.get(it) != null }
 
         private fun options(tracks: Tracks): List<Option> {
             val videoGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_VIDEO }
             val bestGroup = videoGroups.maxByOrNull { group ->
                 (0 until group.length).count { index ->
-                    group.isTrackSupported(index) &&
-                        group.getTrackFormat(index).height > 0
+                    group.isTrackSupported(index) && group.getTrackFormat(index).height > 0
                 }
             } ?: return emptyList()
 
@@ -255,7 +269,6 @@ object AdaptiveQualityRuntime {
                     if (!bestGroup.isTrackSupported(index)) continue
                     val format = bestGroup.getTrackFormat(index)
                     if (format.height <= 0) continue
-
                     add(
                         Option(
                             group = bestGroup,
@@ -268,21 +281,6 @@ object AdaptiveQualityRuntime {
                 }
             }
         }
-
-        private fun selectedVideoHeight(tracks: Tracks): Int? =
-            tracks.groups
-                .asSequence()
-                .filter { it.type == C.TRACK_TYPE_VIDEO }
-                .flatMap { group ->
-                    (0 until group.length).asSequence().mapNotNull { index ->
-                        if (group.isTrackSelected(index)) {
-                            group.getTrackFormat(index).height.takeIf { it > 0 }
-                        } else {
-                            null
-                        }
-                    }
-                }
-                .maxOrNull()
 
         private fun preferredHeight(heights: List<Int>): Int? = when {
             720 in heights -> 720
