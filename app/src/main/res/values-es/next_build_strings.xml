@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="open_in_external_player">Añadir en External Player</string>
-    <string name="add_to_external_player">Añadir en External Player en segundo plano</string>
+    <string name="open_in_external_player">ExternalPlayer</string>
+    <string name="add_to_external_player">BG - External Player</string>
     <string name="added_to_external_player">Añadido — preparando en segundo plano</string>
     <string name="open_saved_tabs">Abrir pestañas guardadas</string>
     <string name="open_saved_tabs_count">Abrir pestañas (%1$d)</string>
