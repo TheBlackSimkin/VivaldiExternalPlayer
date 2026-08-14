@@ -6,13 +6,11 @@ import android.os.Bundle
 import android.widget.Toast
 
 /**
- * Explicit Android share target for "Add to External Player in background".
+ * Explicit Android share target for BG - External Player.
  *
- * This Activity exists only for the hand-off from Vivaldi/Android Sharesheet.
- * It creates the persistent tab, launches the invisible preparation Activity in
- * its own excluded-from-recents task, then removes itself immediately.
- *
- * No playback object is created here.
+ * It creates the persistent tab and hands it to the same unified preparation
+ * coordinator used by preload, retry and restart recovery. No playback object is
+ * ever created here.
  */
 class BackgroundShareActivity : Activity() {
 
@@ -38,18 +36,7 @@ class BackgroundShareActivity : Activity() {
         }
 
         val tab = VideoTabStore.createPendingTab(url)
-
-        startActivity(
-            Intent(this, BackgroundPreparationActivity::class.java)
-                .putExtra(BackgroundPreparationActivity.EXTRA_URL, url)
-                .putExtra(BackgroundPreparationActivity.EXTRA_TAB_ID, tab.id)
-                .addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
-                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
-                        Intent.FLAG_ACTIVITY_NO_ANIMATION
-                )
-        )
+        UnifiedPreparationCoordinator.startFromShare(this, tab.id)
 
         Toast.makeText(
             applicationContext,
@@ -65,7 +52,6 @@ class BackgroundShareActivity : Activity() {
         overridePendingTransition(0, 0)
     }
 
-    /** Browsers may share "page title + URL", so extract the first HTTP(S) URL. */
     private fun extractSharedUrl(intent: Intent): String? {
         if (intent.action != Intent.ACTION_SEND || intent.type != "text/plain") return null
 
