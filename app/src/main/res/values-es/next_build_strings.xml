@@ -50,7 +50,7 @@
     <string name="dashboard_close">Cerrar</string>
     <string name="dashboard_move_up">Subir</string>
     <string name="dashboard_move_down">Bajar</string>
-    <string name="dashboard_swipe_hint">Desliza una tarjeta hacia un lado para cerrarla</string>
+    <string name="dashboard_swipe_hint">Mantén pulsada y arrastra una tarjeta para reordenar • desliza hacia un lado para cerrar</string>
     <string name="dashboard_actual_quality">Real %1$dp</string>
     <string name="dashboard_manual_quality">Manual %1$dp</string>
     <string name="dashboard_auto_quality">Calidad automática</string>
