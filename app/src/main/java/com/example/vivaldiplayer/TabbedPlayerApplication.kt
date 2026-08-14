@@ -96,19 +96,35 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
 
             UnifiedPreparationCoordinator.onPreparationDestroyed(activity)
 
-            /*
-             * A successful BG share should be as identifiable as possible before
-             * the user later opens the dashboard. The hidden WebView already saved
-             * the local page title in the READY payload. Start a best-effort local
-             * frame extraction now as the hidden task closes, rather than waiting
-             * for MainActivity to become visible. This creates no ExoPlayer and no
-             * audio/video playback; if Android kills the process, foreground
-             * TabThumbnailWarmup can simply retry later.
-             */
             tabId?.let { id ->
-                VideoTabStore.get(id)
-                    ?.takeIf { it.isReady && TabThumbnailCache.load(this, id) == null }
-                    ?.let { readyTab -> TabThumbnailCapture.captureResolved(this, readyTab) }
+                val tab = VideoTabStore.get(id)
+
+                when {
+                    /*
+                     * A successful BG share should be as identifiable as possible
+                     * before the user later opens the dashboard. The hidden WebView
+                     * already saved the local page title in the READY payload. Start
+                     * best-effort local frame extraction now. This creates no
+                     * ExoPlayer and no audio/video playback.
+                     */
+                    tab?.isReady == true && TabThumbnailCache.load(this, id) == null ->
+                        TabThumbnailCapture.captureResolved(this, tab)
+
+                    /*
+                     * If Android destroys the hidden Activity unexpectedly while
+                     * it is still RESOLVING, never leave a permanently false
+                     * "Preparing…" state. Configuration recreation is excluded
+                     * because Android will immediately create the replacement.
+                     * A real interruption returns to QUEUED and WorkManager gets a
+                     * direct/network recovery attempt. On the next foreground host,
+                     * the normal browser-capable stage may continue as needed.
+                     */
+                    tab?.preparationState == VideoTabStore.PreparationState.RESOLVING &&
+                        !activity.isChangingConfigurations -> {
+                        VideoTabStore.markQueued(id, "Background preparation was interrupted; retry queued")
+                        TabPreparationManager.enqueue(this, id, replace = true)
+                    }
+                }
             }
         }
         activityTabs.remove(activity)
