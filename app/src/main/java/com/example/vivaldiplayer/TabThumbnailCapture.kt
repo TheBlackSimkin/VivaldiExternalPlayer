@@ -14,7 +14,13 @@ import androidx.media3.ui.PlayerView
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Generates one stable pseudo-random local thumbnail per persistent tab.
+ * Generates one stable local thumbnail per persistent tab.
+ *
+ * The previous pseudo-random timestamp was intentionally removed after device
+ * QA: it could land on an unhelpful frame and made the dashboard feel arbitrary.
+ * The new heuristic uses the user's saved/current position when meaningful;
+ * otherwise it chooses roughly one third into a known-duration video. No frame
+ * content is classified or sent anywhere.
  *
  * No ExoPlayer is created here. Active tabs reuse PlayerActivity's existing
  * FrameExtractor; READY background tabs can use a short-lived FrameExtractor
@@ -46,7 +52,7 @@ object TabThumbnailCapture {
             context = activity,
             tabId = tabId,
             extractor = extractor,
-            position = choosePosition(tabId, duration, current),
+            position = choosePosition(duration, current),
             closeExtractor = false,
             onSaved = null
         )
@@ -96,7 +102,7 @@ object TabThumbnailCapture {
             context = context,
             tabId = tab.id,
             extractor = extractor,
-            position = choosePosition(tab.id, C.TIME_UNSET, tab.positionMs),
+            position = choosePosition(C.TIME_UNSET, tab.positionMs),
             closeExtractor = true,
             onSaved = onSaved
         )
@@ -139,16 +145,24 @@ object TabThumbnailCapture {
         }, ContextCompat.getMainExecutor(context))
     }
 
-    private fun choosePosition(tabId: String, duration: Long, current: Long): Long {
-        val hash = tabId.hashCode().toLong() and 0x7fffffffL
-        if (duration != C.TIME_UNSET && duration > 4_000L) {
-            val percent = 18L + (hash % 55L)
-            return ((duration * percent) / 100L)
-                .coerceIn(1_000L, (duration - 1_000L).coerceAtLeast(1_000L))
+    /**
+     * Prefer something representative and stable rather than random.
+     * - If the user already has a meaningful saved/current position, use it.
+     * - With a known duration, use ~35% of the video, away from opening/credits.
+     * - With unknown duration and no progress, use a conservative 15-second mark.
+     */
+    private fun choosePosition(duration: Long, current: Long): Long {
+        if (current >= 5_000L) {
+            if (duration == C.TIME_UNSET || duration <= 0L) return current
+            return current.coerceAtMost((duration - 1_000L).coerceAtLeast(1_000L))
         }
 
-        if (current > 2_000L) return current
-        return 5_000L + ((hash % 20L) * 1_000L)
+        if (duration != C.TIME_UNSET && duration > 5_000L) {
+            return ((duration * 35L) / 100L)
+                .coerceIn(2_000L, (duration - 1_000L).coerceAtLeast(2_000L))
+        }
+
+        return 15_000L
     }
 
     private fun scaledCopy(bitmap: Bitmap): Bitmap {
