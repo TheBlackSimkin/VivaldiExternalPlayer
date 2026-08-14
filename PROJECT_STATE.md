@@ -57,183 +57,178 @@ Technical lifecycle markers are persisted and shown locally as `tech ... +Xs`; t
 ## Share-entry semantics
 - `ExternalPlayer` chooser target is exported `ForegroundShareActivity`, which explicitly starts/raises `MainActivity` with the shared URL. `MainActivity.acceptSharedUrl()` enters normal visible `resolveAndPlay()`.
 - Current `BG - External Player` chooser target is exported `BackgroundShareActivityV2`; it is a real launched Activity but intentionally moves its task behind Vivaldi.
-- BG host is `android:excludeFromRecents="true"`; absence from the Android square/Recents screen is expected and is now explicitly preferred by the user.
-- Portuguese `segundo plano` is naturally “the background” in this context.
+- BG host is `android:excludeFromRecents="true"`; absence from Android Recents is expected and is explicitly preferred by the user.
 
 ## Build #192 PH device QA — authoritative
 User tested three PH links shared through `Compartir enlace` -> `BG - External Player`.
 
 Important improvement versus #187:
-- after later opening ExternalPlayer once, **all three tabs were already actively in `Preparando` without the user first clicking each individual tab**. This proves the #192 self-owned share path materially removed the old tab-click-to-start coupling.
+- after later opening ExternalPlayer once, **all three tabs were already actively in `Preparando` without the user first clicking each individual tab**. This proved the self-owned share path materially removed the old tab-click-to-start coupling.
 
 Remaining failure:
-- the three preparations did not finish automatically;
-- each took roughly **244–270 seconds** from creation to the final visible failure marker;
-- all ended `Falta paso del navegador` / `NEEDS_ATTENTION` with the Browser Step button;
-- clicking `Paso del navegador` manually then succeeded in roughly **5–10 seconds** for each tested PH URL;
-- after successful visible browser resolution, Back returned to the tab dashboard and the tab contained its information correctly.
+- preparations did not finish automatically;
+- each took roughly **244–270 seconds**;
+- all ended `Falta paso del navegador` / `NEEDS_ATTENTION`;
+- manually clicking `Paso del navegador` succeeded in roughly **5–10 seconds** per tested PH URL.
 
-Code inspection after this result found the likely divergence:
-- #192 browser timeout itself was only 22 seconds, so most delay happened before that in the direct/yt-dlp stage;
-- visible `BrowserResolverActivity` observes Service Worker requests while #192 BG did not;
-- #192 BG WebView was `INVISIBLE` and only 1x1, unlike the normally laid-out visible Browser Step.
+Code inspection after #192 found:
+- browser timeout itself was only 22 seconds, so most delay happened before it in direct/yt-dlp;
+- visible `BrowserResolverActivity` observed Service Worker requests while #192 BG did not;
+- #192 BG WebView was `INVISIBLE` and 1x1 rather than normally laid out.
 
 ### Browser-fallback architectural decision after #192 QA
-Do **not** solve this by literally faking a UI click on `Paso del navegador`.
+Do **not** fake a literal UI click on `Paso del navegador`.
 
-The intended behavior is equivalent from the user's perspective but cleaner technically:
-1. direct/yt-dlp remains first but is bounded enough that it cannot monopolize several minutes;
-2. on ordinary miss/budget expiry, automatically run browser discovery behind Vivaldi;
-3. BG discovery stores READY metadata only and never launches PlayerActivity/ExoPlayer or produces background audio/video;
-4. ordinary browser discovery timeout/failure is technical ERROR, not NEEDS_ATTENTION;
-5. NEEDS_ATTENTION / `Paso del navegador` is reserved for genuine user interaction such as CAPTCHA/challenge/login/payment/DRM/region controls that automation must not bypass;
-6. process-wide Service Worker observation must avoid cross-tab request attribution.
+Desired behavior:
+1. direct/yt-dlp first but bounded;
+2. ordinary miss/budget expiry -> automatic browser discovery behind Vivaldi;
+3. BG discovery stores READY metadata only and never launches PlayerActivity/ExoPlayer/background playback;
+4. ordinary browser timeout/failure -> ERROR;
+5. NEEDS_ATTENTION / Browser Step only for genuine human/protected interaction;
+6. process-wide Service Worker observation must avoid cross-tab attribution.
 
-## Build #202 implementation — automatic Browser Step semantics behind Vivaldi
+## Build #202 implementation
 App-code head: `b02561ed0c154b7f8abe66bd4e3212ba780b7fdf`.
 
-Three app-code commits produced #202:
+Commits:
 - `b970a60e4ab639feb550695ad69815f85aa06a02` — add `BackgroundShareActivityV2`;
-- `08a8729b87498f68b6edce68bdd75cda93799dd7` — route `BG - External Player` manifest target to V2;
+- `08a8729b87498f68b6edce68bdd75cda93799dd7` — route BG chooser to V2;
 - `b02561ed0c154b7f8abe66bd4e3212ba780b7fdf` — bound direct resolver socket/retry behavior.
 
-### V2 lifecycle
-`BG - External Player` launches `BackgroundShareActivityV2`, which retains the self-owned share/task behavior that starts without card clicks.
-
-Direct stage:
-- yt-dlp/direct starts first;
-- after 12 seconds, if normal preparation has not completed, V2 requests browser fallback even if the blocking direct call has not returned yet;
+V2 behavior:
+- creates/marks persistent tab at share time;
+- direct yt-dlp first;
+- 12-second budget requests automatic browser fallback even if direct is still blocking;
 - resolver.py uses `socket_timeout=12`, `retries=1`, `extractor_retries=1`, `fragment_retries=1`;
-- hard DRM/paywall/subscription/purchase/geo markers remain hard stops;
-- challenge/login-style extractor messages are normalized into ordinary browser assistance rather than treated as bypassable access controls.
-
-Automatic browser stage:
-- there is no fake UI click;
-- the hidden WebView is technically `VISIBLE`, normally laid out at Activity size, and the entire transparent Activity task is moved behind Vivaldi before browser loading;
+- hidden WebView is technically VISIBLE and normally laid out, while the Activity is behind Vivaldi;
 - `mediaPlaybackRequiresUserGesture=true`; no PlayerActivity or ExoPlayer is created;
-- discovery observes ordinary WebView requests plus Service Worker requests, DOM VIDEO/SOURCE URLs, Performance API resources, and page-config URLs/declared qualities;
-- candidate protections remain: max 80, first-seen HLS/DASH preference, page-config family IDs, ad demotion, soft audio/video child demotion, no imagery decisions;
-- exact cookie/18+ automation remains conservative; CAPTCHA/challenge/login/payment/subscription/DRM/region controls are not automated.
-
-Multiple BG tabs:
-- Android ServiceWorkerController is process-wide, so hidden browser discovery is serialized into one browser slot at a time;
-- direct attempts can still run independently;
-- waiting tabs may show `tech BROWSER_WAITING_FOR_SLOT` and should start browser discovery when the previous BG browser releases the slot.
-
-Intended #202 state semantics:
-- browser success -> READY;
-- explicit detected protected/human-interaction challenge -> NEEDS_ATTENTION;
-- ordinary automatic browser timeout/no candidate -> ERROR, not NEEDS_ATTENTION;
-- dashboard card clicks remain irrelevant for QUEUED/RESOLVING normal BG work.
+- discovery observes WebView requests, Service Worker requests, DOM VIDEO/SOURCE, Performance resources, and page config;
+- hidden browser discovery is serialized because ServiceWorkerController is process-wide.
 
 ### Build #202 CI / artifact
-- GitHub Actions **run #202 PASS**; run ID `31830708434`.
-- Debug artifact ID `9230598176`.
-- Artifact ZIP size `25,979,380` bytes.
-- Artifact ZIP digest `sha256:6b08abecf71c650b8844d44ba4bc664642127d986bee009fe1b2318fee95302a`.
-- Extracted debug APK size `35,466,650` bytes.
-- Extracted APK SHA-256 `dab7f1a312d838e966eb552867679b696f887cf6a71a94c2d0c354fd99458114`.
-- CI proves compilation/package integrity only.
+- run #202 PASS; run ID `31830708434`;
+- artifact ID `9230598176`;
+- artifact ZIP digest `sha256:6b08abecf71c650b8844d44ba4bc664642127d986bee009fe1b2318fee95302a`;
+- APK SHA-256 `dab7f1a312d838e966eb552867679b696f887cf6a71a94c2d0c354fd99458114`.
 
 ## Build #202 PH device QA — authoritative FAIL for automatic completion
-The user tested three PH BG shares without opening/clicking individual cards while preparation was running.
+User tested three PH BG shares without opening/clicking individual cards while preparation was running.
 
 What #202 proved:
-- share-time decoupling still works: **no tab/card was clicked before the automatic process stopped by itself**;
-- the BG entries stayed out of Android Recents, which is a PASS and the user's preferred behavior;
+- share-time decoupling still works: no tab/card was clicked before the automatic process stopped;
+- BG entries stayed out of Android Recents, a PASS and the user's preferred behavior;
 - therefore opening an individual tab is no longer the trigger which begins preparation.
 
 What failed:
-- after waiting about **120 seconds** before first opening ExternalPlayer, all three tabs were still `Preparing`;
-- after about another **120 seconds**, the tabs began visibly cycling through errors/other methods;
-- after roughly another **120 seconds** (about six minutes total), all three ended `Paso del Navegador` / `NEEDS_ATTENTION`;
+- after about **120 seconds** before first opening ExternalPlayer, all three were still `Preparing`;
+- after another ~120 seconds they began visibly cycling through errors/other methods;
+- after another ~120 seconds (about six minutes total) all three ended `Paso del Navegador` / `NEEDS_ATTENTION`;
 - final visible tech marker was `NEEDS_ATTENTION` for all three;
-- the user never observed `ERROR` or `BROWSER_WAITING_FOR_SLOT`, although some intermediate tech markers changed too quickly to read;
-- manually clicking `Paso del Navegador` then reached READY in about **5–7 seconds** per tested tab.
+- user never observed `ERROR` or `BROWSER_WAITING_FOR_SLOT`, though intermediate markers changed too quickly to read;
+- manually clicking `Paso del Navegador` then reached READY in about **5–7 seconds** per tab.
 
-The approximately six-minute automatic route is unacceptable for normal use. The 120-second wait was a diagnostic test only, not a desired UX target.
+The multi-minute automatic route is unacceptable for normal use. The 120-second wait was diagnostic only, not a desired UX target.
 
-Additional current PH findings from #202:
-- manual change to **240p works**;
-- manual change to **480p does not work**;
-- Auto still chooses **1080p even when 720p is available**, violating the protected `720 -> 1080 -> below` policy;
-- the launcher icon was not changed in #202. This was intentional because logo refinement remained deferred, but the user explicitly reminded us it is still outstanding.
+Additional #202 PH findings:
+- manual **240p works**;
+- manual **480p does not work**;
+- Auto chooses **1080p even when 720p is available**, violating the protected policy;
+- launcher icon remained unchanged. Logo refinement was deliberately deferred, but the user explicitly reminded us it is still outstanding.
 
 Do not test HH yet. PH automatic BG completion remains the blocker.
 
-## #202 failure diagnosis — lifecycle fallback escaped back into the old architecture
-Code inspection after the device result found an important path which matches the observed timing:
+## #202 failure diagnosis — silent fallback into old architecture
+Code inspection found a path matching the device timing:
+1. V2 starts correctly at share time.
+2. If Android destroys V2 while RESOLVING, #202 V2 `onDestroy()` marks `BG_HOST_DESTROYED_RECOVERY_QUEUED` and enqueues `TabPreparationManager` / WorkManager.
+3. The Worker can do direct resolution but cannot own a WebView.
+4. On direct miss it records browser-stage-needed and waits for `UnifiedPreparationCoordinator` to obtain an Activity lifecycle.
+5. The coordinator can launch older `BackgroundPreparationActivity`, whose browser timeout still ends NEEDS_ATTENTION / Browser Step.
 
-1. V2 owns the intended direct + hidden-browser work while its Activity remains alive.
-2. If Android destroys V2 while it is still RESOLVING, V2's `onDestroy()` in #202 marks `BG_HOST_DESTROYED_RECOVERY_QUEUED` and enqueues `TabPreparationManager` / WorkManager.
-3. That Worker can do direct resolution but **cannot own a WebView**.
-4. On an ordinary direct miss it records `WORKER_BROWSER_STAGE_NEEDED` and waits for `UnifiedPreparationCoordinator` to obtain a usable Activity lifecycle.
-5. The coordinator can then launch the older `BackgroundPreparationActivity`, whose browser timeout still ends in NEEDS_ATTENTION / Browser Step.
+Thus #202 could begin correctly, then silently revert to the old multi-minute path. This explains why runtime behavior contradicted V2's intended 30-second ordinary-browser ERROR semantics.
 
-This means #202 can begin correctly at share time but, after the BG Activity is interrupted, silently fall back into the older architecture. That explains why real-device behavior could take minutes and end in NEEDS_ATTENTION even though V2's own automatic browser timeout was only 30 seconds and was supposed to use ERROR on an ordinary miss.
-
-## Post-#202 BG lifecycle fix — implementation staged, CI pending
-The focused successor keeps V2 as the owner of actual preparation but adds process-lifetime protection and persistent diagnostics.
+## Build #205 implementation — protect V2 lifetime and expose operations log
+App-code head: `48605a4c1eb8972d6275478993db5ce7b104478e`.
 
 ### Foreground preparation keep-alive
-- A short-lived `BackgroundPreparationKeepAliveService` is started from the lifecycle of the **user-launched V2 BG share Activity before its posted `moveTaskToBack()` executes**.
-- The service is declared as foreground `dataSync` because it protects user-requested network preparation only.
-- It has no Media3/ExoPlayer/PlayerActivity code and cannot play audio/video.
-- Android therefore shows a low-priority foreground-service notification while BG preparation is active; this is intentionally separate from Android Recents.
-- Each V2 Activity owns one service lease; the service stops after the last lease is released.
+- Added `BackgroundPreparationKeepAliveService`, declared foreground `dataSync`.
+- It is a **process-lifetime lease only**. It owns no WebView, no Media3, no PlayerActivity and no ExoPlayer.
+- `BackgroundShareActivityV2` remains the owner of direct + hidden-browser preparation.
+- Application lifecycle acquires one keep-alive lease for each user-launched V2 share.
+- Android may show a low-priority foreground preparation notification while the lease is active; this is separate from Android Recents.
+- The service stops after the last V2 lease is released.
 
-### Do not hide V2 interruption behind legacy recovery
-- If a live V2 Activity is destroyed while unresolved, its #202 WorkManager fallback is immediately cancelled and the tab becomes a technical ERROR instead of silently continuing through the old browser-step architecture.
-- If the whole process dies and `VideoTabStore` restores a V2 session as `PROCESS_RESTART_QUEUED`, application startup recognizes the V2 host/WebView timestamps and converts that interrupted session to ERROR **before** `resumePending()` can enqueue the old Worker.
-- Explicit retry/preload paths may still use the older recovery coordinator; this change is specifically about normal `BG - External Player` shares.
+### No silent V2 -> legacy recovery
+- V2's existing `onDestroy()` may briefly queue its #202 WorkManager recovery, but the application V2-destroy callback immediately cancels that scheduled recovery and converts the tab to explicit technical ERROR with `BG_HOST_DESTROYED_NO_LEGACY_FALLBACK`.
+- Whole-process death bypasses Activity `onDestroy()`. On next process start, `VideoTabStore.initialize()` first converts stale RESOLVING to `PROCESS_RESTART_QUEUED`; application startup detects V2 host + WebView timestamps and converts it to `PROCESS_RESTART_BG_HOST_ERROR` **before** `TabPreparationManager.resumePending()` can revive the old Worker.
+- Explicit retry/preload recovery remains available separately; normal BG shares no longer silently rely on it.
 
 ### Exportable operations log
-The user requested a better way to report fast backstage states. The successor adds a persistent local operations journal and a Settings button to share it as plain text through Android's normal share sheet (including WhatsApp when installed).
+Added persistent `OperationLog` plus Settings button `Share operations log` / `Compartir registro de operaciones`.
 
-The journal records technical lifecycle/state only:
+The log records technical lifecycle/state only:
 - BG Activity created/started/resumed/paused/stopped/destroyed;
-- foreground keep-alive leases/service lifetime;
-- tab preparation state, tech marker, and preparation timestamps;
+- foreground keep-alive service/lease lifetime;
+- tab preparation state, tech marker and timing fields;
 - bounded technical error text.
 
-It intentionally does **not** log thumbnails, media frames, page/body text, resolved media payloads, request headers, cookies, authorization values, or credentials. Common credential-shaped strings are additionally redacted before writing.
+It intentionally does **not** log thumbnails, media frames, page/body text, resolved media payloads, request headers, cookies, authorization values or credentials. Common credential-shaped strings are redacted. Export uses Android's normal text share sheet, so WhatsApp can be selected when installed.
+
+## Build #205 code-path inspection — PASS
+Inspection of committed `main` after implementation confirms preparation is scheduled/started at BG-share time, not tab-open time:
+- `BackgroundShareActivityV2.onCreate()` creates the pending tab, marks PREPARATION_REQUESTED / host / RESOLVING, creates/configures its WebView, queues its task move behind Vivaldi, calls `attemptDirectFirst()`, and schedules the 12-second fallback timer.
+- `TabbedPlayerApplication.onActivityCreated(BackgroundShareActivityV2)` runs after V2 `onCreate()` returns and requests the foreground keep-alive for that user-launched share before the queued `moveTaskToBack()` executes.
+- MainActivity/dashboard-card selection is not part of that startup sequence.
+- Keep-alive service source contains no PlayerActivity/Media3/ExoPlayer ownership; it only protects process lifetime and journals state.
+
+## Build #205 CI / focused QA artifact
+- GitHub Actions **run #205 PASS**.
+- Run ID: `31838190231`.
+- App-code commit: `48605a4c1eb8972d6275478993db5ce7b104478e`.
+- Debug artifact ID: `9233311193`.
+- Artifact ZIP size: `25,991,863` bytes.
+- Artifact ZIP digest: `sha256:c9b8473fab112aaa525111505389726724e50be8979d993777fa1355bccc930b`.
+- Extracted debug APK size: `35,486,970` bytes.
+- Extracted APK SHA-256: `635b100073068f1062ef660fb9b61d46fb62613e7c71aa4e3814c158aeb71d72`.
+- #205 is the designated focused PH BG-lifecycle QA APK. Later state-only commits do not supersede its app code.
+- CI proves compile/package integrity only; device QA is still required.
 
 ## Current quality status / later fix
-The protected policy remains exact 720 -> otherwise 1080 -> otherwise best below 1080. #202 PH QA proves current runtime behavior violates it by initially choosing 1080 when 720 exists.
+Protected policy remains exact 720 -> otherwise 1080 -> otherwise best below 1080. #202 PH QA proves current runtime violates it by initially choosing 1080 when 720 exists.
 
-Current code clue:
-- browser candidate scoring gives 720 only a small score advantage over 1080, so other candidate factors can still make a 1080 sibling rank first;
-- Media3's adaptive `PlayerActivity` policy itself explicitly prefers 720 when the same adaptive track group exposes it;
-- manual 240 works while manual 480 fails on the current tested PH path.
+Code clue:
+- browser candidate scoring gives 720 only a small advantage over 1080, so other candidate factors can still make a 1080 sibling rank first;
+- Media3 adaptive `PlayerActivity` policy explicitly prefers 720 when the same adaptive group exposes it;
+- manual 240 works while manual 480 fails on the tested PH path.
 
-Do not mix a speculative quality rewrite into the focused BG lifecycle proof. Once PH BG preparation passes, fix/verify strict initial family quality selection and the 480 switching failure before HH regression testing.
+Do not mix a speculative quality rewrite into #205 BG lifecycle proof. Once PH BG preparation passes, fix/verify strict initial family quality selection and 480 switching before HH regression testing.
 
-## Additional verified/current UI observations
-- long-press tab moving/reorder: WORKS from #192;
-- closing tabs: WORKS from #192;
-- playback resumes from where the user left off: WORKS from #192;
-- tested Back flow after manual Browser Step: WORKS from #192;
-- Settings still needs an explicit **app language selector**;
-- #202 BG absence from Android Recents: PASS and preferred.
+## Current UI observations / backlog
+- long-press tab move/reorder WORKS from #192;
+- closing tabs WORKS from #192;
+- resume position WORKS from #192;
+- tested Back flow after manual Browser Step WORKS from #192;
+- Settings still needs explicit app-language selector;
+- #202 BG absence from Android Recents PASS and preferred.
 
-## Future logo / launcher visual direction
-Keep this requirement even while BG work has priority. For the next visual iteration:
-- preserve the current letter/color identity (white E / purple scheme);
-- keep it recognizable as the same logo family;
+## Future logo / launcher direction
+Still required after the BG blocker:
+- preserve white-E / purple identity and recognizable family;
 - make it less square/boxy and more stylized/refined;
-- make the purple portions more noticeable/prominent.
-The user explicitly reminded us after #202 that the icon is still unchanged. Do not mix this visual change into the focused BG lifecycle fix.
+- make purple portions more prominent.
+The user explicitly reminded us after #202 that the icon is unchanged. Do not mix this visual change into the focused #205 BG lifecycle QA.
 
 ## Current development priority
-1. Finish/CI the post-#202 foreground keep-alive + no-legacy-fallback + operations-log implementation.
-2. Inspect `main` after CI to verify normal BG preparation is still started in `BackgroundShareActivityV2.onCreate()` at share time and that the foreground keep-alive is acquired from V2 creation **before** V2 is moved behind Vivaldi.
-3. Verify CI passes before designating a QA APK.
-4. PH-only device QA: share 2–3 BG tabs, do not open/click their cards, keep Vivaldi foreground, and expect automatic readiness on a practical timescale substantially shorter than the #202 multi-minute failure.
-5. If the next test fails, export/share the operations log before pressing Browser Step so the exact backstage path is preserved.
-6. Do not test HH until PH automatic BG preparation passes.
-7. After PH BG passes, fix/verify strict 720 preference and the current 480 quality-switch failure, then use HH as a separate regression target.
-8. Add explicit app-language choice in Settings after the BG blocker.
-9. Later perform the recorded launcher/logo refinement.
+1. Device-test build #205 with PH only; no HH yet.
+2. Share 2–3 PH links through `BG - External Player` without opening/clicking their cards.
+3. Keep Vivaldi foreground. Absence from Android Recents remains expected/preferred.
+4. Use a practical initial observation window (about 60 seconds for three shares), not the old 120-second diagnostic wait as a normal expectation.
+5. Target: tabs prepare automatically before ExternalPlayer/card open; no manual Browser Step needed.
+6. If a tab is not READY or ends ERROR/NEEDS_ATTENTION, export `Settings -> Share operations log` **before** pressing Browser Step so the backstage sequence is preserved.
+7. NEEDS_ATTENTION remains valid only for a genuine detected protected/human interaction; an interrupted V2 lifecycle should now be explicit ERROR rather than hidden legacy retry.
+8. If PH #205 passes, record QA in both state files, then fix strict 720 preference + 480 switching and test HH separately.
+9. Add explicit app-language choice after BG blocker.
+10. Later perform recorded launcher/logo refinement.
 
 ## QA format
 Whenever asking user to test, provide exactly:
