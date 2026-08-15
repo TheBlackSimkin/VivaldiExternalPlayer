@@ -13,40 +13,41 @@ GitHub `main` is authoritative. Read `PROJECT_STATE.md` before substantive work.
 ## Protected playback baseline
 #234 private-display service architecture is protected. #236 app code `d6c1328823ce2027beecab7970b02420d1cffc7b` is the protected playback baseline and passed PH BG, Auto 720-first, manual quality including 480p, PH playback, HH smoke, Recently Closed functionality and language persistence. Do not change BG/quality architecture without a concrete regression.
 
-## UI direction
-Approved structural direction:
-- Vivaldi-inspired tab distribution only as loose layout inspiration;
-- thumbnail tabs: 2 columns portrait / 3 landscape;
-- normal cards omit technical lifecycle strings;
-- Recently Closed dedicated thumbnail grid with permanent Recover all / Delete all;
-- grouped Settings, About inside Settings;
+## UI structure already accepted
+Build #242 UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e` compiled and the user reported requested structure/results as expected:
+- loose Vivaldi-inspired thumbnail tabs, 2 columns portrait / 3 landscape;
+- no technical lifecycle strings on normal cards;
+- dedicated Recently Closed grid with thumbnails and fixed Recover all/Delete all;
+- grouped Settings with About inside Settings;
 - collapsible manual URL;
-- deliberate state/empty/error UI;
-- consistent icons/buttons, minimal animation and clean sans-serif typography;
-- palette should shift toward the logo identity: purple `#B05CFF`, charcoal `#17191F`, white.
+- square tab count + gear concept on player.
 
-## Build #242 — first UI pass
-UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 PASS; APK SHA-256 `ac3e04a27525ffe063219da59e9165b26732b3fc834eafedfc08731dd7695838`.
-User reports **results as expected** for the requested #242 structure/functionality.
+## Latest user-approved visual/player specification
+### Palette
+Use the logo identity rather than #242's red-heavy accent:
+- purple `#B05CFF` = brand/active accent;
+- charcoal `#17191F` family = surfaces;
+- white = primary content/text;
+- green/amber/red stay semantic success/attention/destructive colors.
 
-### Current player UI specification
-- Tab-count and gear are part of the **Media3/video controller overlay**, not permanently floating over video.
-- Both live in the **lower transport-control row**, immediately to the left of fullscreen.
-- Conceptual right-side order: `[tab count] [gear] [fullscreen]`.
-- Seek bar/timestamps remain on the row above.
-- **Do not show dedicated rewind/forward buttons.** Preserve the existing double-tap left/right ±10s behavior instead.
-- Controls visible -> normal transport UI + tab count + gear + fullscreen.
-- Controls auto-hide -> tab count + gear disappear too; hidden state is clean video only.
-- Tap video -> normal controller plus tab-count/gear return together.
-- Gear menu contains the existing Quality and Diagnostics actions.
-- **Restart/go to start** is not visible during normal playback; it appears only after playback reaches the ended state, as the replay/restart action.
-- This behavior is technically feasible using Media3 controller visibility and playback-state callbacks.
-- No app-code change for these latest player clarifications yet.
+### Player controls
+- Keep Media3 controller/playback behavior.
+- No visible rewind/fast-forward ±10s buttons.
+- Preserve GesturePlayerView double-tap left/right for `-10s / +10s`.
+- Lower-right controller order is conceptually `[tab count] [gear] [fullscreen]`.
+- Tab count opens dashboard; gear contains existing Quality + Diagnostics actions.
+- Tab count/gear follow Media3 controller visibility: when controls hide they disappear too, leaving clean video only; tapping video brings them back with the controller.
+- Preserve current end-of-video replay/start-again behavior from Media3. Do not add a separate custom restart button.
 
-## Next
-1. Implement controller-bound lower-row tab-count/gear with no visible ±10s buttons, plus ended-state restart only.
-2. Apply logo-derived purple/charcoal/white palette.
-3. Continue visual iteration; defer deep PH/HH regression until UI settles.
+## Current implementation — second UI iteration staged, CI pending
+Presentation-only changes staged on top of current main:
+- `colors.xml`: logo-derived purple/charcoal/white palette;
+- new translucent purple-outlined player control background;
+- `PlayerChromeProvider`: hides visible Media3 rewind/fast-forward buttons and duplicate Media3 settings gear, moves the existing tab-count and ExternalPlayer gear to the lower-right before fullscreen, and binds both to `PlayerView.ControllerVisibilityListener`;
+- existing hidden Quality/Diagnostics button click handlers are still reused;
+- resolver/BG/quality/ExoPlayer architecture is untouched.
+
+Next: atomic commit -> GitHub Actions compile -> focused device UI/player-chrome QA. Defer deep PH/HH regression until UI iteration settles.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:

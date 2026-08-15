@@ -3,16 +3,31 @@
     <color name="black">#000000</color>
     <color name="white">#FFFFFF</color>
 
-    <!-- ExternalPlayer UI palette. -->
-    <color name="app_background">#0E1014</color>
-    <color name="app_surface">#171A20</color>
-    <color name="app_surface_raised">#20242C</color>
-    <color name="app_surface_active">#292E38</color>
-    <color name="app_accent">#E64A3B</color>
-    <color name="app_accent_soft">#3A211F</color>
-    <color name="app_text_primary">#F7F8FA</color>
-    <color name="app_text_secondary">#AEB4BF</color>
-    <color name="app_outline">#343A45</color>
+    <!--
+        ExternalPlayer UI palette.
+
+        The launcher mark defines the visual identity: purple #B05CFF, charcoal
+        #17191F and white. The application surfaces below deliberately stay close
+        to that charcoal while adding only a very small purple bias for depth.
+        Purple is the brand/active accent; semantic success/warning/error states
+        keep their own colors so branding never masquerades as an error state.
+    -->
+    <color name="app_background">#101116</color>
+    <color name="app_surface">#17191F</color>
+    <color name="app_surface_raised">#211D29</color>
+    <color name="app_surface_active">#2C2336</color>
+
+    <color name="app_accent">#B05CFF</color>
+    <color name="app_accent_soft">#2E1D3D</color>
+    <color name="app_accent_outline">#6AB05CFF</color>
+
+    <color name="app_text_primary">#FAF7FF</color>
+    <color name="app_text_secondary">#B8B0C2</color>
+    <color name="app_outline">#41364D</color>
+
+    <!-- Semi-transparent player chrome used only while Media3 controls are visible. -->
+    <color name="app_player_control_surface">#B817191F</color>
+
     <color name="app_success">#74D49B</color>
     <color name="app_warning">#F0C36A</color>
 </resources>

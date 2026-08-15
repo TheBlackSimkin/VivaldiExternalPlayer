@@ -33,40 +33,56 @@ User-approved direction:
 - grouped visual Settings; About inside Settings;
 - collapsible secondary manual URL section;
 - intentional empty/loading/ready/error/browser-step states;
-- player tab-count + gear controls, with Quality + Diagnostics inside the gear menu;
 - consistent icons/button hierarchy, minimal animation and clean system sans-serif typography.
 
 ## Build #242 — first broad UI redesign: DEVICE STRUCTURE PASS, VISUAL ITERATION REQUIRED
 UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 run `31862910307` PASS; artifact `9241146094`.
 ZIP SHA-256 `4ddc12ba80d92944ac5006b81e19c39674f19b754985da17492c4508a55f4040`; APK SHA-256 `ac3e04a27525ffe063219da59e9165b26732b3fc834eafedfc08731dd7695838`.
 
-User device result: **all requested #242 structural/UI behaviors worked as expected**. Treat the grid/history/settings/player-control wiring as a functional PASS for this iteration.
+User device result: **all requested #242 structural/UI behaviors worked as expected**. Treat grid/history/settings/player-control wiring as a functional PASS for that iteration.
 
-### User visual feedback after #242
-1. **Color direction needs revision.** User prefers the UI to be based more strongly on the launcher/logo identity. Current logo palette is:
-   - purple accent `#B05CFF`;
-   - charcoal `#17191F`;
-   - white `#FFFFFF`.
-   The next visual iteration should move away from the red-heavy #242 accent system and explore a purple/charcoal/white palette derived from the logo.
+## Agreed visual/player corrections after #242
+### Logo-derived color identity
+User wants the UI based more strongly on the launcher/logo colors:
+- purple `#B05CFF` = brand/active accent;
+- charcoal `#17191F` family = principal surfaces;
+- white = primary content/text.
+Green/amber/red remain semantic success/attention/destructive colors rather than competing brand accents.
 
-2. **Player control layout is now explicitly defined.** Quality and Diagnostics live in the **player gear menu that is part of the Media3/video controller overlay**. The tab-count square belongs to that same controller visibility lifecycle.
-   - **Placement:** tab count and gear live in the lower transport-control area immediately to the left of Media3's fullscreen control.
-   - Conceptual right-side order: `[tab count] [gear] [fullscreen]`.
-   - Seek bar/timestamps remain on the row above.
-   - **Do not show dedicated seek-back/seek-forward buttons.** Keep the existing double-tap left/right gesture for ±10 seconds instead, preserving a cleaner transport row.
-   - When controller controls are visible: show tab-count + gear + fullscreen with the normal transport UI.
-   - When controls auto-hide: tab-count and gear disappear too, leaving a clean video surface with no persistent app chrome.
-   - Tapping video restores the controller overlay and these controls together.
-   - Gear menu contains existing Quality and Diagnostics actions; reuse existing behavior rather than reimplement it.
-   - A **restart/go-to-beginning** action should not be shown during normal playback. It should appear only after the video reaches the ended state, acting as a replay/restart control.
+### Final agreed player-control model
+- Keep Media3's normal controller, timeline, play/pause, fullscreen and ended-state replay/start-again behavior.
+- Do **not** add a separate custom restart button. Media3's existing ended-state replay behavior is the desired functionality.
+- Do **not** show dedicated visible rewind/fast-forward ±10-second controls.
+- Preserve the existing left/right double-tap gesture for `-10s / +10s`.
+- Square open-tab count and ExternalPlayer gear live at the **lower-right of the video controller**, immediately left of fullscreen.
+- Conceptual right-side order: `[tab count] [gear] [fullscreen]`.
+- Gear menu contains the existing Quality and Diagnostics actions; reuse their current PlayerActivity click handlers.
+- Tab count + gear are tied to Media3 controller visibility:
+  - controls visible -> tab count + gear visible;
+  - controls auto-hide -> both disappear;
+  - hidden state -> clean video only;
+  - tap video -> normal controller plus tab count/gear return;
+  - pause/end -> follow Media3 controller behavior.
 
-This layout/behavior is technically feasible with Media3 controller visibility and playback-state callbacks. No app-code change has been made for this clarification yet.
+## Current implementation — second UI iteration staged, CI pending
+The next UI commit is intentionally small and presentation-only:
+- `colors.xml` moves the redesigned UI from the old red accent to a purple/charcoal/white logo-derived palette, including a restrained translucent player-control surface;
+- new `player_control_button_background.xml` gives tab-count/gear a charcoal translucent surface with a subtle purple outline;
+- `PlayerChromeProvider` now:
+  - keeps hidden legacy Quality/Diagnostics buttons only as action owners;
+  - hides Media3's visible rewind/fast-forward controls while leaving `GesturePlayerView` double-tap seeking untouched;
+  - hides Media3's own settings gear to avoid duplicate gear controls;
+  - places the existing tab-count and ExternalPlayer gear in the lower-right, before fullscreen;
+  - binds their visibility to `PlayerView.ControllerVisibilityListener` so no app chrome remains when Media3 controls hide;
+  - does not modify ExoPlayer, resolver code, source selection, quality policy or BG preparation.
+
+This implementation requires GitHub Actions compilation/resource-link verification, followed by focused device visual/player-chrome QA. Deep PH/HH regression remains deferred until the UI settles.
 
 ## Current priority
-1. Treat the user's lower-row player layout and hidden-seek-button behavior as approved.
-2. Implement the logo-derived purple palette and controller-bound lower-row tab-count/gear behavior, preserving double-tap ±10s and adding restart only in ended state.
-3. Continue visual iteration based on user feedback; do not run deep PH/HH regression until UI settles.
-4. Then final PH/HH + both Vivaldi share-target regression, hardening, diagnostics cleanup, docs/version/release work.
+1. Compile the second UI iteration and fix only build/runtime UI issues if necessary.
+2. Device-review logo-derived palette and player controller placement/auto-hide/double-tap/end replay behavior.
+3. Continue visual iteration based on user feedback.
+4. After UI settles: final PH/HH + both Vivaldi share-target regression, hardening, diagnostics cleanup, docs/version/release work.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
