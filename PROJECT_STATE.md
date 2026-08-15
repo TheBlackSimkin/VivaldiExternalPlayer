@@ -102,7 +102,7 @@ Extracted debug APK size `35,590,497` bytes; APK SHA-256 `a3659a7887e08ac4950baf
 
 #275 intentionally did **not** modify resolver.py, candidate ranking, 720-first Auto policy, protected private-display BG classes, PlayerActivity's one-ExoPlayer creation, Vivaldi/Brave share architecture, or the approved palette.
 
-## Build #278 — popup geometry correction: CI PASS / DEVICE QA PENDING
+## Build #278 — popup geometry correction: CI PASS / DEVICE PASS
 App-code commit `8b0566c68eb9082c0aed62e202edfc1a29232983`.
 GitHub Actions Build #278 run `31905713180`; build job `95063044270`.
 Compile/assemble: PASS. Debug APK upload: PASS.
@@ -113,10 +113,23 @@ Extracted debug APK size `35,590,609` bytes; APK SHA-256 `ee5893ef22a7a38758293c
 ### #278 focused fix
 - Changes only `PlayerChromeProvider.kt` relative to the #275 app code; intervening commits are documentation only.
 - Row height is relaxed from 42dp to 44dp: still compact, but less aggressive for touch.
-- Popup height is now calculated explicitly as `rowCount * rowHeight + vertical insets`; no `WRAP_CONTENT` height.
+- Popup height is calculated explicitly as `rowCount * rowHeight + vertical insets`; no `WRAP_CONTENT` height.
 - Popup placement no longer relies on `showAsDropDown()` auto-flipping from the bottom controller row.
 - The complete popup is positioned explicitly above the gear using its screen coordinates and the visible display frame, with a small screen margin and a bounded below-anchor fallback only if there truly is insufficient space above.
 - Quality verification, DNS wording, fullscreen, controller order/auto-hide, Audio/Volume/Speed same-player behavior, resolver/BG architecture, share flow and approved palette are unchanged from #275/#264.
+
+### #278 real-device result — ACCEPTED PLAYER UI BASELINE
+User reports **all requested #278 checks worked as expected**.
+Treat as PASS for:
+- gear menu renders at normal visible height and compactness is acceptable;
+- compact anchored Video Quality submenu works instead of the old centered picker;
+- Actual-quality row / requested-vs-actual quality verification works as intended, including the manual-quality test path used for 480p;
+- Audio, app-level Volume/Mute, Playback speed and Diagnostics remain functional;
+- exact lower-right `[tab count] [gear] [fullscreen]` behavior, fullscreen, tab dashboard, controller auto-hide, double-tap ±10s and no visible ±10 buttons remain healthy;
+- approved #249 colors remain unchanged.
+The exact numeric requested/actual quality values from this pass were not separately recorded, but the user explicitly reported the full #278 checklist worked as expected.
+
+Player-control/menu UI should now be treated as settled unless later regression evidence appears.
 
 ## Brave compatibility status
 Brave-as-is compatibility passed on #264. Keep generic Android `ACTION_SEND text/plain` share targets; no special Brave architecture. Vivaldi remains the primary protected regression baseline, with Brave a known-compatible smoke target.
@@ -129,14 +142,14 @@ Brave-as-is compatibility passed on #264. Keep generic Android `ACTION_SEND text
 - final distribution + permanent signing decision; never commit permanent signing material;
 - revisit rather than automatically implement the old dedicated “Return to existing Vivaldi task/tab” idea.
 
-Promoted/completed: app-level Volume/Mute is in #264; Brave compatibility passed without special code.
+Promoted/completed: app-level Volume/Mute is in #264; Brave compatibility passed without special code; player menu/quality UI is accepted on #278.
 
 ## Current priority
-1. Device-test Build #278 first for one thing: gear menu must render at a normal visible height above the lower-right controls.
-2. If the gear is visible, continue the #275 intended checks: compact Quality submenu, truthful requested-vs-actual manual quality (especially 480p), Audio/Volume/Speed/Diagnostics and normal auto-hide.
-3. The rare HH DNS case already achieved the intended wording improvement; do not require that genuinely unavailable host to become playable and do not add host rewriting/bypass logic.
-4. Preserve/regression-check successful #264 behavior rather than redesigning it.
-5. Once the popup/quality UI is accepted, run final PH technical regression, HH technical regression, both Vivaldi share-target regressions and a small Brave smoke regression; then proceed to hardening, diagnostics/log cleanup and release-readiness work.
+1. Run the final **PH technical regression** against the accepted #278 player/UI baseline.
+2. Run the final **HH technical regression**, treating the known rare downstream-DNS failure as a documented source-availability edge case rather than a general regression.
+3. Re-test both Vivaldi share targets end-to-end and run a small Brave as-is smoke regression.
+4. Then move to general hardening and failure-edge testing, diagnostics/operations-log cleanup, safe stale/dead-path cleanup, and About/version/build/documentation consistency.
+5. Release distribution and permanent signing remain final-stage decisions only.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
