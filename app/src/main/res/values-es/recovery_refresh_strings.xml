@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Distingue un reintento breve de obtener una URL multimedia nueva. -->
+    <string name="retry_playback">Reintentar reproducción</string>
+    <string name="refresh_source">Actualizar fuente</string>
+    <string name="refreshing_source">Actualizando fuente…</string>
+</resources>
