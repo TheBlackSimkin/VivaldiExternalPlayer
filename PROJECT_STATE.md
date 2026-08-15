@@ -34,57 +34,63 @@ UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 PASS. User re
 - player tab-count + gear concept.
 
 ## Logo-derived palette — DEVICE PASS on Build #249
-Build #249 app/UI commit `cdbd30e01839cb8aa50e3c87d77d1802d04b0a28`; Actions #249 PASS; artifact `9241999757`; APK SHA-256 `837457a22956c4c70afc3a9bc9cde82de708086ef31c92cd02ac7bf79757ce1d`.
-
-User feedback on #249 colors: **“colors are perfect, love them”**. Treat the palette as approved/protected for the current UI iteration:
+Build #249 app/UI commit `cdbd30e01839cb8aa50e3c87d77d1802d04b0a28`; Actions #249 PASS; APK SHA-256 `837457a22956c4c70afc3a9bc9cde82de708086ef31c92cd02ac7bf79757ce1d`.
+User feedback: **“colors are perfect, love them”**. Treat this palette as approved/protected for the current UI iteration:
 - purple `#B05CFF` = brand/active accent;
 - charcoal `#17191F` family = principal surfaces;
 - white = primary content/text;
 - green/amber/red remain semantic success/attention/destructive colors.
-Do not change this palette unless the user requests it.
+Do not change this palette unless the user asks.
 
 ## Player-control specification
 - Keep Media3's normal controller, timeline, play/pause, fullscreen and ended-state replay/start-again behavior.
 - Do **not** show dedicated visible rewind/fast-forward ±10-second buttons.
 - Preserve `GesturePlayerView` left/right double-tap for `-10s / +10s`.
-- Lower-right order must be `[tab count] [gear] [fullscreen]`.
+- Exact lower-right order: `[tab count] [gear] [fullscreen]`.
 - Tab count opens the dashboard.
-- One combined ExternalPlayer gear must contain: **Video quality, Audio, Playback speed, Diagnostics**.
-- Quality and Diagnostics reuse their existing PlayerActivity handlers.
-- Audio and Playback speed operate on the same Media3 `Player` instance exposed by `PlayerView`; never create a second ExoPlayer.
-- Tab count + gear belong to the Media3 controller itself so they auto-hide with it, leaving clean video only.
+- One combined ExternalPlayer gear contains: **Video quality, Audio, Playback speed, Diagnostics**.
+- Quality and Diagnostics reuse existing PlayerActivity handlers.
+- Audio and Playback speed operate on the same Media3 `Player` exposed by `PlayerView`; never create a second ExoPlayer.
+- Tab count + gear are children of Media3's controller so they auto-hide with it, leaving clean video only.
 - Preserve Media3 end-of-video replay behavior; do not add a separate permanent restart button.
 
 ## Build #249 device feedback — PARTIAL
 Passed:
-- logo-derived colors: PASS and user strongly prefers them;
-- no complaint about the protected playback/BG/quality behavior.
-
+- colors/palette: PASS and strongly approved.
 Needs correction:
-1. tab-count square + gear were **not visually in the requested lower-right corner**;
-2. hiding Media3's old gear also removed the familiar **Audio** and **Playback speed** options because #249's custom gear only exposed Quality + Diagnostics.
+1. tab-count square + gear were not visually in the requested lower-right corner;
+2. hiding Media3's old gear also removed its familiar Audio and Playback speed options because #249's custom gear exposed only Quality + Diagnostics.
 
-Root cause / decision:
-- #249 positioned the custom controls using screen/decor margins and hid Media3's `exo_settings` gear.
-- Next implementation must physically re-parent `[tab count] [gear]` into Media3's actual horizontal controller row immediately before its fullscreen slot, rather than approximate placement with margins.
-- The combined gear must restore Audio + Playback speed while retaining Quality + Diagnostics.
+Decision:
+- stop positioning `[tabs] [gear]` by decor/screen margins;
+- physically insert them into Media3's real horizontal control row immediately before fullscreen;
+- restore Audio + Playback speed inside the one combined ExternalPlayer gear.
 
-## Current implementation pending CI/device QA
-A focused player-chrome correction is staged on top of #249 while preserving the approved palette:
-- `PlayerChromeProvider` re-parents the existing tab-count button and one project gear into Media3's nearest horizontal control row immediately before `exo_fullscreen`;
-- visible rewind/fast-forward controls remain hidden; double-tap seek is untouched;
-- custom controller-visibility timing is no longer needed because the controls become real children of Media3's controller;
+## Build #251 — focused player-chrome correction: CI PASS, DEVICE QA PENDING
+App/UI commit `ac06833ab779c5404cdbd20f69dae1edd437e342`.
+GitHub Actions run #251 `31866740455`; build job `94968929823` compile PASS and debug artifact upload PASS.
+Artifact `9242257590` (`VivaldiExternalPlayer-debug-apk`).
+ZIP SHA-256 `2e0d3f42351c44258d07a6e1968e4573eaf8c41911576b29f184d2a1dcbf0362`.
+Debug APK size `35,568,537` bytes; APK SHA-256 `e77533748a797c3ab38055d88e8be72714f61ec69fff672329aa20fbedb841a0`.
+
+#251 changes are intentionally narrow:
+- approved #249 colors unchanged;
+- `PlayerChromeProvider` re-parents the existing tab-count button and one ExternalPlayer gear into Media3's nearest horizontal controller row immediately before `exo_fullscreen`;
+- visible rewind/fast-forward controls remain hidden; double-tap seek is unchanged;
 - combined gear menu order: Video quality, Audio, Playback speed, Diagnostics;
 - Audio chooser enumerates supported Media3 audio tracks and applies/removes `TRACK_TYPE_AUDIO` overrides on the existing Player;
-- Playback speed offers 0.5×, 0.75×, 1×, 1.25×, 1.5×, 1.75×, 2× using the same Player instance;
-- new bilingual player-menu resource file added for English/Spanish labels;
-- no colors, resolver, source-selection, 720-first policy, private-display BG path, or ExoPlayer creation code changed.
+- Playback speed choices: 0.5×, 0.75×, 1×, 1.25×, 1.5×, 1.75×, 2× on the same Player;
+- bilingual English/Spanish player-menu strings added;
+- no resolver, source-selection, 720-first, private-display BG, palette, or player-creation code changed.
+
+CI compilation/resource linking proves the pinned Media3 version supports the fullscreen/control-row resource and Audio/speed APIs used here. Exact runtime placement and menu behavior still require device QA.
 
 ## Current priority
-1. Compile the focused player-chrome correction in GitHub Actions.
-2. Device-check exact lower-right `[tabs] [gear] [fullscreen]` order and combined gear options.
-3. Keep #249 palette unchanged.
-4. Continue UI iteration; after UI settles run final PH/HH + both Vivaldi share-target regression, then hardening/docs/version/release work.
+1. Device-check #251 exact lower-right `[tabs] [gear] [fullscreen]` placement.
+2. Confirm combined gear contains and operates Video quality, Audio, Playback speed, Diagnostics.
+3. Confirm controls still auto-hide cleanly and double-tap ±10s still works.
+4. Keep #249 palette unchanged.
+5. Continue UI iteration; after UI settles run final PH/HH + both Vivaldi share-target regression, then hardening/docs/version/release work.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
