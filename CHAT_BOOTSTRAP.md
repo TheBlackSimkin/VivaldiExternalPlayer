@@ -39,15 +39,24 @@ Use the logo identity rather than #242's red-heavy accent:
 - Tab count/gear follow Media3 controller visibility: when controls hide they disappear too, leaving clean video only; tapping video brings them back with the controller.
 - Preserve current end-of-video replay/start-again behavior from Media3. Do not add a separate custom restart button.
 
-## Current implementation — second UI iteration staged, CI pending
-Presentation-only changes staged on top of current main:
-- `colors.xml`: logo-derived purple/charcoal/white palette;
-- new translucent purple-outlined player control background;
-- `PlayerChromeProvider`: hides visible Media3 rewind/fast-forward buttons and duplicate Media3 settings gear, moves the existing tab-count and ExternalPlayer gear to the lower-right before fullscreen, and binds both to `PlayerView.ControllerVisibilityListener`;
-- existing hidden Quality/Diagnostics button click handlers are still reused;
-- resolver/BG/quality/ExoPlayer architecture is untouched.
+## Build #249 — second UI iteration: CI PASS / DEVICE QA PENDING
+App/UI commit `cdbd30e01839cb8aa50e3c87d77d1802d04b0a28`.
+Actions run #249 `31865900293`, job `94966793378`: SUCCESS.
+Artifact `9241999757` (`VivaldiExternalPlayer-debug-apk`).
+ZIP SHA-256 `2cd7c7b1b26ac7739050344a48e882163c129b757da4c635d1041d2a4ab47e9a`.
+APK size `35,566,381`; APK SHA-256 `837457a22956c4c70afc3a9bc9cde82de708086ef31c92cd02ac7bf79757ce1d`.
 
-Next: atomic commit -> GitHub Actions compile -> focused device UI/player-chrome QA. Defer deep PH/HH regression until UI iteration settles.
+#249 is presentation-only:
+- logo-derived purple/charcoal/white global UI palette;
+- translucent charcoal/purple-outline tab-count and gear surfaces;
+- Media3 visible rewind/fast-forward controls hidden, double-tap seeking unchanged;
+- duplicate Media3 settings gear hidden;
+- tab-count + ExternalPlayer gear placed lower-right before fullscreen and bound to Media3 controller visibility;
+- existing hidden Quality/Diagnostics click handlers reused;
+- Media3 play/pause/fullscreen/ended replay preserved;
+- resolver/BG/quality/ExoPlayer architecture untouched.
+
+Next: focused #249 device UI/player-chrome QA. Defer deep PH/HH regression until UI iteration settles.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:

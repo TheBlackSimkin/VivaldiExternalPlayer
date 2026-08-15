@@ -35,10 +35,9 @@ User-approved direction:
 - intentional empty/loading/ready/error/browser-step states;
 - consistent icons/button hierarchy, minimal animation and clean system sans-serif typography.
 
-## Build #242 — first broad UI redesign: DEVICE STRUCTURE PASS, VISUAL ITERATION REQUIRED
+## Build #242 — first broad UI redesign: DEVICE STRUCTURE PASS
 UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 run `31862910307` PASS; artifact `9241146094`.
 ZIP SHA-256 `4ddc12ba80d92944ac5006b81e19c39674f19b754985da17492c4508a55f4040`; APK SHA-256 `ac3e04a27525ffe063219da59e9165b26732b3fc834eafedfc08731dd7695838`.
-
 User device result: **all requested #242 structural/UI behaviors worked as expected**. Treat grid/history/settings/player-control wiring as a functional PASS for that iteration.
 
 ## Agreed visual/player corrections after #242
@@ -64,25 +63,31 @@ Green/amber/red remain semantic success/attention/destructive colors rather than
   - tap video -> normal controller plus tab count/gear return;
   - pause/end -> follow Media3 controller behavior.
 
-## Current implementation — second UI iteration staged, CI pending
-The next UI commit is intentionally small and presentation-only:
-- `colors.xml` moves the redesigned UI from the old red accent to a purple/charcoal/white logo-derived palette, including a restrained translucent player-control surface;
-- new `player_control_button_background.xml` gives tab-count/gear a charcoal translucent surface with a subtle purple outline;
-- `PlayerChromeProvider` now:
-  - keeps hidden legacy Quality/Diagnostics buttons only as action owners;
+## Build #249 — logo palette + controller-bound player chrome: CI PASS, DEVICE QA PENDING
+App/UI commit `cdbd30e01839cb8aa50e3c87d77d1802d04b0a28`.
+GitHub Actions run #249 (`31865900293`) completed successfully; build/upload job `94966793378` PASS.
+Artifact `9241999757`, name `VivaldiExternalPlayer-debug-apk`.
+ZIP SHA-256 `2cd7c7b1b26ac7739050344a48e882163c129b757da4c635d1041d2a4ab47e9a`.
+Debug APK size `35,566,381` bytes; APK SHA-256 `837457a22956c4c70afc3a9bc9cde82de708086ef31c92cd02ac7bf79757ce1d`.
+
+#249 is intentionally presentation-only:
+- `colors.xml` changes the redesigned UI from the old red accent to a purple/charcoal/white logo-derived palette, with semantic green/amber states retained;
+- `player_control_button_background.xml` adds a restrained translucent charcoal player surface with subtle purple outline;
+- `PlayerChromeProvider`:
+  - reuses hidden legacy Quality/Diagnostics buttons only as action owners;
   - hides Media3's visible rewind/fast-forward controls while leaving `GesturePlayerView` double-tap seeking untouched;
   - hides Media3's own settings gear to avoid duplicate gear controls;
-  - places the existing tab-count and ExternalPlayer gear in the lower-right, before fullscreen;
-  - binds their visibility to `PlayerView.ControllerVisibilityListener` so no app chrome remains when Media3 controls hide;
-  - does not modify ExoPlayer, resolver code, source selection, quality policy or BG preparation.
+  - positions the tab count and ExternalPlayer gear at the lower-right immediately before fullscreen;
+  - binds both to `PlayerView.ControllerVisibilityListener` so they disappear with Media3 controls;
+  - leaves Media3's play/pause/fullscreen/ended replay behavior intact;
+  - does not modify ExoPlayer, resolver code, source selection, 720-first quality policy or private-display BG preparation.
 
-This implementation requires GitHub Actions compilation/resource-link verification, followed by focused device visual/player-chrome QA. Deep PH/HH regression remains deferred until the UI settles.
+CI compilation/resource linking proves the Media3 resource IDs/controller visibility API and new resources are valid for the pinned project dependencies. Device QA is still required for exact placement, appearance, auto-hide, double-tap behavior and ended-state replay.
 
 ## Current priority
-1. Compile the second UI iteration and fix only build/runtime UI issues if necessary.
-2. Device-review logo-derived palette and player controller placement/auto-hide/double-tap/end replay behavior.
-3. Continue visual iteration based on user feedback.
-4. After UI settles: final PH/HH + both Vivaldi share-target regression, hardening, diagnostics cleanup, docs/version/release work.
+1. Device-review #249 logo-derived palette and player controller placement/auto-hide/double-tap/end replay behavior.
+2. Continue visual iteration based on user feedback.
+3. After UI settles: final PH/HH + both Vivaldi share-target regression, hardening, diagnostics cleanup, docs/version/release work.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
