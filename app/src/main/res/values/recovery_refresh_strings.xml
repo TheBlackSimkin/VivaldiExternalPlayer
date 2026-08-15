@@ -4,4 +4,6 @@
     <string name="retry_playback">Retry playback</string>
     <string name="refresh_source">Refresh source</string>
     <string name="refreshing_source">Refreshing source…</string>
+    <string name="media_host_dns_unavailable">Media host unavailable — DNS lookup failed.</string>
+    <string name="recovery_dns_explanation">The media server referenced by this stream could not be found by DNS. Retry playback may help if the network/DNS failure is temporary. Refresh source can re-check the original page for a fresh working stream. If the page still points only to the unavailable host, ExternalPlayer cannot safely replace or guess that server.</string>
 </resources>
