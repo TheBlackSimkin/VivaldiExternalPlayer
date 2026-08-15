@@ -14,88 +14,51 @@ GitHub `main` is authoritative. Read `PROJECT_STATE.md` before substantive work.
 ## Protected baseline
 Quality policy: exact 720p -> otherwise 1080p -> otherwise best below 1080p; >1080 only rare fallback. Preserve yt-dlp first/browser fallback, automatic/manual quality, adaptive/sibling quality, double-tap ±10s, seek preview, rotation, bilingual UI, candidate limits/order, page-config families, no imagery ranking, one actual ExoPlayer playback session.
 
-## BG history that must not be forgotten
-### #205
-Stopped preparation Activity was destroyed almost immediately even with foreground process importance. Do not depend on a stopped WebView Activity behind Vivaldi.
+## BG architecture history
+#205: stopped preparation Activity was destroyed almost immediately; do not depend on a stopped WebView Activity behind Vivaldi.
+#212: private virtual display creation worked, but Android denied launching a normal app **Activity** onto it; do not retry Activity launch or request privileged `ACTIVITY_EMBEDDING`.
+#227: default-display transparent/nonfocusable preparation Activity remained nondeterministic and could still freeze Vivaldi on repeated shares; do not return to display-0 Activity tuning.
 
-### #212
-Private virtual display creation worked, but Android denied launching the first normal app **Activity** onto it. Do not retry Activity launch there or request privileged `ACTIVITY_EMBEDDING`.
-
-### #215 / #225
-#215 achieved automatic PH BG completion but Vivaldi blocked ~3–5s and a flash occurred. #225 alpha 0 fixed the flash but Vivaldi still blocked ~7s. #225 also definitively showed Auto actual 1080 while 720 existed and UI showed `Auto - 720p`.
-
-### #227 — authoritative FAIL
-Default-display transparent preparation Activity used alpha 0 + NOT_TOUCHABLE + NOT_FOCUSABLE + NOT_TOUCH_MODAL. One initial share looked clean, but repeated/multi-share QA superseded it: Vivaldi could freeze on the first share and, after clearing tabs, the second share froze. Do not keep tuning display-0 Activity flags.
-
-## Build #234 — validated BG architecture
-App-code head `6cd8995ba615b8b70f83806bad9abca49a024034`; CI #234 PASS run `31858367113`; APK SHA-256 `b6d921b2b1dd5f19c9c4b7b1763aad03476a901dc434ed9a05d84bb8a126c351`.
+## #234 private-display service architecture — DEVICE PASS
+App code `6cd8995ba615b8b70f83806bad9abca49a024034`; CI #234 PASS; APK SHA-256 `b6d921b2b1dd5f19c9c4b7b1763aad03476a901dc434ed9a05d84bb8a126c351`.
 
 Normal path:
 `short share Activity -> pending tab -> foreground service(token/tab/url) -> finishAndRemoveTask -> private virtual display -> service-owned Presentation/WebView -> direct resolver -> serialized browser fallback -> READY/ERROR/NEEDS_ATTENTION`.
 
-Important facts:
-- no normal preparation Activity is launched on display 0;
-- service owns `BackgroundPrivateDisplayPreparationSession` instances;
+Key facts:
+- no normal preparation Activity on display 0;
+- service owns `BackgroundPrivateDisplayPreparationSession`;
 - private display uses `OWN_CONTENT_ONLY | PRESENTATION`;
-- session uses non-Activity `Presentation`/WebView with `TYPE_PRIVATE_PRESENTATION`;
-- browser ownership remains serialized because `ServiceWorkerController` is process-wide;
-- no PlayerActivity/Media3/ExoPlayer during preparation;
+- non-Activity `Presentation`/WebView uses `TYPE_PRIVATE_PRESENTATION`;
+- browser ownership serialized because `ServiceWorkerController` is process-wide;
+- no PlayerActivity/Media3/ExoPlayer during prep;
 - no privileged embedding/overlay permission or access-control bypass.
 
-This is distinct from #212 because #234 does not launch an Activity onto the private display.
+User repeated/multi-share QA on #234: **no issues detected**. Supplied log confirmed `private=true presentation=true`, `defaultDisplay=false type=PRIVATE_PRESENTATION`, private WebView creation, and no old display-0 prep Activity anchors in the excerpt. Keep this architecture as protected baseline.
 
-### #234 device QA — PASS
-User ran the repeated/multi-share test and reported **“no issues detected.”** Treat the focused Vivaldi-freeze problem as PASS on #234.
+## #236 Auto-quality fix — DEVICE PASS
+App code `d6c1328823ce2027beecab7970b02420d1cffc7b`; CI #236 PASS run `31858887503`; artifact `9239902382`; APK SHA-256 `ca24f6943849853d4ba6580ceaf107b9795ebc8b943dc55ac28cdab66b8c3bff`.
 
-Supplied #234 log confirms:
-- build `Git: 6cd8995b`, Actions 234;
-- `BG_SHARE_PRIVATE_SERVICE_HANDOFF_STARTED` 22:15:35.912;
-- `PRIVATE_PRESENTATION_SERVICE_REQUESTED` 22:15:35.928;
-- service created 22:15:36.026;
-- private session started 22:15:36.053;
-- `VIRTUAL_DISPLAY_CREATED` 22:15:36.113 with `display=3 private=true presentation=true`;
-- `PRIVATE_PRESENTATION_CREATED` 22:15:36.793 with `defaultDisplay=false type=PRIVATE_PRESENTATION`;
-- private WebView created 22:15:36.794;
-- direct started 22:15:36.808, finished ~22:15:38.850, browser requested ~22:15:38.858.
+Only `ResolvedMedia.kt` changed from validated #234. Automatic browser payloads now select 720p if present, else 1080p, else highest below 1080p, else smallest >1080p rare fallback. Explicit numeric manual choices remain exact.
 
-The pasted excerpt stops before later browser-start/READY and only shows the first tab's early telemetry. Do not invent missing timings. No old `PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED/RESUMED` appears in the supplied #234 excerpt.
+Device result: user reported **no issues**. With both 1080p and 720p available, playback started at **720p**. Changing to other qualities worked. This closes the #225 Auto-1080 contradiction.
 
-Decision: keep #234 private-display service architecture. Do not return to display-0 preparation Activity.
+Supplied #236 log identifies exact binary (`Git: d6c13288`, Actions 236) and again confirms private-display prep (`display=9`, `private=true presentation=true`, `defaultDisplay=false type=PRIVATE_PRESENTATION`). Excerpt stops before browser completion/READY; do not invent missing timings.
 
-## Build #236 — CURRENT focused quality QA target
-App-code commit `d6c1328823ce2027beecab7970b02420d1cffc7b`; CI #236 PASS run `31858887503`; artifact `9239902382`; APK SHA-256 `ca24f6943849853d4ba6580ceaf107b9795ebc8b943dc55ac28cdab66b8c3bff`.
-
-Compared with the #234 validated state, **only `ResolvedMedia.kt` changed**. BG/private-display code is untouched.
-
-### #236 quality fix
-`ResolvedMedia.fromJson()` now normalizes automatic browser payloads before the first MediaSource is built:
-1. exact 720p;
-2. else exact 1080p;
-3. else highest below 1080p;
-4. else smallest declared >1080p fallback.
-
-Only automatic browser requests (`browser`, `auto`, blank) are normalized. Explicit numeric manual selections such as `480` are preserved exactly. This also repairs persisted old browser payloads when reopened.
-
-CI #236 details:
-- job `94948493526`, all steps PASS;
-- ZIP `26,027,146` bytes, SHA-256 `f71a07e38922f8d60e41e27633eec823771f8714452cfd60f4e17a2e4d19d366`;
-- APK `35,527,386` bytes, SHA-256 `ca24f6943849853d4ba6580ceaf107b9795ebc8b943dc55ac28cdab66b8c3bff`.
-
-Manual 240 previously works. Manual 480 is **not claimed fixed by #236**; the parser change merely guarantees explicit 480 will not be normalized back to Auto.
+### Manual 480 remains only technically unverified
+User could not visually tell whether 480p was different and believed that was eyesight rather than app failure. Do not call 480 PASS/FAIL from appearance. Next check: select 480p and read the player diagnostics/reported actual height. If it says 480p and playback continues, close the blocker without code changes.
 
 ## Other backlog
 - Recently closed implemented but explicit device QA pending.
-- Language selector/change PASS; reopen persistence not separately reported.
+- Language selector/change PASS; persistence after reopen/restart not separately confirmed.
 - Secure GitHub log-report shortcut later; never embed GitHub PAT/token/client secret.
 
 ## Current priority
-1. Install/test Build #236 over #234.
-2. Use PH technical test with both 720p and 1080p available, ideally the case that previously started at 1080.
-3. Create a fresh BG tab, wait until READY, play it, and verify actual/diagnostic initial height is **720p** and quality UI is consistent with Auto 720.
-4. Quick sanity: Vivaldi should remain responsive exactly as #234 because BG code did not change.
-5. If Auto 720 passes, select manual 480 if offered and report whether it truly switches/continues at 480. This is diagnostic; #236 does not claim manual 480 repair.
-6. If manual 480 fails, repair that path next.
-7. Later test Recently closed/language persistence. No HH until PH BG + quality blockers are clear.
+1. On existing Build #236, verify manual 480p using technical reported height, not eyesight.
+2. If actual height=480p and playback continues, PH core BG/quality blockers are cleared.
+3. Then run one small HH technical smoke test: BG share, automatic prep, playback, Auto-quality sanity, and Vivaldi responsiveness. No content/imagery descriptions.
+4. If HH passes, test Recently closed and language persistence after reopen/restart.
+5. Then move to release hardening/regression rather than further architecture changes: PH/HH/share-target regression, operations-log/dead-path cleanup where safe, About/version/docs consistency, and later release signing/distribution decision.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
