@@ -40,7 +40,7 @@ Product-state QA on unchanged #236: PASS for Recently Closed close/restore/clear
 
 Do not change the private-display BG architecture or 720-first quality parser without a concrete new regression.
 
-## UI redesign direction — user approved, implementation pending device QA
+## UI redesign direction — user approved
 The user requested a broad UI-improvement pass after core playback stabilized. Agreed direction:
 - take only interaction/layout inspiration from Vivaldi Android tab distribution; do not clone its visual design;
 - open tabs: thumbnail-first grid, **2 columns portrait / 3 columns landscape**;
@@ -56,22 +56,26 @@ The user requested a broad UI-improvement pass after core playback stabilized. A
 - screen may be tall; density is secondary to clear tab grids and touch targets;
 - overall direction: dark, clean, media-oriented, slightly technical but not developer-looking.
 
-### Current UI implementation
-A UI-only implementation is now staged on top of current `main` while preserving #236 playback logic. It includes:
-- redesigned `MainActivity`/`activity_main.xml` grid dashboard + collapsible manual URL;
-- redesigned `TabDashboardAdapter` without lifecycle markers;
-- dedicated `RecentlyClosedActivity` + thumbnail grid adapter;
-- thumbnail cache retention while a tab lives in Recently Closed;
-- grouped Settings/About UI;
-- UI-only `PlayerChromeProvider` that reuses existing PlayerActivity Quality/Diagnostics click handlers and restyles the existing tab button, without touching ExoPlayer/resolver logic;
-- refreshed browser-assisted resolver layout;
-- shared icon/shape/string/theme resources.
+## Build #242 — first broad UI redesign: CI PASS, DEVICE VISUAL QA PENDING
+App/UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions run #242 (`31862910307`) PASS; artifact `9241146094`.
+ZIP SHA-256 `4ddc12ba80d92944ac5006b81e19c39674f19b754985da17492c4508a55f4040`.
+Debug APK size `35,565,818` bytes; APK SHA-256 `ac3e04a27525ffe063219da59e9165b26732b3fc834eafedfc08731dd7695838`.
 
-This implementation must pass CI and then receive visual/device QA before becoming the new UI baseline.
+The #242 implementation is UI-focused and deliberately preserves the #236 resolver/BG/playback behavior. It includes:
+- redesigned `MainActivity`/`activity_main.xml` with thumbnail grid, 2 portrait / 3 landscape columns, count, empty state, compact Settings gear, and collapsible manual URL;
+- redesigned `TabDashboardAdapter` without normal-view lifecycle/`tech ...` markers;
+- dedicated `RecentlyClosedActivity` + thumbnail grid adapter with permanently visible Recover all/Delete all;
+- thumbnail cache retention while a tab lives in Recently Closed, with pruning after history eviction/clear;
+- grouped Settings/About UI instead of the previous button stack;
+- UI-only `PlayerChromeProvider` that hides the old top-corner Quality/Diagnostics buttons, reuses their existing click handlers through one gear popup, and restyles the existing tab button as a square total-count button directly left of the gear;
+- refreshed browser-assisted resolver presentation without changing resolver behavior;
+- shared bilingual strings/icons/shapes, system sans-serif typography and dark Material dialog theming.
+
+CI compilation/resource linking succeeded. This does **not** yet establish a device UI baseline: #242 now needs visual/usability QA and a short player-control sanity check. The user explicitly expects to review the visual direction and request changes after seeing it.
 
 ## Remaining backlog after UI pass
-- user review/iteration on visual direction;
-- final PH/HH + both Vivaldi share-target regression after UI settles;
+- user visual review/iteration on #242 direction;
+- after UI settles, final PH/HH + both Vivaldi share-target regression;
 - operations-log noise cleanup and dead-path cleanup where proven safe;
 - secure GitHub log-report shortcut later; never embed PAT/token/client secret;
 - version/About/docs cleanup and eventual release signing/distribution decision.

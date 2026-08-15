@@ -15,7 +15,7 @@ Quality policy: exact 720p -> 1080p -> highest below 1080p -> rare smallest >108
 
 #234 established the protected BG architecture: short share Activity -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct resolver -> serialized browser fallback. No preparation Activity on display 0 and no ExoPlayer during preparation.
 
-#236 app code `d6c1328823ce2027beecab7970b02420d1cffc7b` is the current playback baseline. Device QA PASS:
+#236 app code `d6c1328823ce2027beecab7970b02420d1cffc7b` is the protected playback baseline. Device QA PASS:
 - PH BG/Vivaldi responsiveness;
 - Auto 720-first;
 - manual quality including 480p;
@@ -25,8 +25,7 @@ Quality policy: exact 720p -> 1080p -> highest below 1080p -> rare smallest >108
 - language persistence.
 Do not change BG/quality architecture without a concrete regression.
 
-## Current task: user-approved UI redesign
-User explicitly asked to move into UI improvements and approved this direction:
+## User-approved UI direction
 - Vivaldi-inspired tab distribution only as loose interaction/layout inspiration;
 - thumbnail tab grid: 2 columns portrait, 3 landscape;
 - no technical lifecycle text in normal tab cards;
@@ -40,9 +39,21 @@ User explicitly asked to move into UI improvements and approved this direction:
 - Android system sans-serif / sans-serif-medium typography;
 - tall layouts are acceptable.
 
-Implementation is UI-only and must preserve resolver/BG/playback behavior. Implemented files include MainActivity, TabDashboardAdapter, Settings/About, dedicated RecentlyClosedActivity/adapter, PlayerChromeProvider, main/player/browser layouts, manifest, new bilingual strings/icons/shapes/theme tweaks. Thumbnail files survive normal close while their tab remains in Recently Closed and are removed when no open/recent tab references the ID.
+## Build #242 — UI implementation, CI PASS / DEVICE QA PENDING
+UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 run `31862910307` PASS; artifact `9241146094`.
+ZIP SHA-256 `4ddc12ba80d92944ac5006b81e19c39674f19b754985da17492c4508a55f4040`.
+APK size `35,565,818`; APK SHA-256 `ac3e04a27525ffe063219da59e9165b26732b3fc834eafedfc08731dd7695838`.
 
-Next: let GitHub Actions compile, fix any CI errors, download installable APK, then ask visual/device QA using the exact two-code-block QA format.
+The implementation is UI-only and preserves resolver/BG/playback behavior. Changed areas include MainActivity, TabDashboardAdapter, grouped Settings/About, dedicated RecentlyClosedActivity/adapter, UI-only PlayerChromeProvider, main/player/browser layouts, manifest and new bilingual strings/icons/shapes/theme tweaks. Thumbnail files survive normal close while their tab remains in Recently Closed and are removed when no open/recent tab references the ID.
+
+Important runtime QA points:
+- #242 compiled, but the player chrome needs device confirmation that the square count appears immediately left of the gear and that the gear successfully invokes existing Quality and Diagnostics handlers;
+- main grid should be 2 columns portrait / 3 landscape;
+- normal tab cards should have no `tech ...` lifecycle strings;
+- Recently Closed should show cached thumbnails and fixed Recover all/Delete all actions;
+- user wants to judge the visual direction and propose changes after seeing this build.
+
+Next: install/test #242 for visual/usability QA plus a light player-control sanity check. Do not run a deep PH/HH regression until UI iteration settles.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
