@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Combined player-gear labels introduced after Build #249 device feedback. -->
+    <!-- Compact combined player-gear labels. -->
     <string name="player_audio">Audio</string>
     <string name="audio_auto">Audio — Auto</string>
     <string name="audio_track_number">Audio track %1$d</string>
     <string name="audio_tracks_unavailable">No selectable audio tracks are available.</string>
+    <string name="player_volume">Volume / mute</string>
+    <string name="mute">Mute</string>
+    <string name="unmute">Unmute</string>
     <string name="playback_speed">Playback speed</string>
 </resources>
