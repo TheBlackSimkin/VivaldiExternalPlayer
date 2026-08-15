@@ -26,13 +26,21 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
 
         /**
          * Build #215 proved the preparation Activity can stay RESUMED and resolve
-         * PH before ExternalPlayer is opened. It also proved that alpha=0.01 is
-         * wrong for an Activity overlay above another app on Android 12+:
-         * FLAG_NOT_TOUCHABLE pass-through is only trusted for a fully transparent
-         * Activity window, not merely a very translucent one.
+         * PH before ExternalPlayer is opened. Build #225 then proved that making
+         * the window exactly alpha=0.0 removes the visible preparation/frame flash,
+         * but Vivaldi could still remain unresponsive for roughly seven seconds.
          *
-         * Keep the window exactly 0.0 alpha. The Activity/WebView still owns a
-         * real laid-out, RESUMED host; only compositor output is suppressed.
+         * The remaining issue is input focus, not compositor opacity. The BG host
+         * must stay fully transparent, and the window must not accept touch OR
+         * input focus. Android's window contract says FLAG_NOT_FOCUSABLE sends
+         * focus to a focusable window behind it and also implies NOT_TOUCH_MODAL.
+         * We set NOT_TOUCH_MODAL explicitly as documentation of the intended
+         * pass-through behavior.
+         *
+         * Important: the Activity itself still remains top/RESUMED. Build #205
+         * proved that putting this phone's preparation Activity into STOPPED state
+         * causes Android to destroy it almost immediately. This change therefore
+         * tests window-focus ownership without returning to the failed lifecycle.
          */
         private const val BG_PREPARATION_WINDOW_ALPHA = 0.0f
     }
@@ -74,21 +82,30 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
              * private virtual display.
              *
              * Keep this Activity on the normal/default display and keep it
-             * RESUMED. Its window is fully transparent and NOT_TOUCHABLE, so
-             * Vivaldi remains what the user sees underneath while WebView keeps
-             * the real Activity context and full viewport which the successful
-             * manual Browser Step uses.
+             * RESUMED, because #205 proved a STOPPED WebView host is not stable on
+             * this phone. However, #225 proved that a focusable transparent host
+             * can still leave Vivaldi unresponsive even when alpha is exactly 0.
              *
-             * We intentionally do NOT add FLAG_NOT_FOCUSABLE: browser/page code
-             * can depend on focus. Build #215 showed the resolver completed in
-             * this resumed architecture; this build changes only compositor/touch
-             * transparency from alpha 0.01 to the platform-safe alpha 0.0.
+             * The window is therefore fully transparent, NOT_TOUCHABLE and now
+             * also NOT_FOCUSABLE/NOT_TOUCH_MODAL. This deliberately separates the
+             * Activity lifecycle needed by WebView from ownership of user input.
+             * Real-device QA must confirm that PH discovery still works without
+             * window focus; if not, the next architecture must move browser work
+             * to a non-Activity private-display window rather than stealing focus.
              */
             configureTransparentPreparationWindow(activity)
+
+            val flags = activity.window.attributes.flags
             OperationLog.record(
                 this,
                 event = "PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED",
-                detail = "display=${activity.display?.displayId ?: -1} alpha=${activity.window.attributes.alpha}"
+                detail = buildString {
+                    append("display=${activity.display?.displayId ?: -1}")
+                    append(" alpha=${activity.window.attributes.alpha}")
+                    append(" notTouchable=${flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0}")
+                    append(" notFocusable=${flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE != 0}")
+                    append(" notTouchModal=${flags and WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL != 0}")
+                }
             )
             return
         }
@@ -246,17 +263,24 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     }
 
     /**
-     * Make the preparation host visually disappear without putting its Activity
-     * into the STOPPED state which #205 proved this phone aggressively destroys.
+     * Keep the WebView host RESUMED without letting its invisible window own the
+     * user's input. This is deliberately different from putting the Activity
+     * behind Vivaldi: #205 proved the latter makes the host STOPPED and unstable.
      *
-     * Android 12+ treats pass-through touches under a NOT_TOUCHABLE Activity as
-     * untrusted unless the window is completely transparent. Build #215 used
-     * alpha 0.01 and the real phone blocked Vivaldi touches for several seconds.
-     * Exact alpha 0.0 is therefore a functional requirement, not cosmetic polish.
+     * Android 12+ only permits pass-through touches across a NOT_TOUCHABLE window
+     * in trusted cases. Exact alpha 0.0 satisfies the fully-transparent case.
+     * Build #225 proved opacity alone was not sufficient for this device, so the
+     * host is also NOT_FOCUSABLE. FLAG_NOT_FOCUSABLE already implies
+     * FLAG_NOT_TOUCH_MODAL, but setting both makes the requirement explicit for
+     * future maintenance.
      */
     private fun configureTransparentPreparationWindow(activity: Activity) {
         activity.window.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
-        activity.window.addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+        activity.window.addFlags(
+            WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
+        )
         activity.window.decorView.setBackgroundColor(Color.TRANSPARENT)
 
         val attributes = activity.window.attributes

@@ -59,11 +59,13 @@
           The class name still contains "Virtual" for source-history continuity,
           but build #212 device QA proved that Android 13 refuses the first normal
           third-party Activity launch onto an untrusted private virtual display.
-          The normal path now launches this Activity on the DEFAULT display in the
-          same excluded task. Its application lifecycle callback makes the window
-          fully transparent and NOT_TOUCHABLE while keeping the Activity
-          top/resumed, so Vivaldi remains visually underneath without putting the
-          WebView host into the STOPPED state that #205 showed this phone destroys.
+          The normal path therefore launches this Activity on the DEFAULT display
+          in the same excluded task. The application lifecycle callback keeps the
+          window fully transparent, NOT_TOUCHABLE, NOT_FOCUSABLE and
+          NOT_TOUCH_MODAL while keeping the Activity top/RESUMED. This deliberately
+          separates the WebView lifecycle from user-input focus: #205 proved a
+          STOPPED host is destroyed on this phone, while #225 proved alpha=0 alone
+          still left Vivaldi unresponsive for about seven seconds.
         -->
         <activity
             android:name=".BackgroundVirtualPreparationActivity"
@@ -90,8 +92,9 @@
           preparation Activity in the same excluded task -> finish the handoff.
 
           It deliberately does NOT move the task behind Vivaldi and does NOT use
-          ActivityOptions.launchDisplayId. The preparer must remain resumed until
-          it reaches READY/ERROR/NEEDS_ATTENTION.
+          ActivityOptions.launchDisplayId. The preparer must remain RESUMED until
+          it reaches READY/ERROR/NEEDS_ATTENTION, but its window must not own
+          physical-display input focus.
         -->
         <activity
             android:name=".BackgroundShareActivityV2"

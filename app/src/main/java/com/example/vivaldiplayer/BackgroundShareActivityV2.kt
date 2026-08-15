@@ -18,9 +18,15 @@ import android.widget.Toast
  *
  * The current handoff therefore uses the ordinary/default display, but does NOT
  * move the real preparation Activity behind Vivaldi. Instead the preparation
- * Activity remains RESUMED with a nearly-transparent, non-touchable window. The
- * browser underneath remains what the user sees while the WebView keeps a real
- * Activity context and a normal full-size viewport.
+ * Activity remains RESUMED with a fully transparent window. Build #225 proved
+ * alpha=0.0 removes the visible flash but a focusable host can still leave
+ * Vivaldi unresponsive for several seconds, so the application lifecycle hook
+ * now also makes that window NOT_FOCUSABLE as well as NOT_TOUCHABLE.
+ *
+ * The intent is deliberately narrow: keep the WebView host lifecycle which
+ * already achieved automatic PH preparation, while returning user input focus
+ * to the browser underneath. Real-device QA decides whether browser discovery
+ * continues to work without window focus.
  *
  * This exported Activity itself is intentionally tiny. It only:
  * - validates the shared URL;
@@ -77,7 +83,9 @@ class BackgroundShareActivityV2 : Activity() {
             /*
              * Deliberately launch in this same task on the DEFAULT display.
              * Do not use ActivityOptions.launchDisplayId and do not move the task
-             * behind Vivaldi. Keeping the preparer top/resumed is the lifecycle fix.
+             * behind Vivaldi. Keeping the preparer top/resumed is the lifecycle
+             * fix; TabbedPlayerApplication makes its window transparent,
+             * non-touchable and non-focusable so it should not own user input.
              */
             startActivity(preparationIntent)
             true
