@@ -9,4 +9,5 @@
     <string name="mute">Silenciar</string>
     <string name="unmute">Activar sonido</string>
     <string name="playback_speed">Velocidad de reproducción</string>
+    <string name="quality_actual_pending">Real: detectando…</string>
 </resources>
