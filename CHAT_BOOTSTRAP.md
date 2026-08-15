@@ -22,7 +22,7 @@ Approved structural direction:
 - grouped Settings, About inside Settings;
 - collapsible manual URL;
 - deliberate state/empty/error UI;
-- square tab count immediately left of a player gear; Quality + Diagnostics inside gear;
+- square tab count + player gear with Quality + Diagnostics inside gear;
 - consistent icons/buttons, minimal animation and clean sans-serif typography.
 
 ## Build #242 — first UI pass
@@ -31,17 +31,23 @@ User reports **results as expected** for the requested #242 structure/functional
 
 ### Current user feedback / correction
 - Palette: user wants stronger use of the actual logo colors. Launcher mark uses purple `#B05CFF`, charcoal `#17191F`, and white. Next UI iteration should explore that identity instead of #242's red-heavy accent.
-- Player: previous interpretation was incomplete. The tab-count square and gear must be part of the **video controller overlay visibility**, not permanently floating over video.
+- Player: tab-count and gear are part of the **video controller overlay visibility**, not permanently floating over video.
+- Placement is now explicit from the user's approved wireframe:
+  - both controls live in the **lower transport-control row**;
+  - they sit immediately to the **left of fullscreen**;
+  - conceptual right-side order is `[tab count] [gear] [fullscreen]`;
+  - rewind/seek-back and seek-forward remain earlier in that row;
+  - seek bar and timestamps remain on the row above;
   - controls visible -> transport UI + tab-count + gear visible;
   - controls auto-hide -> tab-count + gear disappear too;
   - hidden state -> clean video only;
-  - tap video -> the normal controller plus tab-count/gear return together;
+  - tap video -> normal controller plus tab-count/gear return together;
   - gear menu contains existing Quality and Diagnostics actions.
-- No app-code change for this correction yet. User requested a mockup/wireframe first.
+- This layout is technically feasible with Media3 controller visibility. No app-code change for this clarification yet.
 
 ## Next
-1. Show mockup/wireframe confirming the player-overlay interpretation.
-2. After approval, implement controller-bound player chrome + logo-derived purple palette.
+1. Treat the lower-row wireframe as the approved player placement concept.
+2. Implement controller-bound lower-row tab-count/gear + logo-derived purple palette.
 3. Continue visual iteration; defer deep PH/HH regression until UI settles.
 
 ## QA format
