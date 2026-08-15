@@ -77,7 +77,7 @@ Rules for this case:
 App/source head `3fcbabd1c953d1021ca6c28b9317be6ff024a62b`; Actions run `31904748898`; build job `95060714556`.
 The first compact-quality implementation used `Player.videoFormat`, which is not exposed by this project's pinned Media3 Player interface. Kotlin compilation failed with `Unresolved reference 'videoFormat'`. No test APK was produced/handed to the user. The intended feature scope was kept unchanged and the accessor was replaced by a compatibility helper in #275.
 
-## Build #275 — compact quality / actual-quality / DNS polish: CI PASS, DEVICE QA PENDING
+## Build #275 — compact quality / actual-quality / DNS polish: CI PASS, DEVICE MENU FAIL
 Final app-code commit `dabd3054b0cfaaae820145cf8240c1c57672e4b3`.
 GitHub Actions Build #275 run `31904918938`; build job `95061127058`.
 Compile/assemble: PASS. Debug APK upload: PASS.
@@ -85,31 +85,38 @@ Artifact `9252088982` (`VivaldiExternalPlayer-debug-apk`).
 Artifact ZIP size `26,070,225` bytes; ZIP SHA-256 `368fca62c662a1944a25015b896a3267a7921b967024e64c75075f58d5261e13`.
 Extracted debug APK size `35,590,497` bytes; APK SHA-256 `a3659a7887e08ac4950bafb28d766b325f215c79f3737bc9df37c7c952d8ff55`.
 
-### #275 player-menu changes
-- Replaces stock Android PopupMenu spacing with one custom anchored PopupWindow family using 42dp rows and compact vertical inset.
-- Main gear, Video Quality, Audio, Volume/Mute and Playback speed now use the same compact anchored menu style.
-- Diagnostics remains a full selectable/copyable dialog.
-- Approved #249 colors/resources are reused; palette itself was not changed.
-- Exact `[tabs] [gear] [fullscreen]`, controller auto-hide, no visible ±10 buttons, fullscreen logic and same-player Audio/Volume/Speed behavior are preserved.
+### #275 implementation
+- Replaced stock Android PopupMenu spacing with one custom PopupWindow family using 42dp rows and compact vertical inset.
+- Main gear, Video Quality, Audio, Volume/Mute and Playback speed used that same compact popup family.
+- Diagnostics stayed a full selectable/copyable dialog.
+- Existing quality-switch algorithms/policy were preserved; requested and Media3-observed actual quality were stored separately.
+- `Player.Listener.onVideoSizeChanged` is the strongest runtime evidence for adaptive actual height; `PlayerVideoFormatCompat.kt` is a conservative fallback for pinned Media3 1.10.1.
+- Manual quality may claim `480p ✓` only if Media3 evidence confirms 480p; otherwise requested and actual must remain distinct.
+- `PlayerRecoveryProvider` detects nested `UnknownHostException` only to show clearer bilingual “media host unavailable — DNS lookup failed” wording and explain Retry vs Refresh; it never rewrites the host.
 
-### #275 truthful quality verification
-- Existing quality-switch algorithms/policy are preserved; the patch changes UI/verification, not resolution policy.
-- yt-dlp manual choices remain Auto, 1080p, 720p, 480p, 360p and still call the existing resolver quality-change method.
-- Browser adaptive choices still use the existing Media3 track override method; browser sibling variants still use the existing source-switch method.
-- The compact Quality menu includes a non-clickable **Actual** row.
-- Manual requests are persisted separately as the user's requested quality.
-- Actual quality is written only from Media3 evidence, not from the request label.
-- `Player.Listener.onVideoSizeChanged` is the strongest runtime evidence for adaptive playback.
-- New `PlayerVideoFormatCompat.kt` supplies a conservative fallback for pinned Media3 1.10.1: it reports a selected format only if selected video tracks resolve to exactly one height; adaptive multi-height selections return null rather than pretending the highest available rendition is active.
-- Manual quality can therefore report `480p ✓` only when the observed/selected height confirms 480p; otherwise it can report requested 480p with a different actual height.
+### #275 real-device result
+- **Gear menu rendering FAIL.** User tapped the gear and saw only a roughly 2 mm-high rectangle, so Quality/Audio/Volume/Speed/Diagnostics could not be tested further on #275.
+- This is treated as a popup geometry/clipping bug, not merely a preference that rows were too compact.
+- Code review identified the risky combination: `PopupWindow` height was `WRAP_CONTENT` and `showAsDropDown()` was called from Media3's bottom controller row. On the user's device, the popup was clipped to the tiny remaining area below the anchor rather than displaying the full menu above it.
+- **Rare DNS wording improvement PASS-as-designed.** The same rare source still did not play, but the failure explanation was clearer. This is expected when the downstream host remains genuinely unresolvable; no bypass or guessed replacement should be added.
 
-### #275 DNS recovery polish
-- `PlayerRecoveryProvider` detects `UnknownHostException` in the playback-error cause chain only to improve explanation.
-- Shows bilingual “media host unavailable — DNS lookup failed” wording.
-- Recovery dialog explains Retry vs Refresh source for this case.
-- It never substitutes/rewrites the failed host.
+#275 intentionally did **not** modify resolver.py, candidate ranking, 720-first Auto policy, protected private-display BG classes, PlayerActivity's one-ExoPlayer creation, Vivaldi/Brave share architecture, or the approved palette.
 
-#275 intentionally does **not** modify resolver.py, candidate ranking, 720-first Auto policy, protected private-display BG classes, PlayerActivity's one-ExoPlayer creation, Vivaldi/Brave share architecture, or the approved palette.
+## Build #278 — popup geometry correction: CI PASS / DEVICE QA PENDING
+App-code commit `8b0566c68eb9082c0aed62e202edfc1a29232983`.
+GitHub Actions Build #278 run `31905713180`; build job `95063044270`.
+Compile/assemble: PASS. Debug APK upload: PASS.
+Artifact `9252287185` (`VivaldiExternalPlayer-debug-apk`).
+Artifact ZIP size `26,070,848` bytes; ZIP SHA-256 `9076f2c5aec6fb830fb0551195a1bd475e54051d0f6c380aa78c6be9504318ec`.
+Extracted debug APK size `35,590,609` bytes; APK SHA-256 `ee5893ef22a7a38758293ce9647ac133f09bea8527855c836c8dd65f13ba6043`.
+
+### #278 focused fix
+- Changes only `PlayerChromeProvider.kt` relative to the #275 app code; intervening commits are documentation only.
+- Row height is relaxed from 42dp to 44dp: still compact, but less aggressive for touch.
+- Popup height is now calculated explicitly as `rowCount * rowHeight + vertical insets`; no `WRAP_CONTENT` height.
+- Popup placement no longer relies on `showAsDropDown()` auto-flipping from the bottom controller row.
+- The complete popup is positioned explicitly above the gear using its screen coordinates and the visible display frame, with a small screen margin and a bounded below-anchor fallback only if there truly is insufficient space above.
+- Quality verification, DNS wording, fullscreen, controller order/auto-hide, Audio/Volume/Speed same-player behavior, resolver/BG architecture, share flow and approved palette are unchanged from #275/#264.
 
 ## Brave compatibility status
 Brave-as-is compatibility passed on #264. Keep generic Android `ACTION_SEND text/plain` share targets; no special Brave architecture. Vivaldi remains the primary protected regression baseline, with Brave a known-compatible smoke target.
@@ -125,11 +132,11 @@ Brave-as-is compatibility passed on #264. Keep generic Android `ACTION_SEND text
 Promoted/completed: app-level Volume/Mute is in #264; Brave compatibility passed without special code.
 
 ## Current priority
-1. Device-test Build #275 specifically for compact menu sizing/style, compact Video Quality UI, and truthful manual-quality verification, especially 480p.
-2. If the rare HH DNS-failing source is still conveniently available, verify the clearer DNS wording/Retry/Refresh UI; do not require that dead upstream host to become playable.
-3. Preserve/regression-check successful #264 behavior rather than redesigning it.
-4. If #275 is accepted, consider player UI settled and run final PH technical regression, HH technical regression, both Vivaldi share-target regressions and a small Brave smoke regression.
-5. Then proceed to general hardening, diagnostics/log cleanup, stored-for-later cleanup and release-readiness work.
+1. Device-test Build #278 first for one thing: gear menu must render at a normal visible height above the lower-right controls.
+2. If the gear is visible, continue the #275 intended checks: compact Quality submenu, truthful requested-vs-actual manual quality (especially 480p), Audio/Volume/Speed/Diagnostics and normal auto-hide.
+3. The rare HH DNS case already achieved the intended wording improvement; do not require that genuinely unavailable host to become playable and do not add host rewriting/bypass logic.
+4. Preserve/regression-check successful #264 behavior rather than redesigning it.
+5. Once the popup/quality UI is accepted, run final PH technical regression, HH technical regression, both Vivaldi share-target regressions and a small Brave smoke regression; then proceed to hardening, diagnostics/log cleanup and release-readiness work.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
