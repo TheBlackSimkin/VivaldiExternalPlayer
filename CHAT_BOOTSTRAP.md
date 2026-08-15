@@ -11,49 +11,38 @@ GitHub `main` is authoritative. Read `PROJECT_STATE.md` before substantive work.
 - Never add background playback or a second ExoPlayer session.
 
 ## Protected playback baseline
-Quality policy: exact 720p -> 1080p -> highest below 1080p -> rare smallest >1080p fallback.
+#234 private-display service architecture is protected. #236 app code `d6c1328823ce2027beecab7970b02420d1cffc7b` is the protected playback baseline and passed PH BG, Auto 720-first, manual quality including 480p, PH playback, HH smoke, Recently Closed functionality and language persistence. Do not change BG/quality architecture without a concrete regression.
 
-#234 established the protected BG architecture: short share Activity -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct resolver -> serialized browser fallback. No preparation Activity on display 0 and no ExoPlayer during preparation.
+## UI direction
+Approved structural direction:
+- Vivaldi-inspired tab distribution only as loose layout inspiration;
+- thumbnail tabs: 2 columns portrait / 3 landscape;
+- normal cards omit technical lifecycle strings;
+- Recently Closed dedicated thumbnail grid with permanent Recover all / Delete all;
+- grouped Settings, About inside Settings;
+- collapsible manual URL;
+- deliberate state/empty/error UI;
+- square tab count immediately left of a player gear; Quality + Diagnostics inside gear;
+- consistent icons/buttons, minimal animation and clean sans-serif typography.
 
-#236 app code `d6c1328823ce2027beecab7970b02420d1cffc7b` is the protected playback baseline. Device QA PASS:
-- PH BG/Vivaldi responsiveness;
-- Auto 720-first;
-- manual quality including 480p;
-- PH playback;
-- HH technical smoke on unchanged binary;
-- Recently Closed functionality;
-- language persistence.
-Do not change BG/quality architecture without a concrete regression.
+## Build #242 — first UI pass
+UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 PASS; APK SHA-256 `ac3e04a27525ffe063219da59e9165b26732b3fc834eafedfc08731dd7695838`.
+User reports **results as expected** for the requested #242 structure/functionality.
 
-## User-approved UI direction
-- Vivaldi-inspired tab distribution only as loose interaction/layout inspiration;
-- thumbnail tab grid: 2 columns portrait, 3 landscape;
-- no technical lifecycle text in normal tab cards;
-- Recently Closed as a dedicated thumbnail grid with permanent Recover all / Delete all;
-- grouped visual Settings, About inside Settings;
-- collapsible secondary manual URL section;
-- deliberate empty/loading/error states;
-- player Quality + Diagnostics inside gear menu; square tab-count button directly left of gear;
-- cleaner quality/browser resolver/diagnostics/About styling;
-- consistent button hierarchy/icons/dark graphite palette/minimal animation;
-- Android system sans-serif / sans-serif-medium typography;
-- tall layouts are acceptable.
+### Current user feedback / correction
+- Palette: user wants stronger use of the actual logo colors. Launcher mark uses purple `#B05CFF`, charcoal `#17191F`, and white. Next UI iteration should explore that identity instead of #242's red-heavy accent.
+- Player: previous interpretation was incomplete. The tab-count square and gear must be part of the **video controller overlay visibility**, not permanently floating over video.
+  - controls visible -> transport UI + tab-count + gear visible;
+  - controls auto-hide -> tab-count + gear disappear too;
+  - hidden state -> clean video only;
+  - tap video -> the normal controller plus tab-count/gear return together;
+  - gear menu contains existing Quality and Diagnostics actions.
+- No app-code change for this correction yet. User requested a mockup/wireframe first.
 
-## Build #242 — UI implementation, CI PASS / DEVICE QA PENDING
-UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 run `31862910307` PASS; artifact `9241146094`.
-ZIP SHA-256 `4ddc12ba80d92944ac5006b81e19c39674f19b754985da17492c4508a55f4040`.
-APK size `35,565,818`; APK SHA-256 `ac3e04a27525ffe063219da59e9165b26732b3fc834eafedfc08731dd7695838`.
-
-The implementation is UI-only and preserves resolver/BG/playback behavior. Changed areas include MainActivity, TabDashboardAdapter, grouped Settings/About, dedicated RecentlyClosedActivity/adapter, UI-only PlayerChromeProvider, main/player/browser layouts, manifest and new bilingual strings/icons/shapes/theme tweaks. Thumbnail files survive normal close while their tab remains in Recently Closed and are removed when no open/recent tab references the ID.
-
-Important runtime QA points:
-- #242 compiled, but the player chrome needs device confirmation that the square count appears immediately left of the gear and that the gear successfully invokes existing Quality and Diagnostics handlers;
-- main grid should be 2 columns portrait / 3 landscape;
-- normal tab cards should have no `tech ...` lifecycle strings;
-- Recently Closed should show cached thumbnails and fixed Recover all/Delete all actions;
-- user wants to judge the visual direction and propose changes after seeing this build.
-
-Next: install/test #242 for visual/usability QA plus a light player-control sanity check. Do not run a deep PH/HH regression until UI iteration settles.
+## Next
+1. Show mockup/wireframe confirming the player-overlay interpretation.
+2. After approval, implement controller-bound player chrome + logo-derived purple palette.
+3. Continue visual iteration; defer deep PH/HH regression until UI settles.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
