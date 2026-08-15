@@ -48,25 +48,30 @@ Treat as rare source/host availability, before codec decoding. No host rewriting
 App/source head `3fcbabd1c953d1021ca6c28b9317be6ff024a62b`; Actions run `31904748898`; job `95060714556`.
 Initial quality-verification code referenced `Player.videoFormat`, which pinned Media3 1.10.1 does not expose. Kotlin compile failed; no APK was handed to the user. Scope was unchanged and corrected in #275.
 
-## Build #275 — compact quality + actual-quality + DNS polish: CI PASS / DEVICE QA PENDING
-Final app-code commit `dabd3054b0cfaaae820145cf8240c1c57672e4b3`.
-Actions #275 run `31904918938`; build job `95061127058`; compile and debug upload PASS.
-Artifact `9252088982`.
-ZIP size `26,070,225`; ZIP SHA-256 `368fca62c662a1944a25015b896a3267a7921b967024e64c75075f58d5261e13`.
-APK size `35,590,497`; APK SHA-256 `a3659a7887e08ac4950bafb28d766b325f215c79f3737bc9df37c7c952d8ff55`.
+## Build #275 — CI PASS / DEVICE MENU FAIL
+App commit `dabd3054b0cfaaae820145cf8240c1c57672e4b3`; Actions #275 run `31904918938`; APK SHA-256 `a3659a7887e08ac4950bafb28d766b325f215c79f3737bc9df37c7c952d8ff55`.
 
-#275 changes:
-- custom anchored popup family with 42dp rows for main gear + Quality + Audio + Volume + Speed;
-- Diagnostics remains full selectable/copyable dialog;
-- Quality keeps existing selection logic/policy but is no longer a centered picker;
-- compact Quality menu includes an Actual row;
-- manual requested height and Media3-observed actual height are stored separately;
-- `onVideoSizeChanged` is strongest actual-height evidence;
-- new `PlayerVideoFormatCompat.kt` is only a conservative fallback for pinned Media3: it reports a selected height only when selected video tracks have exactly one distinct height; adaptive multi-height selection returns null;
-- manual 480p may say `480p ✓` only when Media3 evidence confirms 480p, otherwise requested and actual are shown separately;
-- DNS recovery detects `UnknownHostException` only to show clearer bilingual wording and explain Retry vs Refresh; it never rewrites the host.
+#275 added the compact PopupWindow family, compact Quality UI, requested-vs-actual quality verification, and clearer DNS recovery wording without changing resolver/BG/quality policy/share architecture/colors.
 
-#275 does NOT change resolver.py, candidate ranking, 720-first Auto policy, protected BG service/private-display classes, one-player creation, Vivaldi/Brave share architecture, or approved colors.
+Device result:
+- **gear menu FAIL**: tapping gear showed only a roughly 2 mm-high rectangle, so no submenu/quality QA could continue;
+- treat this as popup clipping/geometry failure, not simply a preference that 42dp rows were too dense;
+- likely trigger was `WRAP_CONTENT` PopupWindow height + `showAsDropDown()` from the Media3 controller's bottom row, which clipped to the tiny area below the gear on this device;
+- **rare DNS wording PASS-as-designed**: error remained unplayable but became clearer, which is the intended safe improvement when the downstream host is genuinely unresolvable. Do not add host rewriting or bypass behavior.
+
+## Build #278 — popup geometry correction: CI PASS / DEVICE QA PENDING
+App commit `8b0566c68eb9082c0aed62e202edfc1a29232983`.
+Actions #278 run `31905713180`; build job `95063044270`; artifact `9252287185`.
+ZIP SHA-256 `9076f2c5aec6fb830fb0551195a1bd475e54051d0f6c380aa78c6be9504318ec`.
+APK size `35,590,609`; APK SHA-256 `ee5893ef22a7a38758293ce9647ac133f09bea8527855c836c8dd65f13ba6043`.
+
+#278 changes only `PlayerChromeProvider.kt` relative to #275 app code:
+- row height relaxed from 42dp to 44dp;
+- popup height calculated explicitly from row count + insets instead of WRAP_CONTENT;
+- popup placed explicitly above the gear using screen coordinates/visible frame instead of relying on `showAsDropDown()` auto-flip;
+- bounded below-anchor fallback only when there is truly insufficient space above.
+
+Quality verification, clearer DNS wording, fullscreen, `[tabs][gear][fullscreen]`, controller auto-hide, same-player Audio/Volume/Speed, resolver/BG architecture, share flow and approved palette are unchanged.
 
 ## Stored-for-later backlog
 - secure browser-based `Report log on GitHub` shortcut with no embedded reusable credential;
@@ -77,10 +82,11 @@ APK size `35,590,497`; APK SHA-256 `a3659a7887e08ac4950bafb28d766b325f215c79f373
 - revisit old dedicated “Return to existing Vivaldi task/tab” idea rather than automatically implementing it.
 
 ## Next priority
-1. Device-test #275: compact menu dimensions, compact Quality UI, actual-vs-requested quality (especially 480p), and DNS wording if the rare failing source is convenient.
-2. Preserve successful #264 behavior.
-3. If #275 passes, consider player UI settled; run final PH + HH technical regression, both Vivaldi share-target regressions and small Brave smoke.
-4. Then hardening, diagnostics/log cleanup and release-readiness/stored-for-later work.
+1. Test #278 first: gear menu must render at a normal visible height above the lower-right controls.
+2. If visible, continue the intended #275 checks: compact Quality, requested-vs-actual quality (especially 480p), Audio/Volume/Speed/Diagnostics, auto-hide.
+3. DNS clarity is already accepted as the intended improvement; do not require a genuinely dead host to become playable.
+4. Preserve successful #264 behavior.
+5. Once menu/quality UI is accepted, run final PH + HH technical regressions, both Vivaldi share-target regressions and small Brave smoke, then hardening/diagnostics cleanup/release-readiness.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
