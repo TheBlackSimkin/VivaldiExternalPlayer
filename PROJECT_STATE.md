@@ -111,12 +111,36 @@ User reports the following are working well so far, but they remain under contin
 
 No app-code implementation has been made for the newly reported Recents/fullscreen/gear/stale-source findings yet.
 
+## Recovered “store for later” backlog from project history
+Older authoritative state snapshots contained a larger deferred backlog which was compressed out as the project moved through #236/#242. Keep these items visible so they are not accidentally forgotten.
+
+### Still genuinely deferred
+- **App-level volume/mute control.** This is separate from #251's **Audio** track selector. The old requirement was an in-app volume/mute control; it has not been promoted into the next focused APK scope.
+- **Secure `Report log on GitHub` shortcut.** Keep ordinary full log sharing, but later add a convenient browser-based GitHub issue/report path without embedding a PAT, OAuth secret, repository write token, or other reusable credential in the APK.
+- **Brave Mobile evaluation.** Vivaldi remains the primary supported browser; evaluate Brave only after the Vivaldi flow/UI is mature and regression-stable.
+- **Stale historical/dead-path cleanup.** Remove obsolete Activity/provider/legacy preparation paths only after proving they are unused, and never disturb the protected #234/#236 architecture merely for cosmetic cleanup.
+- **Operations-log / diagnostics noise cleanup.** Keep useful technical evidence while removing obsolete, duplicate, or confusing development-only noise.
+- **About/version/build/documentation consistency.** Finalize version/build display, About information, README/state docs and release notes during release preparation.
+- **Release distribution + permanent signing decision.** Debug Actions APKs remain the QA route. Permanent signing/distribution stays last-stage work; never commit a permanent private signing key.
+
+### Historical deferred idea to revisit, not automatically implement
+- **Dedicated “Return to existing Vivaldi task/tab” action.** This was an explicit early requirement. Later device QA reported the tested Back flow working, and the app evolved into a persistent tab dashboard, so this may now be partly superseded. Keep the idea parked for a later UX decision rather than silently deleting it or adding a new button without user confirmation.
+
+### Older backlog items already completed or substantially absorbed by later work
+- multi-video tab/session system and per-tab titles;
+- persistent/open tabs and Recently Closed recovery;
+- automatic primary-video selection with manual fallback;
+- cleaner loading/ready/error UI and hidden BG preparation;
+- playback-speed control;
+- bilingual UI and persistent language selector;
+- launcher/logo refinement and the approved #249 color identity.
+
 ## Current priority
 1. Next APK should include the focused fixes: Recents privacy, restore working fullscreen control, compact Media3-like gear presentation, and fresh-source recovery for stale saved tabs.
 2. Preserve all eleven #251 behaviors currently working well; continue device testing them after the focused patch.
 3. Do not redesign unrelated UI or touch resolver/BG/720-first architecture.
 4. Keep #249 palette unchanged.
-5. After UI settles, run final PH/HH + both Vivaldi share-target regression, then hardening/diagnostics cleanup and release-readiness work.
+5. After UI settles, run final PH/HH + both Vivaldi share-target regression, then general hardening and the recovered stored-for-later cleanup/release work above.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
