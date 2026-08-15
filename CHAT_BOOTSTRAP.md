@@ -1,7 +1,7 @@
 # Temporary Chat Bootstrap — Vivaldi External Player
 
 Repository: `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
-GitHub `main` is authoritative. Always read `PROJECT_STATE.md` and this file before substantive work. Keep both state files current whenever QA, architecture, failures, priorities, or decisions change.
+GitHub `main` is authoritative. Always read `PROJECT_STATE.md` and this file before substantive work. Keep both current whenever QA, architecture, failures, priorities, or decisions change.
 
 ## Safety / communication
 - Explain plainly; user is not an advanced developer. Use connected GitHub directly. Keep source well-commented in English.
@@ -10,77 +10,77 @@ GitHub `main` is authoritative. Always read `PROJECT_STATE.md` and this file bef
 - Never bypass DRM, paywall/subscription, authentication, regional restriction, CAPTCHA/anti-bot, or import browser credentials.
 - Never add background playback or a second ExoPlayer session.
 
-## Protected playback/BG baseline
-#234 private-display service architecture is protected:
+## Protected baseline
+#234 BG architecture is protected:
 `short share Activity -> persistent pending tab -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct yt-dlp -> serialized browser fallback -> READY/ERROR/NEEDS_ATTENTION`.
 No preparation Activity on display 0 and no PlayerActivity/Media3/ExoPlayer during preparation.
 
-#236 app code `d6c1328823ce2027beecab7970b02420d1cffc7b` is the protected playback baseline and passed PH BG/Vivaldi responsiveness, Auto 720-first, manual quality including 480p, PH playback, HH smoke, Recently Closed and language persistence. Do not change BG/quality architecture without a concrete regression.
+#236 commit `d6c1328823ce2027beecab7970b02420d1cffc7b` is the protected playback baseline. Preserve Auto exact 720 -> 1080 -> highest below 1080, manual quality, video+audio, browser fallback, gestures, rotation, bilingual UI and exactly one ExoPlayer.
 
-## Accepted UI / palette
-#242 structure/device PASS: thumbnail grid 2 portrait / 3 landscape, no technical card text, Recently Closed grid with Recover all/Delete all, grouped Settings/About, collapsible manual URL.
-
-#249 palette/device PASS; user: **“colors are perfect, love them”**. Keep unchanged unless requested:
-- purple `#B05CFF`;
-- charcoal `#17191F` family;
-- white primary content;
-- green/amber/red semantic only.
+#242 UI structure passed. #249 palette passed and user said “colors are perfect, love them”: keep purple `#B05CFF`, charcoal `#17191F` family, white primary; green/amber/red semantic only.
 
 ## Player specification
-- Keep Media3 controller/timeline/play-pause/fullscreen/end replay.
+- Media3 controller/timeline/play-pause/fullscreen/end replay.
 - No visible ±10s buttons; double-tap left/right remains ±10s.
-- Exact lower-right order: `[tab count] [gear] [fullscreen]`.
-- One gear contains **Video quality, Audio, Volume / mute, Playback speed, Diagnostics**.
-- Audio, Volume/Mute and speed use the same Media3 Player; never create a second ExoPlayer.
-- Volume/Mute is app/player-relative and must not change Android global media volume.
-- Tabs/gear are actual children of Media3 controller and auto-hide with it.
-- Preserve Media3 natural end replay; no custom permanent restart button.
+- Lower-right `[tab count] [gear] [fullscreen]`; tab count opens dashboard.
+- One gear: Video quality, Audio, Volume/mute, Playback speed, Diagnostics.
+- Audio/Volume/Speed use same Player; Volume never changes Android global volume.
+- Controls auto-hide together. Diagnostics may remain full dialog; simple settings should use compact anchored menus.
 
 ## Build #264 — CI PASS / DEVICE QA MOSTLY PASS
-App-code commit `5b1906f1d43643a46458a77e2de67691c1f299c0`.
-Actions #264 run `31900203463`; APK SHA-256 `d110c4257f9d44c47820ac15627c7a577a0d54cc3f7a2a52dcf42f65e56784e0`.
+App commit `5b1906f1d43643a46458a77e2de67691c1f299c0`; Actions #264 run `31900203463`; APK SHA-256 `d110c4257f9d44c47820ac15627c7a577a0d54cc3f7a2a52dcf42f65e56784e0`.
 
-#264 implemented Recents privacy, working fullscreen, compact Audio/Volume/Speed popup submenus, app-level Volume/Mute, and stale-source `Refresh source` through the protected #234 private-display service path. Resolver ranking, 720-first policy, palette and one-player ownership were not changed.
+#264 implemented Recents privacy, functional fullscreen, compact Audio/Volume/Speed, app-level Volume/Mute, and stale-source Refresh source through protected #234 BG preparation.
 
-## #264 real-device findings
-User reports **almost all tests succeeded**.
-- Brave Mobile as-is compatibility PASS using the existing generic Android share targets; no Brave-specific code is justified.
-- Existing Vivaldi behavior remained healthy.
-- Recents/fullscreen/player-control follow-ups and Audio/Volume/Speed/Diagnostics behavior were successful unless later regression evidence says otherwise.
-- User also tried one unrelated extra site outside the PH/HH test scope and the generic flow worked; do not create a new site-specific architecture from that incidental success.
+User reports almost all #264 tests succeeded, including Vivaldi health and **Brave Mobile as-is compatibility** using the generic Android share targets. No Brave-specific code is justified.
 
-Remaining player-quality/UI issues:
-1. **Video Quality still opens a centered window/dialog.** This is expected from current code: the gear still invokes `qualityButton.performClick()`, and PlayerActivity's browser + yt-dlp quality pickers are AlertDialogs.
-2. **480p still does not show an obvious visible change.** Do not mark manual 480p as verified on #264. Current diagnostics list available qualities/declared size but do not report Media3's actually selected video-track height after a manual browser-track override. Next quality work should show requested vs actual/selected height and only claim 480p success when Media3 confirms it.
-3. QoL: make the gear menu and submenus slightly shorter vertically/more compact while remaining touch-friendly, and move Video Quality into the same compact anchored-menu family.
+Remaining #264 issues which motivated #275:
+- Video Quality still used centered AlertDialogs.
+- 480p request showed no obvious visual change; requested quality must not be treated as proof of actual rendition.
+- user requested slightly more compact vertical spacing in gear menus/submenus.
 
-## Rare HH edge case on #264
-A very small set of apparently older HH sources can fail while normal HH playback remains healthy.
-Observed technical diagnostic:
-- browser resolver, single HLS source;
-- master host `master-lengs.org`;
-- Media3 `ERROR_CODE_IO_NETWORK_CONNECTION_FAILED (2001)`;
-- nested `UnknownHostException` for downstream host `eng-jaen.top`, `EAI_NODATA` / no address associated with hostname.
+## Rare HH DNS edge case
+One rare older-looking HH HLS source produced Media3 network error 2001 with nested `UnknownHostException`: HLS master host `master-lengs.org` referenced downstream `eng-jaen.top`, which Android DNS could not resolve (`EAI_NODATA`). Most HH sources still work.
 
-Interpretation: Media3 reached an HLS manifest which referenced another host, and Android DNS could not resolve that child host. This is before codec/decoder playback and is best treated as a rare source/host availability problem, not a general HH regression.
+Treat as rare source/host availability, before codec decoding. No host rewriting, DNS substitution, guessed mirror, credentials or bypass. Safe recovery: clearer DNS wording, Retry for transient DNS, Refresh source for a fresh legitimate manifest, and legitimate alternate candidates if already detected.
 
-Do NOT add site-specific DNS substitution, guessed mirror/host rewriting, credential import or protected-access bypass. Safe app-side behavior is clearer `media host unavailable / DNS lookup failed` diagnostics plus existing Retry playback / Refresh source / legitimate alternate-candidate recovery when available. If every legitimate candidate ultimately points to the dead host, report it unavailable.
+## Build #274 — compile failure caught in CI
+App/source head `3fcbabd1c953d1021ca6c28b9317be6ff024a62b`; Actions run `31904748898`; job `95060714556`.
+Initial quality-verification code referenced `Player.videoFormat`, which pinned Media3 1.10.1 does not expose. Kotlin compile failed; no APK was handed to the user. Scope was unchanged and corrected in #275.
 
-## Stored-for-later backlog — keep explicit
-- secure browser-based `Report log on GitHub` shortcut; never embed reusable GitHub credentials;
-- safe stale/dead historical code cleanup only after proving paths unused;
-- operations-log/diagnostics noise cleanup;
+## Build #275 — compact quality + actual-quality + DNS polish: CI PASS / DEVICE QA PENDING
+Final app-code commit `dabd3054b0cfaaae820145cf8240c1c57672e4b3`.
+Actions #275 run `31904918938`; build job `95061127058`; compile and debug upload PASS.
+Artifact `9252088982`.
+ZIP size `26,070,225`; ZIP SHA-256 `368fca62c662a1944a25015b896a3267a7921b967024e64c75075f58d5261e13`.
+APK size `35,590,497`; APK SHA-256 `a3659a7887e08ac4950bafb28d766b325f215c79f3737bc9df37c7c952d8ff55`.
+
+#275 changes:
+- custom anchored popup family with 42dp rows for main gear + Quality + Audio + Volume + Speed;
+- Diagnostics remains full selectable/copyable dialog;
+- Quality keeps existing selection logic/policy but is no longer a centered picker;
+- compact Quality menu includes an Actual row;
+- manual requested height and Media3-observed actual height are stored separately;
+- `onVideoSizeChanged` is strongest actual-height evidence;
+- new `PlayerVideoFormatCompat.kt` is only a conservative fallback for pinned Media3: it reports a selected height only when selected video tracks have exactly one distinct height; adaptive multi-height selection returns null;
+- manual 480p may say `480p ✓` only when Media3 evidence confirms 480p, otherwise requested and actual are shown separately;
+- DNS recovery detects `UnknownHostException` only to show clearer bilingual wording and explain Retry vs Refresh; it never rewrites the host.
+
+#275 does NOT change resolver.py, candidate ranking, 720-first Auto policy, protected BG service/private-display classes, one-player creation, Vivaldi/Brave share architecture, or approved colors.
+
+## Stored-for-later backlog
+- secure browser-based `Report log on GitHub` shortcut with no embedded reusable credential;
+- safe dead/historical code cleanup only after proving unused;
+- diagnostics/operations-log noise cleanup;
 - About/version/build/README/release-note consistency;
-- final distribution + permanent signing decision; never commit permanent signing material;
-- revisit, rather than automatically implement, the old dedicated “Return to existing Vivaldi task/tab” idea.
-
-Promoted/completed: app-level Volume/Mute is in #264; Brave compatibility passed without special code.
+- distribution + permanent signing last, never commit permanent signing material;
+- revisit old dedicated “Return to existing Vivaldi task/tab” idea rather than automatically implementing it.
 
 ## Next priority
-1. Focused player polish only: compact **Video Quality** menu, slightly tighter menu/submenu row height, and truthful requested-vs-actual manual-quality verification (especially 480p).
-2. Preserve every successful #264 behavior, #234 BG architecture, one ExoPlayer, 720-first auto policy and #249 palette.
-3. Treat the rare HH child-host DNS failure as an availability edge case; improve wording/recovery UX only, no host hacks.
-4. After this small quality/menu polish, run final PH + HH technical regressions, both Vivaldi share-target regressions and a small Brave smoke, then hardening/release-readiness work.
+1. Device-test #275: compact menu dimensions, compact Quality UI, actual-vs-requested quality (especially 480p), and DNS wording if the rare failing source is convenient.
+2. Preserve successful #264 behavior.
+3. If #275 passes, consider player UI settled; run final PH + HH technical regression, both Vivaldi share-target regressions and small Brave smoke.
+4. Then hardening, diagnostics/log cleanup and release-readiness/stored-for-later work.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
