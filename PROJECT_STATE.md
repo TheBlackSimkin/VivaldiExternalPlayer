@@ -49,7 +49,7 @@ Do not change this palette unless the user asks.
 - Exact lower-right order: `[tab count] [gear] [fullscreen]`.
 - Tab count opens the dashboard.
 - One combined ExternalPlayer gear contains: **Video quality, Audio, Volume / mute, Playback speed, Diagnostics**.
-- Quality and Diagnostics reuse existing PlayerActivity handlers.
+- Quality and Diagnostics reuse existing PlayerActivity behavior unless intentionally refactored without changing playback logic.
 - Audio, app-level Volume/Mute and Playback speed operate on the same Media3 `Player` exposed by `PlayerView`; never create a second ExoPlayer.
 - App-level Volume/Mute changes only ExternalPlayer's Player volume relative to Android system media volume; it must not change global device volume.
 - Tab count + gear are children of Media3's controller so they auto-hide with it, leaving clean video only.
@@ -58,26 +58,11 @@ Do not change this palette unless the user asks.
 ## Build #251 — focused player-chrome correction: CI PASS / preliminary device checks
 App/UI commit `ac06833ab779c5404cdbd20f69dae1edd437e342`; Actions #251 run `31866740455`; artifact `9242257590`; APK SHA-256 `e77533748a797c3ab38055d88e8be72714f61ec69fff672329aa20fbedb841a0`.
 
-Preliminary #251 device checks reported working well:
-1. tab count positioned properly beside the player controls;
-2. tab count opens dashboard;
-3. Audio works on the existing single ExoPlayer session;
-4. Playback speed works;
-5. Video quality works;
-6. Diagnostics works;
-7. controller auto-hide removes all visible controls;
-8. double-tap left/right remains -10s/+10s;
-9. no visible dedicated ±10s buttons;
-10. Media3 natural end replay remains;
-11. approved #249 colors remain unchanged.
+Preliminary #251 device checks reported working well: tab-count placement/dashboard; Audio; Playback speed; Video quality UI access; Diagnostics; controller auto-hide; double-tap ±10s; no visible ±10s buttons; Media3 natural end replay; approved colors.
 
-Additional #251 findings requiring a follow-up:
-- dashboard image appeared in Android Recents;
-- fullscreen button was missing because no fullscreen listener was registered;
-- Audio/Speed submenus were centered dialogs rather than the preferred compact Media3-like presentation;
-- a saved tab could fail after its old resolved stream URL expired; Retry only retried the stale resolved URL.
+Additional #251 findings motivated #264: dashboard in Android Recents; fullscreen button missing; Audio/Speed submenus too modal; stale resolved stream could expire and Retry could not obtain a fresh URL.
 
-## Build #264 — focused UI/recovery + Volume/Mute: CI PASS / DEVICE QA PENDING
+## Build #264 — focused UI/recovery + Volume/Mute: CI PASS / DEVICE QA MOSTLY PASS
 Final app-code commit: `5b1906f1d43643a46458a77e2de67691c1f299c0`.
 GitHub Actions Build #264 run `31900203463`; build job `95049647214`.
 Compile/assemble: PASS. Debug APK upload: PASS.
@@ -85,39 +70,69 @@ Artifact `9250881808` (`VivaldiExternalPlayer-debug-apk`).
 Artifact ZIP size `26,053,952` bytes; ZIP SHA-256 `26f3309098377d41fabdaad77b42033672999e5099bf154af13c4382e8bb8232`.
 Extracted debug APK size `35,570,425` bytes; APK SHA-256 `d110c4257f9d44c47820ac15627c7a577a0d54cc3f7a2a52dcf42f65e56784e0`.
 
-#264 is intentionally narrow and does **not** change resolver ranking, quality policy, private-display BG preparation, accepted palette, or PlayerActivity's one-ExoPlayer ownership.
+#264 intentionally did **not** change resolver ranking, quality policy, private-display BG preparation, accepted palette, or PlayerActivity's one-ExoPlayer ownership.
 
-### #264 player/UI changes
-- On Android 13+, MainActivity uses Recents-only screenshot suppression so the tab dashboard should not appear in Overview/Recents; ordinary dashboard screenshots are not intentionally disabled.
-- Registers Media3's fullscreen callback and toggles system bars while using the existing PlayerActivity/player. Rotation behavior remains unchanged.
-- Keeps exact controller order `[tab count] [gear] [fullscreen]`.
-- Keeps visible ±10s buttons hidden; double-tap ±10s remains unchanged.
-- Combined gear is now: **Video quality, Audio, Volume / mute, Playback speed, Diagnostics**.
-- Audio and Playback speed submenus are compact anchored popup menus instead of centered option dialogs.
-- New app-level Volume/Mute submenu operates on the same existing Media3 Player with Mute/Unmute and 25/50/75/100% choices. It does not modify Android's global media volume.
-- Approved #249 colors are unchanged.
+### #264 implementation
+- Android 13+ MainActivity Recents-only snapshot suppression.
+- Functional Media3 fullscreen callback using the same PlayerActivity/player.
+- Exact controller order `[tab count] [gear] [fullscreen]`.
+- Visible ±10s buttons hidden; double-tap ±10s unchanged.
+- Combined gear: **Video quality, Audio, Volume / mute, Playback speed, Diagnostics**.
+- Audio, Volume/Mute and Playback speed use anchored PopupMenus.
+- App-level Volume/Mute changes only the same Media3 Player volume, not Android global media volume.
+- Stale-source recovery distinguishes **Retry playback** from **Refresh source**; Refresh source preserves same tab ID/position and reuses the protected #234 service-owned private-display preparation path.
+- Approved #249 colors unchanged.
 
-### #264 stale-source recovery
-Recovery now distinguishes:
-- **Retry playback** = prepare/retry the current already-resolved stream URL, useful for a short transient failure;
-- **Refresh source** = re-resolve the original persisted page `sourceUrl` and repair the **same tab** when an old stream URL has expired.
+### #264 real-device results received
+User reports **almost all #264 tests succeeded**, including the Brave-as-is compatibility test. Treat these as successful unless a later regression contradicts them:
+- Recents/privacy and fullscreen follow-up behavior;
+- combined gear functions including Audio, Volume/Mute, Playback speed and Diagnostics;
+- compact popup presentation for Audio/Volume/Speed;
+- established controller behavior, gestures and palette;
+- existing Vivaldi flow remained healthy;
+- **Brave Mobile works with the existing generic Android share flow without Brave-specific code**.
 
-Refresh source:
-- preserves existing tab ID and saved playback position/play intention where practical;
-- prevents PlayerActivity's pause-time persistence from writing the stale resolved payload back to READY;
-- marks the same tab queued and starts `BackgroundPreparationKeepAliveService.acquire(...)` with that tab ID/source URL;
-- therefore reuses the protected #234 service-owned private-display `Presentation/WebView` architecture rather than the older display-0 retry Activity;
-- creates no duplicate tab and no second ExoPlayer.
+User also tried an additional unrelated site outside the PH/HH test scope and reported the generic flow worked there too. Do not turn that incidental smoke result into a new protected site-specific architecture; it simply supports keeping the browser handoff generic.
 
-CI proves the new Android/Media3 APIs and resources compile against the project's pinned dependency/SDK baseline. Runtime behavior still needs device QA.
+### #264 remaining quality/UI findings
+Two quality-related items are **not accepted yet**:
+1. **Video Quality still opens as a centered AlertDialog/window.** Code audit confirms the combined gear still handles Quality by `qualityButton.performClick()`, which invokes PlayerActivity's existing `showQualityDialog()`. Browser adaptive, browser sibling-variant and yt-dlp quality pickers are still AlertDialogs. Therefore the device result is expected from current code, not a device anomaly.
+2. **Selecting 480p still does not produce an obvious visible change.** Do not mark manual 480p as verified on #264. Current code changes the requested browser track/source or re-runs yt-dlp depending on resolver mode, but the UI does not strongly verify/display Media3's actually selected rendition after the choice. `updateReadyDiagnostics()` currently lists available qualities and declared source size but does not report the actively selected video-track height. Next quality work should distinguish **requested quality** from **actually selected/observed quality** and only claim success when Media3 confirms the selected rendition.
 
-## Brave decision for #264 QA
-The user wants to test whether ExternalPlayer already works with **Brave Mobile as-is**.
-- Do **not** add Brave-specific code before this compatibility test.
-- Use the existing Android `ACTION_SEND text/plain` share targets (`ExternalPlayer` and `BG - External Player`) exactly as currently implemented.
-- If Brave passes, record compatibility without creating a special Brave architecture.
-- If Brave fails, capture the precise technical handoff/preparation behavior first and only then decide whether a focused compatibility change is justified.
-- Vivaldi remains the protected primary regression baseline.
+QoL request for next player-menu polish:
+- make the vertical height/padding of the gear menu and its submenus a little more compact;
+- keep them touch-friendly and anchored, without returning to large centered option dialogs;
+- convert Video Quality to the same compact anchored-menu family while preserving current quality-selection logic.
+
+## Rare HH HLS DNS edge case observed on #264
+User found a very rare HH playback failure while most HH videos continue to work. Technical diagnostics from the failing source:
+- resolver: `browser`;
+- mode: `single`;
+- HLS master source host: `master-lengs.org`;
+- source path: `/api/v3/hh/tsf-monogatari-1-720p-v1x/master.m3u8`;
+- MIME: `application/x-mpegURL`;
+- Media3 error: `ERROR_CODE_IO_NETWORK_CONNECTION_FAILED (2001)`;
+- nested failure: `UnknownHostException` for downstream host `eng-jaen.top`, with `EAI_NODATA` / no address associated with hostname.
+
+Interpretation:
+- ExternalPlayer successfully obtained and opened the technical HLS master URL far enough for Media3 to request a downstream HLS host referenced by that manifest.
+- Android then could not resolve that downstream hostname at DNS level. This occurs before codec/decoder playback and is not evidence of a Media3 codec failure.
+- The mismatch between the top-level source host (`master-lengs.org`) and failing nested host (`eng-jaen.top`) is consistent with an HLS master/playlist referencing child playlists or segments on another host.
+- Because only a very small set of apparently older HH sources show it while normal HH playback works, treat this as a **rare source/host availability edge case**, not a regression of the general HH resolver/player path.
+- Do not add site-specific DNS substitution, host rewriting, credential import, protected-access bypass, or guessed mirror logic.
+
+Safe app-side improvements worth considering for this edge case:
+- detect `UnknownHostException` in the Media3 cause chain and show a clearer technical message such as “media host unavailable / DNS lookup failed”;
+- keep `Retry playback` for temporary DNS/network recovery;
+- keep `Refresh source` to re-resolve the original page in case the page now supplies a fresh working manifest;
+- if normal browser discovery already captured another valid candidate, allow the user to try it through the existing candidate flow;
+- if every legitimate candidate ultimately points to the same unresolvable host, report the source as unavailable rather than fabricating or bypassing a replacement.
+
+## Brave compatibility decision after #264 QA
+Brave-as-is compatibility **PASSED** on the unchanged generic share implementation.
+- No Brave-specific code is currently justified.
+- Continue using the generic Android `ACTION_SEND text/plain` share targets for Brave and Vivaldi.
+- Vivaldi remains the primary protected regression baseline, with Brave now a known-compatible browser smoke target.
 
 ## Recovered “store for later” backlog from project history
 Keep these items visible so they are not accidentally compressed out again.
@@ -130,19 +145,18 @@ Keep these items visible so they are not accidentally compressed out again.
 - **Release distribution + permanent signing decision.** Debug Actions APKs remain the QA route. Permanent signing/distribution stays last-stage work; never commit a permanent private signing key.
 
 ### Historical deferred idea to revisit, not automatically implement
-- **Dedicated “Return to existing Vivaldi task/tab” action.** This was an explicit early requirement. Later Back-flow QA and the persistent dashboard may have partly superseded it. Revisit as a UX decision rather than silently adding a new button.
+- **Dedicated “Return to existing Vivaldi task/tab” action.** Later Back-flow QA and the persistent dashboard may have partly superseded it. Revisit as a UX decision rather than silently adding a new button.
 
 ### Deferred items now promoted/completed
-- **App-level Volume/Mute**: promoted into Build #264; device QA pending.
-- **Brave Mobile evaluation**: promoted into Build #264 compatibility QA; no Brave-specific code added.
+- **App-level Volume/Mute**: implemented in #264 and included in mostly-successful device QA.
+- **Brave Mobile evaluation**: #264 compatibility PASS without Brave-specific code.
 - multi-video tabs/per-tab titles, persistent tabs, Recently Closed, automatic selection/manual fallback, playback speed, language selector/localization, launcher/logo refinement and current loading/UI work are already implemented/substantially absorbed.
 
 ## Current priority
-1. Device-test Build #264's focused changes: Recents privacy, fullscreen, compact settings, Volume/Mute and stale-source Refresh source while preserving the eleven #251 working behaviors and #249 colors.
-2. On the same unchanged #264 APK, perform a small **Brave as-is compatibility smoke test** of the existing Android share targets. Do not add Brave-specific code first.
-3. Do not redesign unrelated UI or touch resolver/BG/720-first architecture during this test cycle.
-4. If #264 UI/recovery is accepted and Brave works as-is, consider UI settled unless the user requests more changes.
-5. After UI settles: final PH technical regression, HH technical regression, both Vivaldi share-target regressions, then hardening/diagnostics cleanup and release-readiness/stored-for-later work.
+1. Next focused player polish should: convert **Video Quality** from centered AlertDialogs to the compact anchored menu style; slightly reduce vertical menu/submenu padding/height; and add truthful requested-vs-actual quality verification so manual 480p can be proven rather than assumed.
+2. Preserve all successful #264 behavior, especially Recents privacy, fullscreen, Audio/Volume/Speed, stale-source Refresh, Brave compatibility, #234 BG architecture, one ExoPlayer, 720-first auto policy and #249 palette.
+3. Treat the rare HH `UnknownHostException` child-host case as a source-availability edge case. Improve recovery wording/diagnostics only if useful; do not add guessed host rewrites or bypass behavior.
+4. After this small quality/menu polish settles, run final PH technical regression, HH technical regression, both Vivaldi share-target regressions, plus a small Brave smoke regression; then proceed to hardening/diagnostics cleanup and release-readiness work.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
