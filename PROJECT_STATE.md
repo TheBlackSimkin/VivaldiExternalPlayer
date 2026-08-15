@@ -3,9 +3,9 @@
 GitHub `main` is authoritative. Keep this file and `CHAT_BOOTSTRAP.md` current whenever requirements, architecture, QA results, failures, decisions, or priorities change.
 
 ## Working / safety rules
-- Conversation English; Android UI bilingual (English/Spanish). Explain plainly; user is not an advanced developer.
+- Conversation English; Android UI bilingual English/Spanish. Explain plainly; user is not an advanced developer.
 - Use connected GitHub tools directly. Source should contain abundant English comments.
-- PH and HH are technical playback targets. URLs/manifests/codecs/resolutions/request metadata/candidate ranking/playback states/errors/local titles are allowed.
+- PH and HH are technical playback targets. Technical URLs/manifests/codecs/resolutions/request metadata/candidate ranking/playback states/errors/local titles are allowed.
 - Do **not** inspect, describe, classify, summarize, or request PH/HH media content or thumbnail imagery.
 - Never bypass DRM, paywall/subscription, authentication, regional restriction, CAPTCHA/anti-bot, or import browser credentials. Conservative automation may only handle clearly identified age/18+ and cookie prompts.
 - Never add background playback or a second ExoPlayer session.
@@ -16,147 +16,120 @@ Preserve Vivaldi share targets; yt-dlp first/browser fallback; automatic/manual 
 Permanent release signing remains deferred. Debug GitHub Actions APKs are the QA path; never commit a permanent signing key.
 
 ## Protected BG architecture
-#234 established the working service-owned private-display path after #205/#212/#227 failures:
+Build #234 established the service-owned private-display path:
 `short share Activity -> persistent pending tab -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct yt-dlp -> serialized browser fallback -> READY/ERROR/NEEDS_ATTENTION`.
 No preparation Activity on display 0 and no PlayerActivity/Media3/ExoPlayer during preparation. Do not change this architecture without a concrete regression.
 
-## Build #236 — protected playback baseline: DEVICE PASS
-App-code commit `d6c1328823ce2027beecab7970b02420d1cffc7b`; APK SHA-256 `ca24f6943849853d4ba6580ceaf107b9795ebc8b943dc55ac28cdab66b8c3bff`.
-Device QA PASS for PH BG/Vivaldi responsiveness, Auto 720-first, manual quality including 480p, playback sanity, HH technical smoke, Recently Closed functionality and language persistence.
+Build #236 app commit `d6c1328823ce2027beecab7970b02420d1cffc7b` remains the protected playback baseline. Device QA passed PH BG/Vivaldi responsiveness, Auto 720-first, manual quality including 480p at that stage, playback sanity, HH technical smoke, Recently Closed and language persistence.
 
-## UI structure accepted from Build #242
-UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 PASS. User accepted:
-- loose Vivaldi-inspired thumbnail tabs, 2 columns portrait / 3 landscape;
-- no technical lifecycle strings on normal cards;
-- dedicated Recently Closed thumbnail grid with fixed Recover all/Delete all;
-- grouped Settings with About inside Settings;
-- collapsible manual URL;
-- player tab-count + gear concept.
-
-## Logo-derived palette — DEVICE PASS on Build #249
-Build #249 app/UI commit `cdbd30e01839cb8aa50e3c87d77d1802d04b0a28`; Actions #249 PASS; APK SHA-256 `837457a22956c4c70afc3a9bc9cde82de708086ef31c92cd02ac7bf79757ce1d`.
-User feedback: **“colors are perfect, love them”**. Treat this palette as approved/protected:
-- purple `#B05CFF` = brand/active accent;
-- charcoal `#17191F` family = principal surfaces;
-- white = primary content/text;
-- green/amber/red = semantic success/attention/destructive only.
-Do not change this palette unless the user asks.
+## Accepted UI / protected palette
+- Build #242 structure/device PASS: Vivaldi-inspired thumbnail tabs; 2 columns portrait / 3 landscape; no technical lifecycle text on normal cards; Recently Closed grid; grouped Settings/About; collapsible manual URL; player tab-count + gear concept.
+- Build #249 palette/device PASS, user: **“colors are perfect, love them”**.
+- Keep purple `#B05CFF`, charcoal `#17191F` family, white primary content; green/amber/red semantic only. Do not change unless user asks.
 
 ## Player-control specification
-- Keep Media3's normal controller, timeline, play/pause, fullscreen and ended-state replay/start-again behavior.
-- Do **not** show dedicated visible rewind/fast-forward ±10-second buttons.
-- Preserve `GesturePlayerView` left/right double-tap for `-10s / +10s`.
-- Exact lower-right order: `[tab count] [gear] [fullscreen]`.
-- Tab count opens the dashboard.
-- One combined ExternalPlayer gear contains: **Video quality, Audio, Volume / mute, Playback speed, Diagnostics**.
-- Quality and Diagnostics reuse existing PlayerActivity behavior unless intentionally refactored without changing playback logic.
-- Audio, app-level Volume/Mute and Playback speed operate on the same Media3 `Player` exposed by `PlayerView`; never create a second ExoPlayer.
-- App-level Volume/Mute changes only ExternalPlayer's Player volume relative to Android system media volume; it must not change global device volume.
-- Tab count + gear are children of Media3's controller so they auto-hide with it, leaving clean video only.
-- Preserve Media3 end-of-video replay behavior; do not add a separate permanent restart button.
+- Keep Media3 controller/timeline/play-pause/fullscreen/end replay.
+- No visible ±10s buttons; GesturePlayerView double-tap left/right remains -10s/+10s.
+- Exact lower-right order: `[tab count] [gear] [fullscreen]`; tab count opens dashboard.
+- One gear contains **Video quality, Audio, Volume / mute, Playback speed, Diagnostics**.
+- Audio, app-level Volume/Mute and Playback speed operate on the same Media3 Player; never create a second ExoPlayer.
+- Volume/Mute changes only Player-relative volume, never Android global media volume.
+- Tabs/gear are real Media3-controller children and auto-hide with it.
+- Preserve Media3 natural end replay; no permanent custom restart button.
+- Simple gear choices should use compact anchored menus. Diagnostics may remain a full dialog because it is long/selectable/copyable.
 
-## Build #251 — focused player-chrome correction: CI PASS / preliminary device checks
-App/UI commit `ac06833ab779c5404cdbd20f69dae1edd437e342`; Actions #251 run `31866740455`; artifact `9242257590`; APK SHA-256 `e77533748a797c3ab38055d88e8be72714f61ec69fff672329aa20fbedb841a0`.
+## Build #264 — CI PASS / DEVICE QA MOSTLY PASS
+App commit `5b1906f1d43643a46458a77e2de67691c1f299c0`; Actions #264 run `31900203463`; artifact `9250881808`; APK SHA-256 `d110c4257f9d44c47820ac15627c7a577a0d54cc3f7a2a52dcf42f65e56784e0`.
 
-Preliminary #251 device checks reported working well: tab-count placement/dashboard; Audio; Playback speed; Video quality UI access; Diagnostics; controller auto-hide; double-tap ±10s; no visible ±10s buttons; Media3 natural end replay; approved colors.
+#264 implemented Recents privacy, functional fullscreen, compact Audio/Volume/Speed popup submenus, app-level Volume/Mute, and stale-source `Refresh source` through the protected #234 private-display service path. Resolver ranking, 720-first policy, palette and one-player ownership were unchanged.
 
-Additional #251 findings motivated #264: dashboard in Android Recents; fullscreen button missing; Audio/Speed submenus too modal; stale resolved stream could expire and Retry could not obtain a fresh URL.
-
-## Build #264 — focused UI/recovery + Volume/Mute: CI PASS / DEVICE QA MOSTLY PASS
-Final app-code commit: `5b1906f1d43643a46458a77e2de67691c1f299c0`.
-GitHub Actions Build #264 run `31900203463`; build job `95049647214`.
-Compile/assemble: PASS. Debug APK upload: PASS.
-Artifact `9250881808` (`VivaldiExternalPlayer-debug-apk`).
-Artifact ZIP size `26,053,952` bytes; ZIP SHA-256 `26f3309098377d41fabdaad77b42033672999e5099bf154af13c4382e8bb8232`.
-Extracted debug APK size `35,570,425` bytes; APK SHA-256 `d110c4257f9d44c47820ac15627c7a577a0d54cc3f7a2a52dcf42f65e56784e0`.
-
-#264 intentionally did **not** change resolver ranking, quality policy, private-display BG preparation, accepted palette, or PlayerActivity's one-ExoPlayer ownership.
-
-### #264 implementation
-- Android 13+ MainActivity Recents-only snapshot suppression.
-- Functional Media3 fullscreen callback using the same PlayerActivity/player.
-- Exact controller order `[tab count] [gear] [fullscreen]`.
-- Visible ±10s buttons hidden; double-tap ±10s unchanged.
-- Combined gear: **Video quality, Audio, Volume / mute, Playback speed, Diagnostics**.
-- Audio, Volume/Mute and Playback speed use anchored PopupMenus.
-- App-level Volume/Mute changes only the same Media3 Player volume, not Android global media volume.
-- Stale-source recovery distinguishes **Retry playback** from **Refresh source**; Refresh source preserves same tab ID/position and reuses the protected #234 service-owned private-display preparation path.
-- Approved #249 colors unchanged.
-
-### #264 real-device results received
-User reports **almost all #264 tests succeeded**, including the Brave-as-is compatibility test. Treat these as successful unless a later regression contradicts them:
-- Recents/privacy and fullscreen follow-up behavior;
-- combined gear functions including Audio, Volume/Mute, Playback speed and Diagnostics;
-- compact popup presentation for Audio/Volume/Speed;
-- established controller behavior, gestures and palette;
+### #264 real-device results
+User reported almost all tests successful:
+- Recents/privacy and fullscreen follow-up behavior worked;
+- Audio, Volume/Mute, Playback speed and Diagnostics worked;
+- established controller auto-hide/gestures/palette remained healthy;
 - existing Vivaldi flow remained healthy;
-- **Brave Mobile works with the existing generic Android share flow without Brave-specific code**.
+- **Brave Mobile works as-is with the generic Android share targets**, so no Brave-specific code is justified.
+User also tried an unrelated extra site outside the PH/HH scope and reported the generic flow worked; treat this only as evidence for keeping the share architecture generic.
 
-User also tried an additional unrelated site outside the PH/HH test scope and reported the generic flow worked there too. Do not turn that incidental smoke result into a new protected site-specific architecture; it simply supports keeping the browser handoff generic.
-
-### #264 remaining quality/UI findings
-Two quality-related items are **not accepted yet**:
-1. **Video Quality still opens as a centered AlertDialog/window.** Code audit confirms the combined gear still handles Quality by `qualityButton.performClick()`, which invokes PlayerActivity's existing `showQualityDialog()`. Browser adaptive, browser sibling-variant and yt-dlp quality pickers are still AlertDialogs. Therefore the device result is expected from current code, not a device anomaly.
-2. **Selecting 480p still does not produce an obvious visible change.** Do not mark manual 480p as verified on #264. Current code changes the requested browser track/source or re-runs yt-dlp depending on resolver mode, but the UI does not strongly verify/display Media3's actually selected rendition after the choice. `updateReadyDiagnostics()` currently lists available qualities and declared source size but does not report the actively selected video-track height. Next quality work should distinguish **requested quality** from **actually selected/observed quality** and only claim success when Media3 confirms the selected rendition.
-
-QoL request for next player-menu polish:
-- make the vertical height/padding of the gear menu and its submenus a little more compact;
-- keep them touch-friendly and anchored, without returning to large centered option dialogs;
-- convert Video Quality to the same compact anchored-menu family while preserving current quality-selection logic.
+### #264 remaining findings which motivated #275
+1. Video Quality still opened centered AlertDialogs because the gear delegated to PlayerActivity's old quality button/dialog handlers.
+2. Selecting 480p did not show an obvious change. Do not treat the requested label itself as proof of actual rendition. The next implementation must distinguish requested/manual quality from Media3-observed actual height.
+3. User requested slightly shorter/more compact gear-menu and submenu rows.
 
 ## Rare HH HLS DNS edge case observed on #264
-User found a very rare HH playback failure while most HH videos continue to work. Technical diagnostics from the failing source:
-- resolver: `browser`;
-- mode: `single`;
-- HLS master source host: `master-lengs.org`;
-- source path: `/api/v3/hh/tsf-monogatari-1-720p-v1x/master.m3u8`;
-- MIME: `application/x-mpegURL`;
-- Media3 error: `ERROR_CODE_IO_NETWORK_CONNECTION_FAILED (2001)`;
-- nested failure: `UnknownHostException` for downstream host `eng-jaen.top`, with `EAI_NODATA` / no address associated with hostname.
+A very small set of apparently older HH sources can fail while normal HH playback remains healthy. One technical diagnostic showed:
+- resolver `browser`, mode `single`;
+- HLS master host `master-lengs.org`, path `/api/v3/hh/tsf-monogatari-1-720p-v1x/master.m3u8`;
+- Media3 `ERROR_CODE_IO_NETWORK_CONNECTION_FAILED (2001)`;
+- nested `UnknownHostException` for downstream host `eng-jaen.top`, `EAI_NODATA` / no DNS address.
 
-Interpretation:
-- ExternalPlayer successfully obtained and opened the technical HLS master URL far enough for Media3 to request a downstream HLS host referenced by that manifest.
-- Android then could not resolve that downstream hostname at DNS level. This occurs before codec/decoder playback and is not evidence of a Media3 codec failure.
-- The mismatch between the top-level source host (`master-lengs.org`) and failing nested host (`eng-jaen.top`) is consistent with an HLS master/playlist referencing child playlists or segments on another host.
-- Because only a very small set of apparently older HH sources show it while normal HH playback works, treat this as a **rare source/host availability edge case**, not a regression of the general HH resolver/player path.
-- Do not add site-specific DNS substitution, host rewriting, credential import, protected-access bypass, or guessed mirror logic.
+Interpretation: Media3 reached an HLS manifest which referenced a downstream host Android could not resolve. This occurs before codec/decoder playback and is a rare source/host availability edge case, not evidence of a general HH regression.
 
-Safe app-side improvements worth considering for this edge case:
-- detect `UnknownHostException` in the Media3 cause chain and show a clearer technical message such as “media host unavailable / DNS lookup failed”;
-- keep `Retry playback` for temporary DNS/network recovery;
-- keep `Refresh source` to re-resolve the original page in case the page now supplies a fresh working manifest;
-- if normal browser discovery already captured another valid candidate, allow the user to try it through the existing candidate flow;
-- if every legitimate candidate ultimately points to the same unresolvable host, report the source as unavailable rather than fabricating or bypassing a replacement.
+Rules for this case:
+- no site-specific DNS substitution, guessed mirror/host rewriting, credentials, or protected-access bypass;
+- Retry playback remains useful if DNS/network failure is temporary;
+- Refresh source may obtain a new legitimate manifest from the original page;
+- existing legitimate alternate-candidate flow may be used if alternatives were already detected;
+- if every legitimate source points to the unavailable host, report it unavailable rather than inventing a replacement.
 
-## Brave compatibility decision after #264 QA
-Brave-as-is compatibility **PASSED** on the unchanged generic share implementation.
-- No Brave-specific code is currently justified.
-- Continue using the generic Android `ACTION_SEND text/plain` share targets for Brave and Vivaldi.
-- Vivaldi remains the primary protected regression baseline, with Brave now a known-compatible browser smoke target.
+## Build #274 — compile failure caught before device QA
+App/source head `3fcbabd1c953d1021ca6c28b9317be6ff024a62b`; Actions run `31904748898`; build job `95060714556`.
+The first compact-quality implementation used `Player.videoFormat`, which is not exposed by this project's pinned Media3 Player interface. Kotlin compilation failed with `Unresolved reference 'videoFormat'`. No test APK was produced/handed to the user. The intended feature scope was kept unchanged and the accessor was replaced by a compatibility helper in #275.
 
-## Recovered “store for later” backlog from project history
-Keep these items visible so they are not accidentally compressed out again.
+## Build #275 — compact quality / actual-quality / DNS polish: CI PASS, DEVICE QA PENDING
+Final app-code commit `dabd3054b0cfaaae820145cf8240c1c57672e4b3`.
+GitHub Actions Build #275 run `31904918938`; build job `95061127058`.
+Compile/assemble: PASS. Debug APK upload: PASS.
+Artifact `9252088982` (`VivaldiExternalPlayer-debug-apk`).
+Artifact ZIP size `26,070,225` bytes; ZIP SHA-256 `368fca62c662a1944a25015b896a3267a7921b967024e64c75075f58d5261e13`.
+Extracted debug APK size `35,590,497` bytes; APK SHA-256 `a3659a7887e08ac4950bafb28d766b325f215c79f3737bc9df37c7c952d8ff55`.
 
-### Still genuinely deferred
-- **Secure `Report log on GitHub` shortcut.** Keep ordinary full log sharing; later add a browser-based GitHub issue/report path without embedding a PAT, OAuth secret, repository write token, or other reusable credential in the APK.
-- **Stale historical/dead-path cleanup.** Remove obsolete Activity/provider/legacy preparation paths only after proving they are unused, and never disturb protected #234/#236 behavior merely for cosmetic cleanup.
-- **Operations-log / diagnostics noise cleanup.** Keep useful technical evidence while removing obsolete, duplicate, or confusing development-only noise.
-- **About/version/build/documentation consistency.** Finalize version/build display, About information, README/state docs and release notes during release preparation.
-- **Release distribution + permanent signing decision.** Debug Actions APKs remain the QA route. Permanent signing/distribution stays last-stage work; never commit a permanent private signing key.
+### #275 player-menu changes
+- Replaces stock Android PopupMenu spacing with one custom anchored PopupWindow family using 42dp rows and compact vertical inset.
+- Main gear, Video Quality, Audio, Volume/Mute and Playback speed now use the same compact anchored menu style.
+- Diagnostics remains a full selectable/copyable dialog.
+- Approved #249 colors/resources are reused; palette itself was not changed.
+- Exact `[tabs] [gear] [fullscreen]`, controller auto-hide, no visible ±10 buttons, fullscreen logic and same-player Audio/Volume/Speed behavior are preserved.
 
-### Historical deferred idea to revisit, not automatically implement
-- **Dedicated “Return to existing Vivaldi task/tab” action.** Later Back-flow QA and the persistent dashboard may have partly superseded it. Revisit as a UX decision rather than silently adding a new button.
+### #275 truthful quality verification
+- Existing quality-switch algorithms/policy are preserved; the patch changes UI/verification, not resolution policy.
+- yt-dlp manual choices remain Auto, 1080p, 720p, 480p, 360p and still call the existing resolver quality-change method.
+- Browser adaptive choices still use the existing Media3 track override method; browser sibling variants still use the existing source-switch method.
+- The compact Quality menu includes a non-clickable **Actual** row.
+- Manual requests are persisted separately as the user's requested quality.
+- Actual quality is written only from Media3 evidence, not from the request label.
+- `Player.Listener.onVideoSizeChanged` is the strongest runtime evidence for adaptive playback.
+- New `PlayerVideoFormatCompat.kt` supplies a conservative fallback for pinned Media3 1.10.1: it reports a selected format only if selected video tracks resolve to exactly one height; adaptive multi-height selections return null rather than pretending the highest available rendition is active.
+- Manual quality can therefore report `480p ✓` only when the observed/selected height confirms 480p; otherwise it can report requested 480p with a different actual height.
 
-### Deferred items now promoted/completed
-- **App-level Volume/Mute**: implemented in #264 and included in mostly-successful device QA.
-- **Brave Mobile evaluation**: #264 compatibility PASS without Brave-specific code.
-- multi-video tabs/per-tab titles, persistent tabs, Recently Closed, automatic selection/manual fallback, playback speed, language selector/localization, launcher/logo refinement and current loading/UI work are already implemented/substantially absorbed.
+### #275 DNS recovery polish
+- `PlayerRecoveryProvider` detects `UnknownHostException` in the playback-error cause chain only to improve explanation.
+- Shows bilingual “media host unavailable — DNS lookup failed” wording.
+- Recovery dialog explains Retry vs Refresh source for this case.
+- It never substitutes/rewrites the failed host.
+
+#275 intentionally does **not** modify resolver.py, candidate ranking, 720-first Auto policy, protected private-display BG classes, PlayerActivity's one-ExoPlayer creation, Vivaldi/Brave share architecture, or the approved palette.
+
+## Brave compatibility status
+Brave-as-is compatibility passed on #264. Keep generic Android `ACTION_SEND text/plain` share targets; no special Brave architecture. Vivaldi remains the primary protected regression baseline, with Brave a known-compatible smoke target.
+
+## Stored-for-later backlog — keep explicit
+- secure browser-based `Report log on GitHub` shortcut; never embed reusable GitHub credentials;
+- safe stale/dead historical code cleanup only after proving paths unused;
+- operations-log/diagnostics noise cleanup;
+- About/version/build/README/release-note consistency;
+- final distribution + permanent signing decision; never commit permanent signing material;
+- revisit rather than automatically implement the old dedicated “Return to existing Vivaldi task/tab” idea.
+
+Promoted/completed: app-level Volume/Mute is in #264; Brave compatibility passed without special code.
 
 ## Current priority
-1. Next focused player polish should: convert **Video Quality** from centered AlertDialogs to the compact anchored menu style; slightly reduce vertical menu/submenu padding/height; and add truthful requested-vs-actual quality verification so manual 480p can be proven rather than assumed.
-2. Preserve all successful #264 behavior, especially Recents privacy, fullscreen, Audio/Volume/Speed, stale-source Refresh, Brave compatibility, #234 BG architecture, one ExoPlayer, 720-first auto policy and #249 palette.
-3. Treat the rare HH `UnknownHostException` child-host case as a source-availability edge case. Improve recovery wording/diagnostics only if useful; do not add guessed host rewrites or bypass behavior.
-4. After this small quality/menu polish settles, run final PH technical regression, HH technical regression, both Vivaldi share-target regressions, plus a small Brave smoke regression; then proceed to hardening/diagnostics cleanup and release-readiness work.
+1. Device-test Build #275 specifically for compact menu sizing/style, compact Video Quality UI, and truthful manual-quality verification, especially 480p.
+2. If the rare HH DNS-failing source is still conveniently available, verify the clearer DNS wording/Retry/Refresh UI; do not require that dead upstream host to become playable.
+3. Preserve/regression-check successful #264 behavior rather than redesigning it.
+4. If #275 is accepted, consider player UI settled and run final PH technical regression, HH technical regression, both Vivaldi share-target regressions and a small Brave smoke regression.
+5. Then proceed to general hardening, diagnostics/log cleanup, stored-for-later cleanup and release-readiness work.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
