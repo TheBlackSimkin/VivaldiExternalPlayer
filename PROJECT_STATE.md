@@ -49,21 +49,22 @@ User device result: **all requested #242 structural/UI behaviors worked as expec
    - white `#FFFFFF`.
    The next visual iteration should move away from the red-heavy #242 accent system and explore a purple/charcoal/white palette derived from the logo.
 
-2. **Important player-control correction.** The user meant Quality and Diagnostics to live in the **player gear menu that is part of the video controller overlay**. The tab-count square belongs to that same controller visibility lifecycle.
-   - **Placement:** tab count and gear belong in the lower transport-control area, immediately to the left of Media3's fullscreen control, not in the top-right corner of the video.
-   - Intended lower control row is conceptually: rewind/seek-back on the left, seek-forward toward the middle/right, then `[tab count] [gear] [fullscreen]` on the right.
-   - The seek bar/timestamps remain above this lower row, matching the user's wireframe.
-   - When the Media3/video controls are visible: show tab-count + gear together with the transport UI.
-   - When the player controls auto-hide: tab-count and gear must also disappear.
-   - Hidden-controls state should leave a clean video surface with no persistent app chrome.
-   - Tapping the video should bring the normal controller overlay, tab count and gear back together.
-   - Gear menu contains Quality and Diagnostics; existing underlying behaviors should be reused, not reimplemented.
+2. **Player control layout is now explicitly defined.** Quality and Diagnostics live in the **player gear menu that is part of the Media3/video controller overlay**. The tab-count square belongs to that same controller visibility lifecycle.
+   - **Placement:** tab count and gear live in the lower transport-control area immediately to the left of Media3's fullscreen control.
+   - Conceptual right-side order: `[tab count] [gear] [fullscreen]`.
+   - Seek bar/timestamps remain on the row above.
+   - **Do not show dedicated seek-back/seek-forward buttons.** Keep the existing double-tap left/right gesture for ±10 seconds instead, preserving a cleaner transport row.
+   - When controller controls are visible: show tab-count + gear + fullscreen with the normal transport UI.
+   - When controls auto-hide: tab-count and gear disappear too, leaving a clean video surface with no persistent app chrome.
+   - Tapping video restores the controller overlay and these controls together.
+   - Gear menu contains existing Quality and Diagnostics actions; reuse existing behavior rather than reimplement it.
+   - A **restart/go-to-beginning** action should not be shown during normal playback. It should appear only after the video reaches the ended state, acting as a replay/restart control.
 
-This revised placement is technically feasible and maps cleanly to Media3 controller visibility. No app-code change has been made for this clarification yet.
+This layout/behavior is technically feasible with Media3 controller visibility and playback-state callbacks. No app-code change has been made for this clarification yet.
 
 ## Current priority
-1. Treat the user's lower-row player wireframe as the approved placement concept.
-2. Implement the logo-derived purple palette and controller-bound lower-row tab-count/gear behavior.
+1. Treat the user's lower-row player layout and hidden-seek-button behavior as approved.
+2. Implement the logo-derived purple palette and controller-bound lower-row tab-count/gear behavior, preserving double-tap ±10s and adding restart only in ended state.
 3. Continue visual iteration based on user feedback; do not run deep PH/HH regression until UI settles.
 4. Then final PH/HH + both Vivaldi share-target regression, hardening, diagnostics cleanup, docs/version/release work.
 
