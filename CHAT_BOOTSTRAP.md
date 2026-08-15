@@ -22,32 +22,30 @@ Approved structural direction:
 - grouped Settings, About inside Settings;
 - collapsible manual URL;
 - deliberate state/empty/error UI;
-- square tab count + player gear with Quality + Diagnostics inside gear;
-- consistent icons/buttons, minimal animation and clean sans-serif typography.
+- consistent icons/buttons, minimal animation and clean sans-serif typography;
+- palette should shift toward the logo identity: purple `#B05CFF`, charcoal `#17191F`, white.
 
 ## Build #242 — first UI pass
 UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 PASS; APK SHA-256 `ac3e04a27525ffe063219da59e9165b26732b3fc834eafedfc08731dd7695838`.
 User reports **results as expected** for the requested #242 structure/functionality.
 
-### Current user feedback / correction
-- Palette: user wants stronger use of the actual logo colors. Launcher mark uses purple `#B05CFF`, charcoal `#17191F`, and white. Next UI iteration should explore that identity instead of #242's red-heavy accent.
-- Player: tab-count and gear are part of the **video controller overlay visibility**, not permanently floating over video.
-- Placement is now explicit from the user's approved wireframe:
-  - both controls live in the **lower transport-control row**;
-  - they sit immediately to the **left of fullscreen**;
-  - conceptual right-side order is `[tab count] [gear] [fullscreen]`;
-  - rewind/seek-back and seek-forward remain earlier in that row;
-  - seek bar and timestamps remain on the row above;
-  - controls visible -> transport UI + tab-count + gear visible;
-  - controls auto-hide -> tab-count + gear disappear too;
-  - hidden state -> clean video only;
-  - tap video -> normal controller plus tab-count/gear return together;
-  - gear menu contains existing Quality and Diagnostics actions.
-- This layout is technically feasible with Media3 controller visibility. No app-code change for this clarification yet.
+### Current player UI specification
+- Tab-count and gear are part of the **Media3/video controller overlay**, not permanently floating over video.
+- Both live in the **lower transport-control row**, immediately to the left of fullscreen.
+- Conceptual right-side order: `[tab count] [gear] [fullscreen]`.
+- Seek bar/timestamps remain on the row above.
+- **Do not show dedicated rewind/forward buttons.** Preserve the existing double-tap left/right ±10s behavior instead.
+- Controls visible -> normal transport UI + tab count + gear + fullscreen.
+- Controls auto-hide -> tab count + gear disappear too; hidden state is clean video only.
+- Tap video -> normal controller plus tab-count/gear return together.
+- Gear menu contains the existing Quality and Diagnostics actions.
+- **Restart/go to start** is not visible during normal playback; it appears only after playback reaches the ended state, as the replay/restart action.
+- This behavior is technically feasible using Media3 controller visibility and playback-state callbacks.
+- No app-code change for these latest player clarifications yet.
 
 ## Next
-1. Treat the lower-row wireframe as the approved player placement concept.
-2. Implement controller-bound lower-row tab-count/gear + logo-derived purple palette.
+1. Implement controller-bound lower-row tab-count/gear with no visible ±10s buttons, plus ended-state restart only.
+2. Apply logo-derived purple/charcoal/white palette.
 3. Continue visual iteration; defer deep PH/HH regression until UI settles.
 
 ## QA format
