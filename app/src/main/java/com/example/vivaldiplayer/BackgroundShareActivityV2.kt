@@ -8,35 +8,22 @@ import android.widget.Toast
 /**
  * Exported chooser target for "BG - External Player".
  *
- * Builds #205 and #212 taught us two separate Android lifecycle limits on the
- * real test phone:
+ * Device QA established that the physical/default-display preparation Activity
+ * is not reliable enough for this job:
+ * - #205: when intentionally stopped behind Vivaldi, Android destroyed it almost
+ *   immediately;
+ * - #225: alpha=0 removed the flash, but the focusable Activity still blocked
+ *   Vivaldi for about seven seconds;
+ * - #227: NOT_TOUCHABLE + NOT_FOCUSABLE could look clean for one share, but
+ *   repeated shares still reproduced Vivaldi freezing.
  *
- * 1. moving the preparation Activity behind Vivaldi makes it STOPPED, and this
- *    phone destroys that stopped Activity almost immediately;
- * 2. a normal third-party app cannot launch the first Activity onto its own
- *    untrusted virtual display without privileged activity-embedding rights.
+ * Therefore this exported Activity is now only a very short user-share handoff.
+ * It creates the persistent tab and asks the foreground service to own the real
+ * preparation session. The service creates a WebView inside a Presentation on an
+ * app-private virtual display; no preparation Activity/window is added to the
+ * phone's physical display.
  *
- * The current handoff therefore uses the ordinary/default display, but does NOT
- * move the real preparation Activity behind Vivaldi. Instead the preparation
- * Activity remains RESUMED with a fully transparent window. Build #225 proved
- * alpha=0.0 removes the visible flash but a focusable host can still leave
- * Vivaldi unresponsive for several seconds, so the application lifecycle hook
- * now also makes that window NOT_FOCUSABLE as well as NOT_TOUCHABLE.
- *
- * The intent is deliberately narrow: keep the WebView host lifecycle which
- * already achieved automatic PH preparation, while returning user input focus
- * to the browser underneath. Real-device QA decides whether browser discovery
- * continues to work without window focus.
- *
- * This exported Activity itself is intentionally tiny. It only:
- * - validates the shared URL;
- * - creates the persistent tab immediately at share time;
- * - starts the short foreground process lease;
- * - starts BackgroundVirtualPreparationActivity in this same excluded task;
- * - finishes itself (but does NOT remove the task, because the preparer now owns it).
- *
- * Despite its historical class name, BackgroundVirtualPreparationActivity is no
- * longer launched on a virtual display by the normal BG path.
+ * This Activity never resolves media and never creates PlayerActivity/ExoPlayer.
  */
 class BackgroundShareActivityV2 : Activity() {
 
@@ -47,79 +34,50 @@ class BackgroundShareActivityV2 : Activity() {
         val sourceUrl = extractSharedUrl(intent).orEmpty()
         if (!isHttpUrl(sourceUrl)) {
             Toast.makeText(applicationContext, R.string.status_complete_url, Toast.LENGTH_SHORT).show()
-            finish()
+            finishAndRemoveTask()
             overridePendingTransition(0, 0)
             return
         }
 
         val tab = VideoTabStore.createPendingTab(sourceUrl)
         val tabId = tab.id
-        val sessionToken = "overlay-$tabId-${System.currentTimeMillis()}"
+        val sessionToken = "private-$tabId-${System.currentTimeMillis()}"
 
         VideoTabStore.markPreparationRequested(tabId)
-        VideoTabStore.markTechnicalStage(tabId, "PRIMARY_OVERLAY_SESSION_REQUESTED")
+        VideoTabStore.markTechnicalStage(tabId, "PRIVATE_PRESENTATION_SERVICE_REQUESTED")
 
         OperationLog.record(
             this,
-            event = "BG_SHARE_OVERLAY_HANDOFF_STARTED",
+            event = "BG_SHARE_PRIVATE_SERVICE_HANDOFF_STARTED",
             tabId = tabId,
             detail = "token=$sessionToken"
         )
 
         /*
-         * The foreground service does not resolve or play anything. It only keeps
-         * the process important while the user-requested preparation Activity owns
-         * yt-dlp/WebView work.
+         * The foreground service now owns both process importance and the
+         * non-Activity private-display preparation host. Supplying tabId + URL is
+         * what distinguishes this normal V2 path from older lease-only callers.
          */
-        BackgroundPreparationKeepAliveService.acquire(applicationContext, sessionToken)
+        BackgroundPreparationKeepAliveService.acquire(
+            context = applicationContext,
+            token = sessionToken,
+            tabId = tabId,
+            sourceUrl = sourceUrl
+        )
 
-        val preparationIntent = Intent(this, BackgroundVirtualPreparationActivity::class.java)
-            .putExtra(BackgroundVirtualPreparationActivity.EXTRA_URL, sourceUrl)
-            .putExtra(BackgroundVirtualPreparationActivity.EXTRA_TAB_ID, tabId)
-            .putExtra(BackgroundVirtualPreparationActivity.EXTRA_SESSION_TOKEN, sessionToken)
-            .addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
-
-        val launched = runCatching {
-            /*
-             * Deliberately launch in this same task on the DEFAULT display.
-             * Do not use ActivityOptions.launchDisplayId and do not move the task
-             * behind Vivaldi. Keeping the preparer top/resumed is the lifecycle
-             * fix; TabbedPlayerApplication makes its window transparent,
-             * non-touchable and non-focusable so it should not own user input.
-             */
-            startActivity(preparationIntent)
-            true
-        }.getOrElse { error ->
-            OperationLog.record(
-                this,
-                event = "PRIMARY_OVERLAY_PREP_LAUNCH_FAILED",
-                tabId = tabId,
-                detail = error.message ?: error.toString()
-            )
-            false
-        }
-
-        if (!launched) {
-            BackgroundPreparationKeepAliveService.release(sessionToken)
-            VideoTabStore.markError(tabId, "Could not launch transparent BG preparation Activity")
-            VideoTabStore.markTechnicalStage(tabId, "PRIMARY_OVERLAY_PREP_LAUNCH_FAILED")
-        } else {
-            VideoTabStore.markTechnicalStage(tabId, "PRIMARY_OVERLAY_PREP_LAUNCH_REQUESTED")
-            OperationLog.record(
-                this,
-                event = "PRIMARY_OVERLAY_PREP_LAUNCH_REQUESTED",
-                tabId = tabId
-            )
-        }
+        OperationLog.record(
+            this,
+            event = "PRIVATE_PRESENTATION_SERVICE_REQUESTED",
+            tabId = tabId
+        )
 
         Toast.makeText(applicationContext, R.string.added_to_external_player, Toast.LENGTH_SHORT).show()
 
         /*
-         * IMPORTANT: use finish(), NOT finishAndRemoveTask(). The preparation
-         * Activity was just launched into this task and must remain alive as its
-         * new root until it reaches READY/ERROR/NEEDS_ATTENTION.
+         * There is no longer a preparation Activity in this task. Remove the
+         * share handoff task immediately so Android can restore Vivaldi normally.
          */
-        finish()
+        finishAndRemoveTask()
         overridePendingTransition(0, 0)
     }
 
