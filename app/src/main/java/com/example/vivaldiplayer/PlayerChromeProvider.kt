@@ -76,8 +76,9 @@ class PlayerChromeProvider : ContentProvider() {
         private const val CONTROL_SIZE_DP = 44
         private const val CONTROL_GAP_DP = 2
         private const val MENU_WIDTH_DP = 236
-        private const val MENU_ROW_HEIGHT_DP = 42
+        private const val MENU_ROW_HEIGHT_DP = 44
         private const val MENU_VERTICAL_INSET_DP = 4
+        private const val MENU_SCREEN_MARGIN_DP = 8
         private const val MUTED_EPSILON = 0.001f
         private const val QUALITY_VERIFY_DELAY_MS = 2_500L
 
@@ -332,9 +333,9 @@ class PlayerChromeProvider : ContentProvider() {
         }
 
         /**
-         * One compact anchored gear. All simple choice screens use the same dense
-         * 42dp-row popup, including Video Quality. Diagnostics remains a full
-         * dialog because its long selectable/copyable text genuinely needs space.
+         * One compact anchored gear. All simple choice screens use the same 44dp
+         * row popup, including Video Quality. Diagnostics remains a full dialog
+         * because its long selectable/copyable text genuinely needs space.
          */
         private fun showPlayerMenu(
             activity: PlayerActivity,
@@ -723,14 +724,12 @@ class PlayerChromeProvider : ContentProvider() {
             if (items.isEmpty() || activity.isFinishing || activity.isDestroyed) return
 
             val width = dp(activity, MENU_WIDTH_DP)
+            val rowHeight = dp(activity, MENU_ROW_HEIGHT_DP)
+            val verticalInset = dp(activity, MENU_VERTICAL_INSET_DP)
+            val popupHeight = (items.size * rowHeight) + (verticalInset * 2)
             val container = LinearLayout(activity).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(
-                    0,
-                    dp(activity, MENU_VERTICAL_INSET_DP),
-                    0,
-                    dp(activity, MENU_VERTICAL_INSET_DP)
-                )
+                setPadding(0, verticalInset, 0, verticalInset)
             }
 
             val popupBackground = GradientDrawable().apply {
@@ -740,10 +739,16 @@ class PlayerChromeProvider : ContentProvider() {
                 setStroke(dp(activity, 1), color(activity, R.color.app_outline))
             }
 
+            /*
+             * Build #275 used WRAP_CONTENT height and showAsDropDown from Media3's
+             * bottom controller row. Some Android builds clipped that popup to the
+             * few pixels remaining below the gear instead of flipping it upward.
+             * Give the popup an explicit height so placement is deterministic.
+             */
             val popup = PopupWindow(
                 container,
                 width,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                popupHeight,
                 true
             ).apply {
                 setBackgroundDrawable(popupBackground)
@@ -791,20 +796,42 @@ class PlayerChromeProvider : ContentProvider() {
                     row,
                     LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
-                        dp(activity, MENU_ROW_HEIGHT_DP)
+                        rowHeight
                     )
                 )
             }
 
             /*
-             * Align the popup's right edge with the gear. PopupWindow's dropdown
-             * positioning automatically flips above the anchor when bottom space
-             * is insufficient, which is normally the case for Media3's lower row.
+             * Position the complete menu above the lower-right gear ourselves.
+             * This avoids device-specific PopupWindow dropdown clipping while
+             * keeping the menu visually anchored to the same controller control.
              */
-            popup.showAsDropDown(
-                anchor,
-                anchor.width - width,
-                -dp(activity, MENU_VERTICAL_INSET_DP)
+            val anchorLocation = IntArray(2)
+            anchor.getLocationOnScreen(anchorLocation)
+            val visibleFrame = android.graphics.Rect()
+            activity.window.decorView.getWindowVisibleDisplayFrame(visibleFrame)
+            val margin = dp(activity, MENU_SCREEN_MARGIN_DP)
+
+            val minX = visibleFrame.left + margin
+            val maxX = (visibleFrame.right - width - margin).coerceAtLeast(minX)
+            val desiredX = anchorLocation[0] + anchor.width - width
+            val popupX = desiredX.coerceIn(minX, maxX)
+
+            val minY = visibleFrame.top + margin
+            val maxY = (visibleFrame.bottom - popupHeight - margin).coerceAtLeast(minY)
+            val desiredAboveY = anchorLocation[1] - popupHeight - margin
+            val desiredBelowY = anchorLocation[1] + anchor.height + margin
+            val popupY = if (desiredAboveY >= minY) {
+                desiredAboveY.coerceAtMost(maxY)
+            } else {
+                desiredBelowY.coerceIn(minY, maxY)
+            }
+
+            popup.showAtLocation(
+                activity.window.decorView,
+                Gravity.TOP or Gravity.START,
+                popupX,
+                popupY
             )
         }
 
