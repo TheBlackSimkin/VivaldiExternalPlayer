@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Etiquetas del menú combinado del reproductor añadidas tras la prueba #249. -->
+    <string name="player_audio">Audio</string>
+    <string name="audio_auto">Audio — Automático</string>
+    <string name="audio_track_number">Pista de audio %1$d</string>
+    <string name="audio_tracks_unavailable">No hay pistas de audio seleccionables disponibles.</string>
+    <string name="playback_speed">Velocidad de reproducción</string>
+</resources>

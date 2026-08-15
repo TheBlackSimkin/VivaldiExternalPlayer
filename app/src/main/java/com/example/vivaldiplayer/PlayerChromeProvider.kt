@@ -9,37 +9,42 @@ import android.database.Cursor
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
-import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.PopupMenu
+import android.widget.Toast
 import androidx.annotation.OptIn
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.AppCompatImageButton
 import androidx.core.content.ContextCompat
+import androidx.media3.common.C
+import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.PlayerView
+import java.util.Locale
+import kotlin.math.abs
 
 /**
  * UI-only player chrome coordinator.
  *
- * PlayerActivity still owns the proven Quality and Diagnostics implementations,
- * and Media3 still owns playback, play/pause, the timeline, fullscreen and the
- * ended-state replay behavior. This provider only arranges presentation around
- * those existing pieces:
+ * The player itself remains owned by PlayerActivity/Media3. This provider only
+ * arranges ExternalPlayer-specific controls inside Media3's existing controller:
  *
- * - hide the legacy standalone Quality/Diagnostics buttons;
- * - keep Quality + Diagnostics behind one project gear menu;
- * - present the saved-tab count immediately to the left of that gear;
- * - place both controls in the same lower-right visual band as fullscreen;
- * - hide/show both controls with Media3's own controller visibility;
- * - hide Media3's visible rewind/fast-forward buttons because ±10 seconds is
- *   intentionally provided by GesturePlayerView's left/right double-tap gesture.
+ * - visible ±10 second buttons are removed because GesturePlayerView already
+ *   provides the agreed left/right double-tap seek behavior;
+ * - the saved-tab count and one ExternalPlayer gear are inserted directly into
+ *   Media3's real lower control row, immediately before fullscreen;
+ * - because these controls become children of Media3's controller, they inherit
+ *   its normal show/auto-hide/end-of-video behavior without a parallel timer;
+ * - the one gear combines ExternalPlayer Quality/Diagnostics with the Audio and
+ *   Playback speed functions which were previously supplied by Media3's own gear.
  *
- * Nothing here creates a Player, starts background playback, resolves a source,
- * changes track selection policy, or modifies the protected private-display BG
- * preparation architecture.
+ * Audio and speed operate on the SAME Player instance exposed by PlayerView.
+ * Nothing here creates a second ExoPlayer, changes resolver policy, starts
+ * background playback, or touches the protected private-display preparation path.
  */
 @OptIn(UnstableApi::class)
 class PlayerChromeProvider : ContentProvider() {
@@ -53,16 +58,16 @@ class PlayerChromeProvider : ContentProvider() {
     private object PlayerChromeLifecycle : Application.ActivityLifecycleCallbacks {
         private const val EXISTING_TAB_BUTTON_TAG = "vivaldi_external_player_tabs_button"
         private const val GEAR_BUTTON_TAG = "vivaldi_external_player_gear_button"
-
-        /*
-         * Media3's standard fullscreen control occupies the far-right bottom slot.
-         * Keep our two 44dp controls immediately to its left, matching the agreed
-         * wireframe without replacing Media3's controller layout.
-         */
         private const val CONTROL_SIZE_DP = 44
-        private const val CONTROL_BOTTOM_MARGIN_DP = 2
-        private const val FULLSCREEN_SLOT_DP = 48
-        private const val CONTROL_GAP_DP = 4
+        private const val CONTROL_GAP_DP = 2
+
+        /** One concrete supported Media3 audio track shown by the Audio chooser. */
+        private data class AudioChoice(
+            val group: Tracks.Group,
+            val trackIndex: Int,
+            val label: String,
+            val selected: Boolean
+        )
 
         override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
             if (activity is PlayerActivity) {
@@ -73,8 +78,9 @@ class PlayerChromeProvider : ContentProvider() {
         override fun onActivityResumed(activity: Activity) {
             if (activity is PlayerActivity) {
                 /*
-                 * Re-attach on resume so tab counts and controller visibility are
-                 * refreshed after returning from the dashboard or a popup/dialog.
+                 * Refresh count/order after returning from the dashboard or from
+                 * a dialog. Re-running attach is idempotent: existing controls are
+                 * re-parented rather than duplicated.
                  */
                 activity.window.decorView.postDelayed({ attach(activity) }, 80L)
             }
@@ -88,7 +94,7 @@ class PlayerChromeProvider : ContentProvider() {
             val qualityButton = activity.findViewById<Button>(R.id.quality_button) ?: return
             val diagnosticsButton = activity.findViewById<Button>(R.id.diagnostics_button) ?: return
 
-            /* Existing click listeners and PlayerActivity behavior remain untouched. */
+            /* Existing PlayerActivity handlers remain the owners of these actions. */
             qualityButton.visibility = View.GONE
             diagnosticsButton.visibility = View.GONE
 
@@ -104,24 +110,23 @@ class PlayerChromeProvider : ContentProvider() {
                         qualityButton = qualityButton,
                         diagnosticsButton = diagnosticsButton,
                         playerView = playerView
-                    ).also { button ->
-                        activity.addContentView(button, gearLayoutParams(activity))
-                    }
+                    )
 
-            /* Re-apply layout in case configuration/fullscreen changes replaced params. */
-            tabButton.layoutParams = tabLayoutParams(activity)
-            gear.layoutParams = gearLayoutParams(activity)
-
-            bindToControllerVisibility(playerView, tabButton, gear)
+            /*
+             * IMPORTANT: do not position by screen margins. The #249 device pass
+             * showed that margin-based placement did not visually land in the
+             * requested corner. Re-parent both controls into Media3's actual
+             * horizontal control row immediately before fullscreen instead.
+             */
+            installBeforeFullscreen(
+                activity = activity,
+                playerView = playerView,
+                tabButton = tabButton,
+                gearButton = gear
+            )
         }
 
-        /**
-         * Keep the standard Media3 transport controller, but remove controls which
-         * conflict with the agreed ExternalPlayer interaction model.
-         *
-         * Rewind/fast-forward remain fully functional via double-tap because
-         * GesturePlayerView calls Player.seekBack()/seekForward() directly.
-         */
+        /** Keep gesture seeking but remove the two dedicated visible seek buttons. */
         private fun configureMedia3Controls(playerView: GesturePlayerView) {
             hideControlAndWrapper(
                 playerView,
@@ -133,9 +138,9 @@ class PlayerChromeProvider : ContentProvider() {
             )
 
             /*
-             * Media3 can expose its own settings gear. ExternalPlayer intentionally
-             * has one gear whose menu is limited to Quality and Diagnostics, so the
-             * library gear is hidden to avoid two adjacent settings affordances.
+             * Media3's old gear provided Audio and Playback speed. We hide that
+             * duplicate gear only after explicitly restoring those two functions
+             * in ExternalPlayer's combined gear menu below.
              */
             playerView.findViewById<View>(androidx.media3.ui.R.id.exo_settings)
                 ?.visibility = View.GONE
@@ -144,14 +149,85 @@ class PlayerChromeProvider : ContentProvider() {
         private fun hideControlAndWrapper(playerView: GesturePlayerView, controlId: Int) {
             val control = playerView.findViewById<View>(controlId) ?: return
             control.visibility = View.GONE
-
-            /*
-             * The amount-labelled seek controls sit inside a wrapping FrameLayout.
-             * Hiding the wrapper as well prevents an invisible 48dp gap around the
-             * center play/pause button.
-             */
             (control.parent as? View)?.visibility = View.GONE
         }
+
+        /**
+         * Insert [tab count] [gear] immediately before Media3's fullscreen slot.
+         *
+         * Some Media3 layouts wrap a button in a small FrameLayout. To remain
+         * robust across its normal/minimal controller layouts, walk upward from
+         * the fullscreen view until we reach the nearest horizontal LinearLayout,
+         * then insert before the direct child branch containing fullscreen.
+         */
+        private fun installBeforeFullscreen(
+            activity: PlayerActivity,
+            playerView: GesturePlayerView,
+            tabButton: Button,
+            gearButton: AppCompatImageButton
+        ) {
+            val fullscreen =
+                playerView.findViewById<View>(androidx.media3.ui.R.id.exo_fullscreen)
+                    ?: return
+
+            val row = nearestHorizontalRow(playerView, fullscreen) ?: return
+            val fullscreenSlot = directChildUnder(row, fullscreen) ?: return
+
+            removeFromCurrentParent(tabButton)
+            removeFromCurrentParent(gearButton)
+
+            val fullscreenIndex = row.indexOfChild(fullscreenSlot)
+            if (fullscreenIndex < 0) return
+
+            row.addView(
+                tabButton,
+                fullscreenIndex,
+                controlLayoutParams(activity)
+            )
+            row.addView(
+                gearButton,
+                fullscreenIndex + 1,
+                controlLayoutParams(activity)
+            )
+        }
+
+        private fun nearestHorizontalRow(
+            playerView: GesturePlayerView,
+            descendant: View
+        ): LinearLayout? {
+            var parent = descendant.parent as? ViewGroup
+            while (parent != null && parent !== playerView) {
+                if (parent is LinearLayout && parent.orientation == LinearLayout.HORIZONTAL) {
+                    return parent
+                }
+                parent = parent.parent as? ViewGroup
+            }
+            return null
+        }
+
+        private fun directChildUnder(ancestor: ViewGroup, descendant: View): View? {
+            var current: View = descendant
+            var parent = current.parent as? ViewGroup
+
+            while (parent != null && parent !== ancestor) {
+                current = parent
+                parent = current.parent as? ViewGroup
+            }
+
+            return current.takeIf { parent === ancestor }
+        }
+
+        private fun removeFromCurrentParent(view: View) {
+            (view.parent as? ViewGroup)?.removeView(view)
+        }
+
+        private fun controlLayoutParams(activity: Activity): LinearLayout.LayoutParams =
+            LinearLayout.LayoutParams(
+                dp(activity, CONTROL_SIZE_DP),
+                dp(activity, CONTROL_SIZE_DP)
+            ).apply {
+                marginEnd = dp(activity, CONTROL_GAP_DP)
+            }
 
         private fun createGearButton(
             activity: PlayerActivity,
@@ -171,13 +247,13 @@ class PlayerChromeProvider : ContentProvider() {
                 setPadding(dp(activity, 10), dp(activity, 10), dp(activity, 10), dp(activity, 10))
 
                 setOnClickListener {
-                    /* Keep the controller alive while its child menu is being used. */
                     playerView.showController()
                     showPlayerMenu(
                         activity = activity,
                         anchor = this,
                         qualityButton = qualityButton,
-                        diagnosticsButton = diagnosticsButton
+                        diagnosticsButton = diagnosticsButton,
+                        playerView = playerView
                     )
                 }
             }
@@ -203,77 +279,170 @@ class PlayerChromeProvider : ContentProvider() {
             )
         }
 
-        /**
-         * Media3 automatically hides its controller while playback continues and
-         * keeps it visible while paused/ended. Mirroring that exact visibility is
-         * what gives the user a clean video-only state without persistent app UI.
-         */
-        private fun bindToControllerVisibility(
-            playerView: GesturePlayerView,
-            tabButton: Button,
-            gearButton: AppCompatImageButton
-        ) {
-            fun applyVisibility(visible: Boolean) {
-                val target = if (visible) View.VISIBLE else View.GONE
-                tabButton.visibility = target
-                gearButton.visibility = target
-            }
-
-            applyVisibility(playerView.isControllerFullyVisible)
-            playerView.setControllerVisibilityListener(
-                PlayerView.ControllerVisibilityListener { visibility ->
-                    applyVisibility(visibility == View.VISIBLE)
-                }
-            )
-        }
-
-        private fun tabLayoutParams(activity: Activity): FrameLayout.LayoutParams =
-            FrameLayout.LayoutParams(
-                dp(activity, CONTROL_SIZE_DP),
-                dp(activity, CONTROL_SIZE_DP),
-                Gravity.BOTTOM or Gravity.END
-            ).apply {
-                bottomMargin = dp(activity, CONTROL_BOTTOM_MARGIN_DP)
-                marginEnd = dp(
-                    activity,
-                    FULLSCREEN_SLOT_DP +
-                        CONTROL_GAP_DP +
-                        CONTROL_SIZE_DP +
-                        CONTROL_GAP_DP
-                )
-            }
-
-        private fun gearLayoutParams(activity: Activity): FrameLayout.LayoutParams =
-            FrameLayout.LayoutParams(
-                dp(activity, CONTROL_SIZE_DP),
-                dp(activity, CONTROL_SIZE_DP),
-                Gravity.BOTTOM or Gravity.END
-            ).apply {
-                bottomMargin = dp(activity, CONTROL_BOTTOM_MARGIN_DP)
-                marginEnd = dp(activity, FULLSCREEN_SLOT_DP + CONTROL_GAP_DP)
-            }
-
+        /** One combined gear: Quality, Audio, Playback speed, Diagnostics. */
         private fun showPlayerMenu(
             activity: PlayerActivity,
             anchor: View,
             qualityButton: Button,
-            diagnosticsButton: Button
+            diagnosticsButton: Button,
+            playerView: GesturePlayerView
         ) {
+            val activePlayer = playerView.player
+
             PopupMenu(activity, anchor).apply {
                 val quality = menu.add(0, 1, 0, activity.getString(R.string.video_quality))
                 quality.isEnabled = qualityButton.isEnabled
-                menu.add(0, 2, 1, activity.getString(R.string.player_diagnostics))
+
+                val audio = menu.add(0, 2, 1, activity.getString(R.string.player_audio))
+                audio.isEnabled = activePlayer != null
+
+                val speed = menu.add(0, 3, 2, activity.getString(R.string.playback_speed))
+                speed.isEnabled = activePlayer != null
+
+                menu.add(0, 4, 3, activity.getString(R.string.player_diagnostics))
 
                 setOnMenuItemClickListener { item ->
                     when (item.itemId) {
                         1 -> qualityButton.performClick()
-                        2 -> diagnosticsButton.performClick()
+                        2 -> {
+                            showAudioDialog(activity, activePlayer)
+                            true
+                        }
+                        3 -> {
+                            showPlaybackSpeedDialog(activity, activePlayer)
+                            true
+                        }
+                        4 -> diagnosticsButton.performClick()
                         else -> false
                     }
                 }
                 show()
             }
         }
+
+        /**
+         * Restore Media3-style audio selection on the existing Player instance.
+         * "Auto" simply removes ExternalPlayer's audio override and lets Media3
+         * choose according to its normal track-selection parameters again.
+         */
+        private fun showAudioDialog(activity: PlayerActivity, activePlayer: Player?) {
+            if (activePlayer == null) return
+
+            val choices = collectAudioChoices(activity, activePlayer.currentTracks)
+            if (choices.isEmpty()) {
+                Toast.makeText(
+                    activity,
+                    R.string.audio_tracks_unavailable,
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+
+            val labels = mutableListOf(activity.getString(R.string.audio_auto))
+            labels += choices.map { it.label }
+
+            val selectedChoiceIndex = choices.indexOfFirst { it.selected }
+            val checkedIndex = if (selectedChoiceIndex >= 0) selectedChoiceIndex + 1 else 0
+
+            AlertDialog.Builder(activity)
+                .setTitle(R.string.player_audio)
+                .setSingleChoiceItems(labels.toTypedArray(), checkedIndex) { dialog, which ->
+                    dialog.dismiss()
+
+                    if (which == 0) {
+                        activePlayer.trackSelectionParameters =
+                            activePlayer.trackSelectionParameters
+                                .buildUpon()
+                                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                                .build()
+                        return@setSingleChoiceItems
+                    }
+
+                    val choice = choices[which - 1]
+                    val override = TrackSelectionOverride(
+                        choice.group.mediaTrackGroup,
+                        listOf(choice.trackIndex)
+                    )
+
+                    activePlayer.trackSelectionParameters =
+                        activePlayer.trackSelectionParameters
+                            .buildUpon()
+                            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                            .setOverrideForType(override)
+                            .build()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+
+        private fun collectAudioChoices(
+            activity: PlayerActivity,
+            tracks: Tracks
+        ): List<AudioChoice> {
+            val result = mutableListOf<AudioChoice>()
+            var fallbackNumber = 1
+
+            tracks.groups
+                .filter { group -> group.type == C.TRACK_TYPE_AUDIO }
+                .forEach { group ->
+                    for (index in 0 until group.length) {
+                        if (!group.isTrackSupported(index)) continue
+
+                        val format = group.getTrackFormat(index)
+                        val explicitLabel = format.label?.trim().orEmpty().takeIf { it.isNotBlank() }
+                        val languageLabel = format.language
+                            ?.trim()
+                            ?.takeIf { it.isNotBlank() && it != "und" }
+                            ?.let { tag -> Locale.forLanguageTag(tag).getDisplayLanguage(Locale.getDefault()) }
+                            ?.takeIf { it.isNotBlank() }
+
+                        val labelParts = listOfNotNull(explicitLabel, languageLabel).distinct()
+                        val label = if (labelParts.isNotEmpty()) {
+                            labelParts.joinToString(" • ")
+                        } else {
+                            activity.getString(R.string.audio_track_number, fallbackNumber)
+                        }
+
+                        result += AudioChoice(
+                            group = group,
+                            trackIndex = index,
+                            label = label,
+                            selected = group.isTrackSelected(index)
+                        )
+                        fallbackNumber += 1
+                    }
+                }
+
+            return result
+        }
+
+        /** Restore the familiar Media3 playback-speed choices in the combined gear. */
+        private fun showPlaybackSpeedDialog(activity: PlayerActivity, activePlayer: Player?) {
+            if (activePlayer == null) return
+
+            val speeds = listOf(0.5f, 0.75f, 1.0f, 1.25f, 1.5f, 1.75f, 2.0f)
+            val labels = speeds.map { speed -> speedLabel(speed) }.toTypedArray()
+            val currentSpeed = activePlayer.playbackParameters.speed
+            val checkedIndex = speeds.indices.minByOrNull { index ->
+                abs(speeds[index] - currentSpeed)
+            } ?: speeds.indexOf(1.0f)
+
+            AlertDialog.Builder(activity)
+                .setTitle(R.string.playback_speed)
+                .setSingleChoiceItems(labels, checkedIndex) { dialog, which ->
+                    activePlayer.setPlaybackSpeed(speeds[which])
+                    dialog.dismiss()
+                }
+                .setNegativeButton(R.string.cancel, null)
+                .show()
+        }
+
+        private fun speedLabel(speed: Float): String =
+            if (speed % 1f == 0f) {
+                "${speed.toInt()}×"
+            } else {
+                "${speed}×"
+            }
 
         private fun color(activity: Activity, resId: Int): Int =
             ContextCompat.getColor(activity, resId)
