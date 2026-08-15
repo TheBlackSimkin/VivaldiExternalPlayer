@@ -25,7 +25,7 @@ App-code commit `d6c1328823ce2027beecab7970b02420d1cffc7b`; APK SHA-256 `ca24f69
 Device QA PASS for PH BG/Vivaldi responsiveness, Auto 720-first, manual quality including 480p, playback sanity, HH technical smoke, Recently Closed functionality and language persistence.
 
 ## UI structure accepted from Build #242
-UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 PASS. User reported the requested structure/results as expected:
+UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 PASS. User accepted:
 - loose Vivaldi-inspired thumbnail tabs, 2 columns portrait / 3 landscape;
 - no technical lifecycle strings on normal cards;
 - dedicated Recently Closed thumbnail grid with fixed Recover all/Delete all;
@@ -35,11 +35,11 @@ UI commit `b1772047602a33ec5c50872459715bc28b7fdf8e`; Actions #242 PASS. User re
 
 ## Logo-derived palette — DEVICE PASS on Build #249
 Build #249 app/UI commit `cdbd30e01839cb8aa50e3c87d77d1802d04b0a28`; Actions #249 PASS; APK SHA-256 `837457a22956c4c70afc3a9bc9cde82de708086ef31c92cd02ac7bf79757ce1d`.
-User feedback: **“colors are perfect, love them”**. Treat this palette as approved/protected for the current UI iteration:
+User feedback: **“colors are perfect, love them”**. Treat this palette as approved/protected:
 - purple `#B05CFF` = brand/active accent;
 - charcoal `#17191F` family = principal surfaces;
 - white = primary content/text;
-- green/amber/red remain semantic success/attention/destructive colors.
+- green/amber/red = semantic success/attention/destructive only.
 Do not change this palette unless the user asks.
 
 ## Player-control specification
@@ -48,57 +48,19 @@ Do not change this palette unless the user asks.
 - Preserve `GesturePlayerView` left/right double-tap for `-10s / +10s`.
 - Exact lower-right order: `[tab count] [gear] [fullscreen]`.
 - Tab count opens the dashboard.
-- One combined ExternalPlayer gear contains: **Video quality, Audio, Playback speed, Diagnostics**.
+- One combined ExternalPlayer gear contains: **Video quality, Audio, Volume / mute, Playback speed, Diagnostics**.
 - Quality and Diagnostics reuse existing PlayerActivity handlers.
-- Audio and Playback speed operate on the same Media3 `Player` exposed by `PlayerView`; never create a second ExoPlayer.
+- Audio, app-level Volume/Mute and Playback speed operate on the same Media3 `Player` exposed by `PlayerView`; never create a second ExoPlayer.
+- App-level Volume/Mute changes only ExternalPlayer's Player volume relative to Android system media volume; it must not change global device volume.
 - Tab count + gear are children of Media3's controller so they auto-hide with it, leaving clean video only.
 - Preserve Media3 end-of-video replay behavior; do not add a separate permanent restart button.
 
-## Build #249 device feedback — PARTIAL
-Passed:
-- colors/palette: PASS and strongly approved.
-Needs correction:
-1. tab-count square + gear were not visually in the requested lower-right corner;
-2. hiding Media3's old gear also removed its familiar Audio and Playback speed options because #249's custom gear exposed only Quality + Diagnostics.
+## Build #251 — focused player-chrome correction: CI PASS / preliminary device checks
+App/UI commit `ac06833ab779c5404cdbd20f69dae1edd437e342`; Actions #251 run `31866740455`; artifact `9242257590`; APK SHA-256 `e77533748a797c3ab38055d88e8be72714f61ec69fff672329aa20fbedb841a0`.
 
-Decision:
-- stop positioning `[tabs] [gear]` by decor/screen margins;
-- physically insert them into Media3's real horizontal control row immediately before fullscreen;
-- restore Audio + Playback speed inside the one combined ExternalPlayer gear.
-
-## Build #251 — focused player-chrome correction: CI PASS, DEVICE QA PENDING
-App/UI commit `ac06833ab779c5404cdbd20f69dae1edd437e342`.
-GitHub Actions run #251 `31866740455`; build job `94968929823` compile PASS and debug artifact upload PASS.
-Artifact `9242257590` (`VivaldiExternalPlayer-debug-apk`).
-ZIP SHA-256 `2e0d3f42351c44258d07a6e1968e4573eaf8c41911576b29f184d2a1dcbf0362`.
-Debug APK size `35,568,537` bytes; APK SHA-256 `e77533748a797c3ab38055d88e8be72714f61ec69fff672329aa20fbedb841a0`.
-
-#251 changes are intentionally narrow:
-- approved #249 colors unchanged;
-- `PlayerChromeProvider` re-parents the existing tab-count button and one ExternalPlayer gear into Media3's nearest horizontal controller row immediately before `exo_fullscreen`;
-- visible rewind/fast-forward controls remain hidden; double-tap seek is unchanged;
-- combined gear menu order: Video quality, Audio, Playback speed, Diagnostics;
-- Audio chooser enumerates supported Media3 audio tracks and applies/removes `TRACK_TYPE_AUDIO` overrides on the existing Player;
-- Playback speed choices: 0.5×, 0.75×, 1×, 1.25×, 1.5×, 1.75×, 2× on the same Player;
-- bilingual English/Spanish player-menu strings added;
-- no resolver, source-selection, 720-first, private-display BG, palette, or player-creation code changed.
-
-CI compilation/resource linking proves the pinned Media3 version supports the fullscreen/control-row resource and Audio/speed APIs used here. Exact runtime placement and menu behavior still require device QA.
-
-## Build #251 early device feedback — PARTIAL, app code not changed yet
-User reported several findings before completing the full #251 checklist:
-- **Android Recents privacy QoL:** when the tab dashboard is the visible Activity, Android Recents shows the tab grid. Desired behavior is to hide that preview similarly to player mode. `PlayerActivity` already uses `FLAG_SECURE`; `MainActivity` currently does not. Prefer a Recents-only suppression path where supported so normal screenshots need not be disabled unnecessarily.
-- **Fullscreen omission:** the expected Media3 fullscreen button is not visible in player mode. Code audit confirms #251 only searches for `exo_fullscreen` as an insertion anchor; `PlayerActivity` does not register Media3's fullscreen-button listener, so the button can remain hidden. This is a concrete player-chrome fix, not a resolver/playback-architecture change.
-- **Gear presentation QoL:** user prefers the compact original Media3-style settings presentation rather than centered modal windows. Keep one combined gear and the same four functions, but move toward compact anchored settings/submenus rather than full centered dialogs where practical.
-- **Stale saved-tab recovery issue:** a tab saved overnight can fail because the previously resolved technical stream URL has expired. Current recovery `Retry` only prepares the same resolved source again, and the existing alternate/browser choice can also reuse stale candidates. This cannot obtain a fresh stream URL.
-- The tab store already persists the original page URL separately as `sourceUrl`, and `ResolvedMedia` also retains `webpageUrl`. Therefore a new recovery action can safely re-run normal preparation from the original page URL and replace the stale resolved payload in the **same tab** without changing the protected BG/quality architecture.
-- Proposed user-facing distinction: **Retry playback** = retry the current resolved stream for a short transient failure; **Refresh source** (name still open) = re-resolve the original page URL as a fresh load and repair the existing saved tab. Preserve the tab identity and saved position when technically possible.
-- The exact overnight Media3 error code was not saved, so do not over-classify that one incident. The stale-URL explanation is consistent with the current recovery implementation and persisted-tab model.
-
-## Build #251 preliminary working checks — CONTINUE TESTING
-User reports the following are working well so far, but they remain under continued testing rather than final sign-off:
-1. tab count is positioned properly beside the player controls;
-2. tab count opens the dashboard;
+Preliminary #251 device checks reported working well:
+1. tab count positioned properly beside the player controls;
+2. tab count opens dashboard;
 3. Audio works on the existing single ExoPlayer session;
 4. Playback speed works;
 5. Video quality works;
@@ -106,41 +68,81 @@ User reports the following are working well so far, but they remain under contin
 7. controller auto-hide removes all visible controls;
 8. double-tap left/right remains -10s/+10s;
 9. no visible dedicated ±10s buttons;
-10. Media3 natural end-of-video replay remains;
+10. Media3 natural end replay remains;
 11. approved #249 colors remain unchanged.
 
-No app-code implementation has been made for the newly reported Recents/fullscreen/gear/stale-source findings yet.
+Additional #251 findings requiring a follow-up:
+- dashboard image appeared in Android Recents;
+- fullscreen button was missing because no fullscreen listener was registered;
+- Audio/Speed submenus were centered dialogs rather than the preferred compact Media3-like presentation;
+- a saved tab could fail after its old resolved stream URL expired; Retry only retried the stale resolved URL.
+
+## Build #264 — focused UI/recovery + Volume/Mute: CI PASS / DEVICE QA PENDING
+Final app-code commit: `5b1906f1d43643a46458a77e2de67691c1f299c0`.
+GitHub Actions Build #264 run `31900203463`; build job `95049647214`.
+Compile/assemble: PASS. Debug APK upload: PASS.
+Artifact `9250881808` (`VivaldiExternalPlayer-debug-apk`).
+Artifact ZIP size `26,053,952` bytes; ZIP SHA-256 `26f3309098377d41fabdaad77b42033672999e5099bf154af13c4382e8bb8232`.
+Extracted debug APK size `35,570,425` bytes; APK SHA-256 `d110c4257f9d44c47820ac15627c7a577a0d54cc3f7a2a52dcf42f65e56784e0`.
+
+#264 is intentionally narrow and does **not** change resolver ranking, quality policy, private-display BG preparation, accepted palette, or PlayerActivity's one-ExoPlayer ownership.
+
+### #264 player/UI changes
+- On Android 13+, MainActivity uses Recents-only screenshot suppression so the tab dashboard should not appear in Overview/Recents; ordinary dashboard screenshots are not intentionally disabled.
+- Registers Media3's fullscreen callback and toggles system bars while using the existing PlayerActivity/player. Rotation behavior remains unchanged.
+- Keeps exact controller order `[tab count] [gear] [fullscreen]`.
+- Keeps visible ±10s buttons hidden; double-tap ±10s remains unchanged.
+- Combined gear is now: **Video quality, Audio, Volume / mute, Playback speed, Diagnostics**.
+- Audio and Playback speed submenus are compact anchored popup menus instead of centered option dialogs.
+- New app-level Volume/Mute submenu operates on the same existing Media3 Player with Mute/Unmute and 25/50/75/100% choices. It does not modify Android's global media volume.
+- Approved #249 colors are unchanged.
+
+### #264 stale-source recovery
+Recovery now distinguishes:
+- **Retry playback** = prepare/retry the current already-resolved stream URL, useful for a short transient failure;
+- **Refresh source** = re-resolve the original persisted page `sourceUrl` and repair the **same tab** when an old stream URL has expired.
+
+Refresh source:
+- preserves existing tab ID and saved playback position/play intention where practical;
+- prevents PlayerActivity's pause-time persistence from writing the stale resolved payload back to READY;
+- marks the same tab queued and starts `BackgroundPreparationKeepAliveService.acquire(...)` with that tab ID/source URL;
+- therefore reuses the protected #234 service-owned private-display `Presentation/WebView` architecture rather than the older display-0 retry Activity;
+- creates no duplicate tab and no second ExoPlayer.
+
+CI proves the new Android/Media3 APIs and resources compile against the project's pinned dependency/SDK baseline. Runtime behavior still needs device QA.
+
+## Brave decision for #264 QA
+The user wants to test whether ExternalPlayer already works with **Brave Mobile as-is**.
+- Do **not** add Brave-specific code before this compatibility test.
+- Use the existing Android `ACTION_SEND text/plain` share targets (`ExternalPlayer` and `BG - External Player`) exactly as currently implemented.
+- If Brave passes, record compatibility without creating a special Brave architecture.
+- If Brave fails, capture the precise technical handoff/preparation behavior first and only then decide whether a focused compatibility change is justified.
+- Vivaldi remains the protected primary regression baseline.
 
 ## Recovered “store for later” backlog from project history
-Older authoritative state snapshots contained a larger deferred backlog which was compressed out as the project moved through #236/#242. Keep these items visible so they are not accidentally forgotten.
+Keep these items visible so they are not accidentally compressed out again.
 
 ### Still genuinely deferred
-- **App-level volume/mute control.** This is separate from #251's **Audio** track selector. The old requirement was an in-app volume/mute control; it has not been promoted into the next focused APK scope.
-- **Secure `Report log on GitHub` shortcut.** Keep ordinary full log sharing, but later add a convenient browser-based GitHub issue/report path without embedding a PAT, OAuth secret, repository write token, or other reusable credential in the APK.
-- **Brave Mobile evaluation.** Vivaldi remains the primary supported browser; evaluate Brave only after the Vivaldi flow/UI is mature and regression-stable.
-- **Stale historical/dead-path cleanup.** Remove obsolete Activity/provider/legacy preparation paths only after proving they are unused, and never disturb the protected #234/#236 architecture merely for cosmetic cleanup.
+- **Secure `Report log on GitHub` shortcut.** Keep ordinary full log sharing; later add a browser-based GitHub issue/report path without embedding a PAT, OAuth secret, repository write token, or other reusable credential in the APK.
+- **Stale historical/dead-path cleanup.** Remove obsolete Activity/provider/legacy preparation paths only after proving they are unused, and never disturb protected #234/#236 behavior merely for cosmetic cleanup.
 - **Operations-log / diagnostics noise cleanup.** Keep useful technical evidence while removing obsolete, duplicate, or confusing development-only noise.
 - **About/version/build/documentation consistency.** Finalize version/build display, About information, README/state docs and release notes during release preparation.
 - **Release distribution + permanent signing decision.** Debug Actions APKs remain the QA route. Permanent signing/distribution stays last-stage work; never commit a permanent private signing key.
 
 ### Historical deferred idea to revisit, not automatically implement
-- **Dedicated “Return to existing Vivaldi task/tab” action.** This was an explicit early requirement. Later device QA reported the tested Back flow working, and the app evolved into a persistent tab dashboard, so this may now be partly superseded. Keep the idea parked for a later UX decision rather than silently deleting it or adding a new button without user confirmation.
+- **Dedicated “Return to existing Vivaldi task/tab” action.** This was an explicit early requirement. Later Back-flow QA and the persistent dashboard may have partly superseded it. Revisit as a UX decision rather than silently adding a new button.
 
-### Older backlog items already completed or substantially absorbed by later work
-- multi-video tab/session system and per-tab titles;
-- persistent/open tabs and Recently Closed recovery;
-- automatic primary-video selection with manual fallback;
-- cleaner loading/ready/error UI and hidden BG preparation;
-- playback-speed control;
-- bilingual UI and persistent language selector;
-- launcher/logo refinement and the approved #249 color identity.
+### Deferred items now promoted/completed
+- **App-level Volume/Mute**: promoted into Build #264; device QA pending.
+- **Brave Mobile evaluation**: promoted into Build #264 compatibility QA; no Brave-specific code added.
+- multi-video tabs/per-tab titles, persistent tabs, Recently Closed, automatic selection/manual fallback, playback speed, language selector/localization, launcher/logo refinement and current loading/UI work are already implemented/substantially absorbed.
 
 ## Current priority
-1. Next APK should include the focused fixes: Recents privacy, restore working fullscreen control, compact Media3-like gear presentation, and fresh-source recovery for stale saved tabs.
-2. Preserve all eleven #251 behaviors currently working well; continue device testing them after the focused patch.
-3. Do not redesign unrelated UI or touch resolver/BG/720-first architecture.
-4. Keep #249 palette unchanged.
-5. After UI settles, run final PH/HH + both Vivaldi share-target regression, then general hardening and the recovered stored-for-later cleanup/release work above.
+1. Device-test Build #264's focused changes: Recents privacy, fullscreen, compact settings, Volume/Mute and stale-source Refresh source while preserving the eleven #251 working behaviors and #249 colors.
+2. On the same unchanged #264 APK, perform a small **Brave as-is compatibility smoke test** of the existing Android share targets. Do not add Brave-specific code first.
+3. Do not redesign unrelated UI or touch resolver/BG/720-first architecture during this test cycle.
+4. If #264 UI/recovery is accepted and Brave works as-is, consider UI settled unless the user requests more changes.
+5. After UI settles: final PH technical regression, HH technical regression, both Vivaldi share-target regressions, then hardening/diagnostics cleanup and release-readiness/stored-for-later work.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
