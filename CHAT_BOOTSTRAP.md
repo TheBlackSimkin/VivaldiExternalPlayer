@@ -17,7 +17,7 @@ Quality policy: exact 720p -> otherwise 1080p -> otherwise best below 1080p; >10
 ## BG architecture history
 #205: stopped preparation Activity was destroyed almost immediately; do not depend on a stopped WebView Activity behind Vivaldi.
 #212: private virtual display creation worked, but Android denied launching a normal app **Activity** onto it; do not retry Activity launch or request privileged `ACTIVITY_EMBEDDING`.
-#227: default-display transparent/nonfocusable preparation Activity remained nondeterministic and could still freeze Vivaldi on repeated shares; do not return to display-0 Activity tuning.
+#227: default-display transparent/nonfocusable preparation Activity remained nondeterministic and could freeze Vivaldi on repeated shares; do not return to display-0 Activity tuning.
 
 ## #234 private-display service architecture — DEVICE PASS
 App code `6cd8995ba615b8b70f83806bad9abca49a024034`; CI #234 PASS; APK SHA-256 `b6d921b2b1dd5f19c9c4b7b1763aad03476a901dc434ed9a05d84bb8a126c351`.
@@ -34,19 +34,27 @@ Key facts:
 - no PlayerActivity/Media3/ExoPlayer during prep;
 - no privileged embedding/overlay permission or access-control bypass.
 
-User repeated/multi-share QA on #234: **no issues detected**. Supplied log confirmed `private=true presentation=true`, `defaultDisplay=false type=PRIVATE_PRESENTATION`, private WebView creation, and no old display-0 prep Activity anchors in the excerpt. Keep this architecture as protected baseline.
+Repeated/multi-share QA on #234: **no issues detected**. Supplied log confirmed the isolated private-display path. Keep this architecture as protected baseline.
 
-## #236 Auto-quality fix — DEVICE PASS
+## #236 — CURRENT PH BASELINE, CORE DEVICE PASS
 App code `d6c1328823ce2027beecab7970b02420d1cffc7b`; CI #236 PASS run `31858887503`; artifact `9239902382`; APK SHA-256 `ca24f6943849853d4ba6580ceaf107b9795ebc8b943dc55ac28cdab66b8c3bff`.
 
-Only `ResolvedMedia.kt` changed from validated #234. Automatic browser payloads now select 720p if present, else 1080p, else highest below 1080p, else smallest >1080p rare fallback. Explicit numeric manual choices remain exact.
+Only `ResolvedMedia.kt` changed from #234. Automatic browser payloads select 720p if present, else 1080p, else highest below 1080p, else smallest >1080p rare fallback. Explicit numeric manual choices remain exact.
 
-Device result: user reported **no issues**. With both 1080p and 720p available, playback started at **720p**. Changing to other qualities worked. This closes the #225 Auto-1080 contradiction.
+Device QA:
+- user reported no issues;
+- with both 1080p and 720p available, playback started at **720p**;
+- changing to other qualities worked;
+- final manual-quality check on the same build was reported **“All worked perfectly.”** Treat manual 480p as PASS and closed unless a new regression appears;
+- supplied #236 log again confirmed private-display preparation (`private=true presentation=true`, `defaultDisplay=false type=PRIVATE_PRESENTATION`).
 
-Supplied #236 log identifies exact binary (`Git: d6c13288`, Actions 236) and again confirms private-display prep (`display=9`, `private=true presentation=true`, `defaultDisplay=false type=PRIVATE_PRESENTATION`). Excerpt stops before browser completion/READY; do not invent missing timings.
+PH core status is now PASS:
+- BG share / Vivaldi responsiveness;
+- automatic 720-first;
+- manual quality including 480p;
+- playback sanity.
 
-### Manual 480 remains only technically unverified
-User could not visually tell whether 480p was different and believed that was eyesight rather than app failure. Do not call 480 PASS/FAIL from appearance. Next check: select 480p and read the player diagnostics/reported actual height. If it says 480p and playback continues, close the blocker without code changes.
+Do not change PH BG/quality architecture without a new regression.
 
 ## Other backlog
 - Recently closed implemented but explicit device QA pending.
@@ -54,11 +62,9 @@ User could not visually tell whether 480p was different and believed that was ey
 - Secure GitHub log-report shortcut later; never embed GitHub PAT/token/client secret.
 
 ## Current priority
-1. On existing Build #236, verify manual 480p using technical reported height, not eyesight.
-2. If actual height=480p and playback continues, PH core BG/quality blockers are cleared.
-3. Then run one small HH technical smoke test: BG share, automatic prep, playback, Auto-quality sanity, and Vivaldi responsiveness. No content/imagery descriptions.
-4. If HH passes, test Recently closed and language persistence after reopen/restart.
-5. Then move to release hardening/regression rather than further architecture changes: PH/HH/share-target regression, operations-log/dead-path cleanup where safe, About/version/docs consistency, and later release signing/distribution decision.
+1. On unchanged Build #236, run one **HH technical smoke test**: BG share, automatic preparation, playback, Auto-quality sanity, and Vivaldi responsiveness. No content/imagery descriptions.
+2. If HH passes, test Recently closed and language persistence after reopen/restart.
+3. Then move to release hardening/regression rather than further architecture work: PH/HH/share-target regression, operations-log/dead-path cleanup where safe, About/version/docs consistency, and later release signing/distribution decision.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
