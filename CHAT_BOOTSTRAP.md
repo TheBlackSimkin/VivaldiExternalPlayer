@@ -65,14 +65,26 @@ Working well so far, but not final sign-off yet: tab-count placement; tab count 
 
 Next APK scope: Recents privacy, functional fullscreen, compact Media3-like gear presentation, and fresh-source recovery for stale saved tabs. Preserve the currently working #251 behaviors above. Deep PH/HH regression remains deferred until UI settles.
 
+## Recovered stored-for-later backlog
+Older project-state snapshots contained deferred items which were compressed out of the recent roadmap. Keep them explicitly parked:
+- app-level volume/mute control (separate from the Audio track selector);
+- secure browser-based `Report log on GitHub` shortcut with no embedded reusable GitHub credential;
+- Brave Mobile evaluation only after Vivaldi is mature/stable;
+- safe stale/dead historical code-path cleanup after proving paths unused;
+- operations-log/diagnostics noise cleanup;
+- About/version/build/README/release-note consistency;
+- final distribution and permanent signing decision, with private signing material never committed.
+
+Historical idea to revisit rather than automatically implement: a dedicated **Return to existing Vivaldi task/tab** action. It was an early explicit requirement, but later Back-flow QA and the persistent dashboard may have partly superseded it.
+
+Older backlog items already completed/substantially absorbed include the multi-tab/session system, per-tab titles, Recently Closed, automatic selection/manual fallback, playback speed, language selector/localization, launcher/logo refinement, and the current loading/UI work.
+
 ## Later-stage roadmap after UI settles
 - full PH technical regression;
 - full HH technical regression;
 - both Vivaldi share-target regressions;
 - general hardening;
-- diagnostics cleanup;
-- version/release preparation;
-- permanent signing/release work only at the final release stage.
+- then work through the recovered stored-for-later cleanup/release items above.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
