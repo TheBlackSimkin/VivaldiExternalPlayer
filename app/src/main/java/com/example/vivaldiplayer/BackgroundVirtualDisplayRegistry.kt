@@ -9,10 +9,15 @@ import android.os.Handler
 import android.os.HandlerThread
 
 /**
- * Owns the private off-screen displays used by BG preparation Activities.
+ * Owns the app-private off-screen displays used by BG preparation.
+ *
+ * #212 proved that creating this private display works on the real phone; what
+ * failed there was launching a normal Activity onto it. The post-#227 design
+ * reuses the successful display primitive but attaches a service-owned
+ * Presentation/WebView instead of an Activity.
  *
  * No image data is inspected, copied, classified or persisted. ImageReader is
- * used only as the required Surface sink for VirtualDisplay; frames are acquired
+ * used only as the Surface sink required by VirtualDisplay. Frames are acquired
  * and immediately closed without reading their planes so the renderer never
  * blocks on a full buffer queue.
  */
@@ -35,10 +40,10 @@ object BackgroundVirtualDisplayRegistry {
     }
 
     /**
-     * Create one private display and return its display ID.
+     * Create one private presentation display and return its display ID.
      *
-     * The display is OWN_CONTENT_ONLY and not PUBLIC, so only this app's UID may
-     * place windows on it. PRESENTATION marks it as a proper secondary display.
+     * OWN_CONTENT_ONLY keeps it private to this app instead of mirroring the
+     * physical display. PRESENTATION makes it suitable for Presentation windows.
      */
     fun create(context: Context, sessionToken: String): Int? {
         synchronized(lock) {
@@ -70,7 +75,7 @@ object BackgroundVirtualDisplayRegistry {
             reader.setOnImageAvailableListener({ source ->
                 /*
                  * Drain and close only. Never call Image.getPlanes(), never copy
-                 * pixels, and never save/render/analyse the off-screen content.
+                 * pixels, and never save/render/analyse off-screen content.
                  */
                 while (true) {
                     val image = runCatching { source.acquireLatestImage() }.getOrNull()
@@ -105,7 +110,7 @@ object BackgroundVirtualDisplayRegistry {
             OperationLog.record(
                 context,
                 event = "VIRTUAL_DISPLAY_CREATED",
-                detail = "token=$sessionToken display=${display.display.displayId} size=${width}x$height dpi=$densityDpi"
+                detail = "token=$sessionToken display=${display.display.displayId} size=${width}x$height dpi=$densityDpi private=true presentation=true"
             )
 
             return display.display.displayId
