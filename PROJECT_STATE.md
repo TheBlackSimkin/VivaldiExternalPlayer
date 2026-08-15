@@ -16,11 +16,11 @@ Preserve Vivaldi share targets; yt-dlp first/browser fallback; automatic/manual 
 Permanent release signing remains deferred. Debug GitHub Actions APKs are the QA path; never commit a permanent signing key.
 
 ## BG architecture history
-#205: stopped preparation Activity could be destroyed almost immediately even with foreground process importance.
-#212: app-private virtual display creation worked, but Android denied launching a normal app **Activity** onto it; do not retry Activity launch or request privileged `ACTIVITY_EMBEDDING`.
-#227: default-display transparent/nonfocusable preparation Activity remained nondeterministic and could freeze Vivaldi on repeated shares; do not return to display-0 Activity tuning.
+#205 proved a stopped preparation Activity could be destroyed almost immediately even with foreground process importance.
+#212 proved app-private virtual-display creation works, but Android denies launching a normal app **Activity** onto that display. Do not retry Activity launch there or request privileged `ACTIVITY_EMBEDDING`.
+#227 proved a default-display transparent/nonfocusable preparation Activity remained nondeterministic and could freeze Vivaldi on repeated shares. Do not return to display-0 Activity tuning.
 
-## Build #234 — service-owned private Presentation/WebView: DEVICE PASS
+## Build #234 — private-display service architecture: DEVICE PASS
 App-code head `6cd8995ba615b8b70f83806bad9abca49a024034`; Actions #234 PASS; APK SHA-256 `b6d921b2b1dd5f19c9c4b7b1763aad03476a901dc434ed9a05d84bb8a126c351`.
 
 Normal `BG - External Player` path:
@@ -35,9 +35,9 @@ Protected architecture facts:
 - no PlayerActivity/Media3/ExoPlayer during preparation;
 - no privileged embedding/overlay permission or access-control bypass.
 
-Repeated/multi-share device QA on #234 reported **no issues detected**. Supplied log confirmed the private path and no old display-0 prep Activity anchors in the excerpt. Decision: keep this architecture.
+Repeated/multi-share device QA on #234 reported **no issues detected**. Supplied log confirmed the private-display path and no old display-0 preparation-Activity anchors. Decision: keep this architecture as protected baseline.
 
-## Build #236 — PH core baseline: DEVICE PASS
+## Build #236 — current PH + HH core baseline: DEVICE PASS
 App-code commit `d6c1328823ce2027beecab7970b02420d1cffc7b`; CI #236 PASS run `31858887503`; artifact `9239902382`; APK SHA-256 `ca24f6943849853d4ba6580ceaf107b9795ebc8b943dc55ac28cdab66b8c3bff`.
 
 Compared with #234, only `ResolvedMedia.kt` changed. Automatic browser payloads are normalized before first playback source creation:
@@ -47,39 +47,47 @@ Compared with #234, only `ResolvedMedia.kt` changed. Automatic browser payloads 
 4. else smallest >1080p rare fallback.
 Explicit numeric manual choices remain exact and are not normalized back to Auto.
 
-### #236 device QA — PH CORE PASS
-User reported **no issues**. In a case where both 1080p and 720p were available, playback started at **720p**, closing the #225 Auto-1080 contradiction. User also reported manual switching to other qualities worked.
-
-Final PH manual-quality check was then repeated technically on the same #236 build and the user reported: **“All worked perfectly.”** Treat manual 480p as PASS: it was available/selectable, playback continued, and no app problem was observed. Do not reopen the 480 blocker without a new regression.
-
-Supplied #236 operations log identifies exact binary (`Git: d6c13288`, Actions 236) and again confirms the validated private-display BG architecture (`VIRTUAL_DISPLAY_CREATED ... private=true presentation=true`, `PRIVATE_PRESENTATION_CREATED ... defaultDisplay=false type=PRIVATE_PRESENTATION`). The excerpt stops before browser completion/READY; do not invent missing timestamps.
-
-### PH status
-The previously blocking PH items are now closed on-device:
-- BG share preparation without Vivaldi freeze: PASS;
-- automatic 720-first when 720 and 1080 are both available: PASS;
+### PH device QA — PASS
+- repeated BG sharing / Vivaldi responsiveness: PASS;
+- automatic 720-first with both 720p and 1080p available: PASS;
 - manual quality switching including 480p: PASS;
 - playback sanity: PASS.
+User reported the final manual-quality check **“All worked perfectly.”** Do not reopen PH BG/quality blockers without a new regression.
 
-Build #236 is now the protected PH baseline. Do not make further PH BG/quality architecture changes unless a real regression appears.
+### HH device smoke QA — PASS
+User ran the requested HH technical smoke test on the **unchanged Build #236** and reported **“All OK.”** Treat the requested HH smoke dimensions as PASS: BG share/Vivaldi responsiveness, automatic preparation, playback, Auto-quality sanity, and manual quality behavior where applicable. No new HH-specific code was needed.
 
-## Current UI/backlog
-- long-press tab reorder WORKS;
-- closing tabs WORKS;
-- resume position WORKS;
-- tested Back flow WORKS;
-- operations log PASS/useful;
-- icon PASS;
-- language selector/change PASS; reopen persistence still needs explicit confirmation;
-- Recently closed implemented but explicit device QA pending;
-- secure GitHub log-report shortcut later; never embed PAT/token/client secret.
+This is important evidence that the same #234/#236 private-display resolver/playback architecture generalizes across both current technical targets. Do not introduce target-specific architecture unless a concrete regression requires it.
+
+## Current product/UI status
+Verified working:
+- PH core BG + playback + automatic/manual quality;
+- HH technical smoke path;
+- long-press tab reorder;
+- closing tabs;
+- resume position;
+- tested Back flow;
+- operations log;
+- refreshed icon;
+- language selector/change itself.
+
+Still needing explicit device confirmation:
+- Recently Closed behavior/restoration/clear flow;
+- selected language persistence after app close/reopen/restart.
+
+Later hardening/backlog:
+- secure GitHub log-report shortcut; never embed PAT/token/client secret;
+- regression pass over both Vivaldi share targets and PH/HH;
+- operations-log noise cleanup;
+- stale historical/dead-path cleanup where safe, without disturbing protected architecture;
+- About/version/build consistency and documentation cleanup;
+- release signing/distribution decision later; permanent signing remains deferred unless explicitly chosen.
 
 ## Current priority / what comes next
-1. Use existing **Build #236** for one small **HH technical smoke test**: BG share, automatic preparation, playback, Auto-quality sanity, and Vivaldi responsiveness. Do not inspect or describe media imagery/content.
-2. If HH passes, test remaining product-state items: Recently closed behavior and language persistence after app reopen/restart.
-3. Then move from blocker-fixing to release hardening: regression pass over PH/HH/share targets, operations-log cleanup, stale historical/dead-path cleanup where safe, About/version consistency, documentation, and later decide release signing/distribution.
-4. Keep permanent signing deferred unless explicitly chosen.
-5. Do not make further BG architecture changes unless a real regression appears; #234/#236 private-display path is protected baseline.
+1. On unchanged Build #236, test **Recently Closed** end-to-end: close a tab, verify it appears, restore it, then test clear behavior.
+2. Test **language persistence**: change language, fully close/reopen the app (and if useful a normal process restart), verify selected language remains.
+3. If both pass, move into release-hardening/regression rather than feature/blocker repair.
+4. Do not change the private-display BG architecture or 720-first parser unless a real regression appears.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
