@@ -51,7 +51,16 @@ APK size `35,568,537`; APK SHA-256 `e77533748a797c3ab38055d88e8be72714f61ec69fff
 - bilingual strings added;
 - resolver/BG/720-first/player-creation architecture untouched.
 
-Next: focused device QA for exact corner placement, four gear actions, auto-hide and double-tap. Deep PH/HH regression remains deferred until UI settles.
+## #251 early device feedback — PARTIAL, no app-code patch yet
+- Android Recents currently exposes the tab dashboard preview. Desired QoL/privacy behavior: hide the dashboard from Recents similarly to player mode, preferably with Recents-only screenshot suppression where supported rather than unnecessarily blocking all screenshots.
+- Fullscreen button is missing. Code audit: #251 uses `exo_fullscreen` as the row anchor but `PlayerActivity` does not register Media3's fullscreen-button listener, so restoring a functional Media3 fullscreen control is a focused player-chrome fix.
+- User prefers the compact original Media3-style settings experience rather than centered modal option windows. Keep one combined gear with Quality, Audio, Playback speed, Diagnostics, but prefer compact anchored menus/submenus.
+- Overnight saved-tab failure exposed a stale-source case: `Retry` currently retries the already-resolved stream URL, which may have expired; returning to old detected candidates may be equally stale.
+- `VideoTabStore.VideoTab` already persists the original page URL as `sourceUrl` separately from `resolvedMediaJson`. A new recovery action can re-run normal preparation from `sourceUrl` and repair the same tab without changing the protected resolver/BG/quality architecture.
+- Proposed distinction: **Retry playback** = retry same resolved stream for short transient failures; **Refresh source** (working name) = re-resolve original page URL, replace stale resolved data in the same tab, and preserve saved position where possible.
+- Exact overnight Media3 error was not saved, so do not over-classify that incident.
+
+Next: discuss/confirm this focused follow-up scope before app-code changes. Remaining #251 QA is still incomplete. After a focused patch, verify placement, all four gear actions, Audio, speed, complete auto-hide, double-tap, fullscreen, end replay and protected colors. Deep PH/HH regression remains deferred until UI settles.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
