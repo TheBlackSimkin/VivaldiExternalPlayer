@@ -4,4 +4,6 @@
     <string name="retry_playback">Reintentar reproducción</string>
     <string name="refresh_source">Actualizar fuente</string>
     <string name="refreshing_source">Actualizando fuente…</string>
+    <string name="media_host_dns_unavailable">Servidor multimedia no disponible — falló la búsqueda DNS.</string>
+    <string name="recovery_dns_explanation">El servidor multimedia indicado por esta transmisión no pudo encontrarse mediante DNS. Reintentar reproducción puede ayudar si el fallo de red/DNS es temporal. Actualizar fuente puede volver a consultar la página original para obtener una transmisión nueva que funcione. Si la página sigue apuntando únicamente al servidor no disponible, ExternalPlayer no puede reemplazarlo ni adivinarlo de forma segura.</string>
 </resources>
