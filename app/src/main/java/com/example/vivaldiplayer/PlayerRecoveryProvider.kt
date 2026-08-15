@@ -20,7 +20,21 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.ui.PlayerView
 import java.util.WeakHashMap
 
-/** Registers a playback-recovery listener without changing source-selection logic. */
+/**
+ * Registers playback recovery without changing the normal resolver/player path.
+ *
+ * There are deliberately two different recovery concepts:
+ *
+ * 1. Retry playback prepares the SAME already-resolved stream again. This is
+ *    appropriate for a short network interruption.
+ * 2. Refresh source re-resolves the ORIGINAL webpage URL into the SAME persistent
+ *    tab. This is appropriate when a signed/temporary media URL has expired.
+ *
+ * Refresh source uses the protected service-owned private-display preparation
+ * architecture established by Build #234. It does not create a new tab, does not
+ * use the historical display-0 preparation Activity, and does not create a second
+ * ExoPlayer.
+ */
 class PlayerRecoveryProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return false
@@ -32,7 +46,13 @@ class PlayerRecoveryProvider : ContentProvider() {
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
-    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
+    override fun query(
+        uri: Uri,
+        projection: Array<out String>?,
+        selection: String?,
+        selectionArgs: Array<out String>?,
+        sortOrder: String?
+    ): Cursor? = null
 }
 
 private object PlayerRecoveryLifecycle : Application.ActivityLifecycleCallbacks {
@@ -58,10 +78,15 @@ private object PlayerRecoveryLifecycle : Application.ActivityLifecycleCallbacks 
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 }
 
-/** Limited automatic retry plus safe manual recovery choices. */
+/** Limited automatic retry plus explicit safe manual recovery choices. */
 private class PlayerRecoveryController(
     private val activity: PlayerActivity
 ) : Player.Listener {
+
+    private data class RecoveryAction(
+        val label: String,
+        val run: () -> Unit
+    )
 
     private var player: Player? = null
     private var automaticRetryCount = 0
@@ -123,6 +148,7 @@ private class PlayerRecoveryController(
         }
     }
 
+    /** Retry the existing resolved URL only; do not perform a new webpage resolution. */
     private fun retrySameSource(showToast: Boolean = true) {
         val activePlayer = player ?: return
         val position = activePlayer.currentPosition.coerceAtLeast(0L)
@@ -135,20 +161,31 @@ private class PlayerRecoveryController(
     private fun showRecoveryDialog() {
         val resolved = currentResolved()
         val webpageUrl = resolved?.webpageUrl.orEmpty()
+        val persistentTab = currentPersistentTab()
 
-        val builder = AlertDialog.Builder(activity)
-            .setTitle(R.string.recovery_options)
-            .setMessage(R.string.recovery_explanation)
-            .setPositiveButton(R.string.retry_same_source) { _, _ -> retrySameSource() }
-            .setNegativeButton(R.string.cancel, null)
+        val actions = mutableListOf<RecoveryAction>()
+        actions += RecoveryAction(activity.getString(R.string.retry_playback)) {
+            retrySameSource()
+        }
+
+        /*
+         * A persistent tab has the original page URL independently from the
+         * temporary resolved stream URL. That is the key prerequisite for a true
+         * refresh instead of repeatedly retrying an expired signed URL.
+         */
+        if (persistentTab != null && isHttpUrl(persistentTab.sourceUrl)) {
+            actions += RecoveryAction(activity.getString(R.string.refresh_source)) {
+                refreshSource(persistentTab)
+            }
+        }
 
         if (resolved?.resolverMode == "browser") {
-            /* Return to the existing resolver/candidate list already underneath the player. */
-            builder.setNeutralButton(R.string.try_another_detected_video) { _, _ ->
+            /* Existing explicit fallback: return to the candidate/resolver screen underneath. */
+            actions += RecoveryAction(activity.getString(R.string.try_another_detected_video)) {
                 activity.finish()
             }
-        } else if (webpageUrl.startsWith("http://") || webpageUrl.startsWith("https://")) {
-            builder.setNeutralButton(R.string.try_browser_method) { _, _ ->
+        } else if (isHttpUrl(webpageUrl)) {
+            actions += RecoveryAction(activity.getString(R.string.try_browser_method)) {
                 activity.startActivity(
                     Intent(activity, BrowserResolverActivity::class.java)
                         .putExtra(BrowserResolverActivity.EXTRA_URL, webpageUrl)
@@ -157,7 +194,82 @@ private class PlayerRecoveryController(
             }
         }
 
-        builder.show()
+        AlertDialog.Builder(activity)
+            .setTitle(R.string.recovery_options)
+            .setMessage(R.string.recovery_explanation)
+            .setItems(actions.map { it.label }.toTypedArray()) { _, which ->
+                actions.getOrNull(which)?.run?.invoke()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    /**
+     * Re-resolve the original page URL into the SAME tab using the protected
+     * #234 private-display service path.
+     *
+     * One subtle but important detail: TabbedPlayerApplication normally saves
+     * PlayerActivity.currentResolved during onPause. If we left the stale object
+     * there, that lifecycle save could mark this tab READY again with the expired
+     * payload immediately after we mark it QUEUED. Clear only the Activity's
+     * in-memory currentResolved reference before navigation; the persistent tab
+     * still retains its sourceUrl and playback position while the fresh resolver
+     * works.
+     */
+    private fun refreshSource(tab: VideoTabStore.VideoTab) {
+        val sourceUrl = tab.sourceUrl.trim()
+        if (!isHttpUrl(sourceUrl)) return
+
+        val activePlayer = player
+        val position = activePlayer?.currentPosition?.coerceAtLeast(0L) ?: tab.positionMs
+        val desiredPlayState = activePlayer?.playWhenReady ?: tab.playWhenReady
+
+        VideoTabStore.updatePlayback(
+            id = tab.id,
+            positionMs = position,
+            playWhenReady = desiredPlayState
+        )
+        clearActivityResolvedPayloadForRefresh()
+
+        TabPreparationManager.cancelScheduled(activity.applicationContext, tab.id)
+        VideoTabStore.markQueued(tab.id)
+        VideoTabStore.markTechnicalStage(tab.id, "SOURCE_REFRESH_PRIVATE_REQUESTED")
+
+        val token = "refresh-${tab.id}-${System.currentTimeMillis()}"
+        OperationLog.record(
+            activity,
+            event = "SOURCE_REFRESH_PRIVATE_SERVICE_REQUESTED",
+            tabId = tab.id,
+            detail = "token=$token"
+        )
+
+        BackgroundPreparationKeepAliveService.acquire(
+            context = activity.applicationContext,
+            token = token,
+            tabId = tab.id,
+            sourceUrl = sourceUrl
+        )
+
+        Toast.makeText(activity, R.string.refreshing_source, Toast.LENGTH_SHORT).show()
+
+        /*
+         * Return to the existing dashboard while the private-display service
+         * refreshes this same tab. The READY transition will replace the old
+         * resolvedMediaJson; no duplicate tab is created.
+         */
+        activity.startActivity(
+            Intent(activity, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        )
+        activity.finish()
+    }
+
+    private fun currentPersistentTab(): VideoTabStore.VideoTab? {
+        val tabId = activity.intent
+            .getStringExtra(TabbedPlayerApplication.EXTRA_TAB_ID)
+            ?.takeIf { it.isNotBlank() }
+            ?: return null
+        return VideoTabStore.get(tabId)
     }
 
     private fun currentResolved(): ResolvedMedia? = runCatching {
@@ -165,6 +277,18 @@ private class PlayerRecoveryController(
         field.isAccessible = true
         field.get(activity) as? ResolvedMedia
     }.getOrNull()
+
+    private fun clearActivityResolvedPayloadForRefresh() {
+        runCatching {
+            val field = PlayerActivity::class.java.getDeclaredField("currentResolved")
+            field.isAccessible = true
+            field.set(activity, null)
+        }
+    }
+
+    private fun isHttpUrl(value: String): Boolean =
+        value.startsWith("https://", ignoreCase = true) ||
+            value.startsWith("http://", ignoreCase = true)
 
     private fun isTransient(error: PlaybackException): Boolean {
         if (
