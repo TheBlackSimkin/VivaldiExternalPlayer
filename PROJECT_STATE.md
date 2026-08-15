@@ -85,12 +85,24 @@ Debug APK size `35,568,537` bytes; APK SHA-256 `e77533748a797c3ab38055d88e8be727
 
 CI compilation/resource linking proves the pinned Media3 version supports the fullscreen/control-row resource and Audio/speed APIs used here. Exact runtime placement and menu behavior still require device QA.
 
+## Build #251 early device feedback — PARTIAL, app code not changed yet
+User reported several findings before completing the full #251 checklist:
+- **Android Recents privacy QoL:** when the tab dashboard is the visible Activity, Android Recents shows the tab grid. Desired behavior is to hide that preview similarly to player mode. `PlayerActivity` already uses `FLAG_SECURE`; `MainActivity` currently does not. Prefer a Recents-only suppression path where supported so normal screenshots need not be disabled unnecessarily.
+- **Fullscreen omission:** the expected Media3 fullscreen button is not visible in player mode. Code audit confirms #251 only searches for `exo_fullscreen` as an insertion anchor; `PlayerActivity` does not register Media3's fullscreen-button listener, so the button can remain hidden. This is a concrete player-chrome fix, not a resolver/playback-architecture change.
+- **Gear presentation QoL:** user prefers the compact original Media3-style settings presentation rather than centered modal windows. Keep one combined gear and the same four functions, but move toward compact anchored settings/submenus rather than full centered dialogs where practical.
+- **Stale saved-tab recovery issue:** a tab saved overnight can fail because the previously resolved technical stream URL has expired. Current recovery `Retry` only prepares the same resolved source again, and the existing alternate/browser choice can also reuse stale candidates. This cannot obtain a fresh stream URL.
+- The tab store already persists the original page URL separately as `sourceUrl`, and `ResolvedMedia` also retains `webpageUrl`. Therefore a new recovery action can safely re-run normal preparation from the original page URL and replace the stale resolved payload in the **same tab** without changing the protected BG/quality architecture.
+- Proposed user-facing distinction: **Retry playback** = retry the current resolved stream for a short transient failure; **Refresh source** (name still open) = re-resolve the original page URL as a fresh load and repair the existing saved tab. Preserve the tab identity and saved position when technically possible.
+- The exact overnight Media3 error code was not saved, so do not over-classify that one incident. The stale-URL explanation is consistent with the current recovery implementation and persisted-tab model.
+
+No app-code implementation has been made for these findings yet. They are recorded so the next patch can stay focused and so #251's remaining device checks are not mistaken for completed QA.
+
 ## Current priority
-1. Device-check #251 exact lower-right `[tabs] [gear] [fullscreen]` placement.
-2. Confirm combined gear contains and operates Video quality, Audio, Playback speed, Diagnostics.
-3. Confirm controls still auto-hide cleanly and double-tap ±10s still works.
+1. Discuss/confirm the focused #251 follow-up scope above; do not redesign unrelated UI or touch resolver/BG/720-first architecture.
+2. Focused follow-up candidates: Recents privacy, restore working fullscreen control, compact Media3-like gear presentation, and fresh-source recovery for stale saved tabs.
+3. Complete the remaining player QA after that focused patch: tab-count placement, all four gear functions, Audio, speed, full controller auto-hide, double-tap ±10s, fullscreen, end replay, and protected colors.
 4. Keep #249 palette unchanged.
-5. Continue UI iteration; after UI settles run final PH/HH + both Vivaldi share-target regression, then hardening/docs/version/release work.
+5. After UI settles, run final PH/HH + both Vivaldi share-target regression, then hardening/diagnostics cleanup and release-readiness work.
 
 ## QA format
 Whenever asking the user to test, provide exactly:
