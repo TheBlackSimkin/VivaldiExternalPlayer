@@ -41,7 +41,7 @@ Decision: do not put the WebView Activity behind Vivaldi and depend on Android p
 ### #212 — private virtual-display Activity experiment, authoritative FAIL
 App-code head `2052aaa7af4dc02e59b7f90acefca0368d2fd0fe`; CI #212 PASS. Device result: immediate `VIRTUAL_PREP_LAUNCH_FAILED +0s`. The private display itself was created, but Android denied launching the first normal app Activity onto it. Do not request privileged/system `ACTIVITY_EMBEDDING` permissions and do not retry **Activity launch** onto that display.
 
-This does not prohibit a future non-Activity private-display window owned by the foreground service if the default-display focus experiment also fails; that is a different Android window architecture and would not launch an Activity on the private display.
+A future foreground-service-owned, non-Activity private-display window/WebView would be a distinct architecture and remains only a contingency if the current default-display focus experiment fails.
 
 ## Build #215 — first real automatic PH BG completion
 App-code commit `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`; GitHub Actions #215 PASS; APK SHA-256 `7aea335b8a2f941898ec5737804a89ddb719deb301e156f555408da15d57133e`.
@@ -70,109 +70,97 @@ Key log anchors:
 
 Conclusion: **core automatic BG preparation PASS; alpha-0.01 overlay UX FAIL**. One 720p result did not globally close the earlier 1080-vs-720 regression.
 
-## Build #225 — device QA now authoritative
-Post-#215 app-code bundle was introduced in `2525520b3b6c140db3818337456569f59725d584`; corrected build head is `4a6a2225eae86e0dbae0e5e02ac6c1f2bc434890`.
+## Build #225 — authoritative device QA
+Post-#215 app-code bundle was introduced in `2525520b3b6c140db3818337456569f59725d584`; corrected build head `4a6a2225eae86e0dbae0e5e02ac6c1f2bc434890`.
 
-### Changes included
-1. **BG touch/flash correction attempt**
-   - preparation window alpha changed from `0.01f` to exactly `0.0f`;
-   - kept `FLAG_NOT_TOUCHABLE`;
-   - intentionally kept focus enabled in #225;
-   - kept preparation Activity RESUMED;
-   - no `moveTaskToBack()`;
-   - no virtual-display Activity launch;
-   - no normal BG Worker fallback;
-   - no PlayerActivity/ExoPlayer during preparation.
+Included:
+- preparation window alpha `0.01f -> 0.0f`, retaining `FLAG_NOT_TOUCHABLE`, focus, RESUMED lifecycle, no `moveTaskToBack()`, no virtual-display Activity launch, no ordinary Worker fallback, no PlayerActivity/ExoPlayer during preparation;
+- persisted Recently closed history (max 12) + restore/clear UI;
+- clearer persistent-tab wording and `Clear all tabs`;
+- explicit app language selector System default / English / Español with AndroidX app locales;
+- refreshed white-E/purple launcher/dashboard icon.
 
-2. **Persistent tabs clarity + real Recently closed**
-   - open tabs persist automatically across app/process restart;
-   - Settings explains automatic restoration;
-   - `Clear saved tabs` became `Clear all tabs` / `Borrar todas las pestañas`;
-   - closing/swiping one tab stores a persisted snapshot in Recently closed;
-   - Settings shows `Recently closed (N)` / `Cerradas recientemente (N)`;
-   - user can restore one closed tab or clear the history;
-   - history max 12 entries;
-   - restore preserves source/resolved payload, position and quality/technical state;
-   - bulk Clear all does not flood Recently closed.
-
-3. **Explicit app language selector**
-   - System default;
-   - English;
-   - Español;
-   - uses AndroidX `AppCompatDelegate.setApplicationLocales`;
-   - declares `en`/`es` locale config;
-   - enables AndroidX compat locale storage for older supported Android versions.
-
-4. **Icon refresh**
-   - preserves white-E/purple identity;
-   - larger/more prominent purple diamond;
-   - less-boxy rounded compact white E;
-   - adaptive launcher foreground and pre-adaptive fallback updated;
-   - dashboard header uses the refreshed foreground drawable too.
-
-### CI history for this bundle
-- **#224 FAIL**, run ID `31850417827`: `mergeDebugResources` failed because five Spanish `home_*`/thumbnail strings were accidentally duplicated between `values-es/next_build_strings.xml` and existing `values-es/ui_refresh_strings.xml`. No #224 APK was designated.
-- Fix commit `4a6a2225eae86e0dbae0e5e02ac6c1f2bc434890` removed only those duplicate definitions, retaining the existing translations.
-- **#225 PASS**, run ID `31850648050`.
-- Debug artifact ID: `9237424502`.
-- Artifact ZIP size: `26,005,544` bytes.
-- Artifact ZIP digest: `sha256:3f87ba2a4cdffbc248534ce0057708a29c580e5cd0ec1894d7e741e44764af34`.
-- Extracted APK size: `35,512,362` bytes.
-- Extracted APK SHA-256: `ff84bbc469efc1ea62bb6b5c5abefb03cec3c45e33e7f4ff8ed56085c51e60f8`.
+CI:
+- #224 FAIL, run `31850417827`: duplicate Spanish resources; no QA APK.
+- correction `4a6a2225eae86e0dbae0e5e02ac6c1f2bc434890` removed only duplicates.
+- **#225 PASS**, run `31850648050`.
+- artifact `9237424502`; ZIP 26,005,544 bytes; digest `sha256:3f87ba2a4cdffbc248534ce0057708a29c580e5cd0ec1894d7e741e44764af34`.
+- extracted APK 35,512,362 bytes; SHA-256 `ff84bbc469efc1ea62bb6b5c5abefb03cec3c45e33e7f4ff8ed56085c51e60f8`.
 
 ### #225 post-CI code-path inspection — PASS
-Committed `main` was re-inspected after CI:
-- `BackgroundShareActivityV2.onCreate()` creates the pending tab at share time, marks preparation requested, starts the foreground lease and directly starts `BackgroundVirtualPreparationActivity`;
-- the share handoff does not use dashboard/card opening, `moveTaskToBack()`, or `launchDisplayId`;
-- `BackgroundVirtualPreparationActivity.onCreate()` marks host/resolving, creates/configures the full-size WebView, calls `attemptDirectFirst()` and schedules the 12s direct-browser fallback;
-- `TabbedPlayerApplication` has committed `BG_PREPARATION_WINDOW_ALPHA = 0.0f` and applies it with `FLAG_NOT_TOUCHABLE`;
-- no PlayerActivity/ExoPlayer is created by ordinary BG preparation.
+- share `onCreate()` created pending tab, marked preparation requested, started foreground lease and directly started preparation Activity at BG-share time;
+- dashboard/card opening was not involved;
+- no `moveTaskToBack()`/`launchDisplayId` in normal path;
+- preparation Activity `onCreate()` created/configured WebView, called `attemptDirectFirst()` and scheduled 12s browser fallback;
+- alpha exactly `0.0f` + `FLAG_NOT_TOUCHABLE`;
+- no BG PlayerActivity/ExoPlayer.
 
-### #225 one-PH device QA — PARTIAL, BG input FAIL + quality FAIL
-Authoritative user report:
-- **Vivaldi remained unresponsive for about 7 seconds after BG share: FAIL.** This is worse than the ~3–5s block reported on #215 and proves exact alpha 0.0 alone did not solve input ownership.
-- **No visible preparation/video-frame flash this time: PASS.** The alpha=0.0 compositor correction worked for visibility.
-- refreshed icon: PASS; user explicitly liked the new icon.
-- video loaded and played correctly: PASS for ordinary playback of this test result.
-- default/automatic playback was **1080p even though 720p was available** in the quality choices, and the UI exposed `Auto - 720p`: **strict 720-first quality policy FAIL, now reconfirmed.**
-- app language change worked correctly in the reported test: PASS for selector/change behavior. Persistence-after-reopen was not separately described in this report.
-- Recently closed behavior was not reported in this test result and remains pending device QA.
-- the text pasted under `Log:` was the older project/test brief, not the exported operations log. Do not treat it as telemetry. No #225 operations-log anchors were received.
-- the report did not include an exact READY-before-open timing line, so the successor build must re-verify that automatic preparation still finishes before ExternalPlayer/the tab is opened while testing the new input-focus architecture.
+### #225 one-PH user QA — PARTIAL / two blockers
+- Vivaldi remained unresponsive ~7s after BG share: **FAIL**. Alpha 0 alone did not solve input ownership.
+- no visible preparation/video-frame flash: **PASS**.
+- icon: **PASS**; user liked it.
+- video loaded and played: **PASS**.
+- automatic/default playback was **1080p although 720p was available**, and menu exposed `Auto - 720p`: **strict 720-first FAIL reconfirmed**.
+- UI language change: **PASS**; persistence-after-reopen not separately reported.
+- Recently closed not reported; remains pending.
+- text pasted under `Log:` was an older project brief, not exported operations telemetry. No #225 operations-log anchors were actually received.
+- exact READY-before-open timing was not stated in this report, so successor QA must re-verify it.
 
-Interpretation: #225 proves **visibility PASS, input-focus FAIL**. Do not return to alpha 0.01. The next BG change must address focus ownership while preserving the successful RESUMED preparation lifecycle.
+Interpretation: **visibility PASS, input-focus FAIL**. Do not return to alpha 0.01.
 
-## Post-#225 BG input-focus architecture change
-The next code change removes input focus from the transparent preparation window while keeping the Activity top/RESUMED:
-- keep `alpha = 0.0f`;
+## Build #227 — current focused QA target
+App-code commit: `f53cfcdce45e6e1d982bfee97b042195969134cb` (`fix: release BG input focus after share`).
+
+### Architecture change
+This is deliberately a narrow lifecycle/input experiment, not a quality rewrite:
+- preparation Activity still launches on the default display and remains top/RESUMED;
+- alpha remains exactly `0.0f`;
 - keep `FLAG_NOT_TOUCHABLE`;
-- add `FLAG_NOT_FOCUSABLE`;
-- explicitly add `FLAG_NOT_TOUCH_MODAL` for maintenance clarity (Android already implies it from NOT_FOCUSABLE);
-- keep the preparation Activity on the default display and RESUMED;
-- keep direct resolver + automatic browser fallback starting at BG-share time;
-- keep no `moveTaskToBack()`, no virtual-display Activity launch, no ordinary Worker fallback, and no PlayerActivity/ExoPlayer during preparation;
-- log the committed alpha/touch/focus/modal flags in `PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED` so device QA can prove which window architecture actually ran.
+- **add `FLAG_NOT_FOCUSABLE`** so the invisible preparation window does not own input focus;
+- explicitly add `FLAG_NOT_TOUCH_MODAL` for maintenance clarity (`NOT_FOCUSABLE` already implies it);
+- keep direct resolver + automatic browser fallback beginning at BG-share time;
+- keep no `moveTaskToBack()`, no virtual-display Activity launch, no ordinary Worker fallback, and no PlayerActivity/ExoPlayer during BG preparation;
+- `PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED` now logs `alpha`, `notTouchable`, `notFocusable`, and `notTouchModal` so device QA can prove the exact window flags.
 
-Why: #205 proved STOPPED is unstable; #225 proved fully transparent but still focusable is not good enough. This is the smallest architecture change which separates Activity lifecycle from user-input focus.
+Why: #205 proved STOPPED is unstable; #225 proved fully transparent but focusable still blocks Vivaldi. #227 tests whether the WebView host can stay RESUMED while user input remains with Vivaldi.
 
-Risk to test: some browser pages may react differently when their WebView window lacks focus. Therefore this build is not successful merely because it compiles. Real-device QA must prove **both** immediate Vivaldi input and automatic READY-before-open.
+Risk: some browser pages may behave differently when the preparation WebView window lacks focus. Therefore CI success alone is not a device PASS. The one-PH test must prove **both immediate Vivaldi input and automatic READY-before-open**.
 
-Contingency if this focus-free Activity cannot prepare: investigate a foreground-service-owned, non-Activity window/WebView on the already-supported app-private virtual display. That would be distinct from the forbidden #212 Activity launch and would not require privileged `ACTIVITY_EMBEDDING`. Do not implement that unless the focused non-focusable-Activity QA fails.
+### #227 CI — PASS
+- GitHub Actions build **#227** PASS.
+- Run ID: `31852454518`.
+- App-code/head SHA built: `f53cfcdce45e6e1d982bfee97b042195969134cb`.
+- Debug artifact ID: `9237954029` (`VivaldiExternalPlayer-debug-apk`).
+- Artifact ZIP size: `26,005,116` bytes.
+- Artifact ZIP digest / locally verified ZIP SHA-256: `68956445798771e9f98ea45be21e5471577f208f7074ce13f749bd8bbc0a76aa`.
+- Extracted debug APK size: `35,511,734` bytes.
+- Extracted APK SHA-256: `853cc2da965de5c606e2f1cd083f120787d8d55534809c84bdf77a3ccc560170`.
+
+### #227 post-CI committed-code inspection — PASS
+Committed app-code path was re-inspected after CI:
+- `BackgroundShareActivityV2.onCreate()` validates the URL, creates the persistent pending tab immediately, calls `markPreparationRequested()`, records the share handoff, acquires the foreground lease, and directly starts `BackgroundVirtualPreparationActivity`; no dashboard/card/tab click is involved.
+- `BackgroundVirtualPreparationActivity.onCreate()` marks the preparation host and `RESOLVING`, creates/configures the full-size WebView, calls `attemptDirectFirst()` immediately, then schedules the 12s direct/browser fallback.
+- `TabbedPlayerApplication.configureTransparentPreparationWindow()` applies alpha `0.0f` plus `FLAG_NOT_TOUCHABLE | FLAG_NOT_FOCUSABLE | FLAG_NOT_TOUCH_MODAL`.
+- the BG share path still has no `moveTaskToBack()` or `launchDisplayId` and does not instantiate PlayerActivity/ExoPlayer.
+
+Therefore #227 satisfies the pre-device-test gates: architecture changed, CI passed, BG-share-time scheduling was inspected, and both state files are updated. It is designated for **ONE PH** focused device QA only.
+
+Contingency if #227 makes Vivaldi responsive but breaks automatic browser preparation: investigate a foreground-service-owned non-Activity WebView/window on the app-private virtual display. That would be distinct from the forbidden #212 Activity launch and would not require privileged `ACTIVITY_EMBEDDING`.
 
 ## Secure GitHub log reporting
-Approved idea but deferred until after the current required UX/lifecycle QA. Keep ordinary Share operations log. Never embed a PAT/repository token/OAuth client secret in the APK. Preferred future first version: open a pre-filled GitHub new-issue page with bounded sanitized log text for user review/submission.
+Approved but deferred until after current lifecycle/quality blockers. Keep ordinary Share operations log. Never embed PAT/repository token/OAuth client secret in APK. Preferred future first version: open a pre-filled GitHub new-issue page with bounded sanitized log text for user review/submission.
 
 ## Quality status
 Protected policy remains exact 720 -> otherwise 1080 -> otherwise best below 1080.
 
 Current findings:
-- #215 one-PH automatic result reported actual 720p;
-- **#225 reconfirmed the regression:** automatic/default actual result was 1080p while 720p was available, and the quality UI exposed `Auto - 720p`;
-- therefore strict 720-first is definitively still broken and needs a code repair after the BG input architecture is clean;
+- #215 one-PH automatic result reported 720p once;
+- #225 reconfirmed automatic/default 1080p while 720p was available and UI exposed `Auto - 720p`;
+- strict 720-first is therefore definitively still broken;
 - manual 240p works;
 - manual 480p still needs repair/verification.
 
-Do not mix the 720/480 repair into the focused BG input build. Once BG touch + READY-before-open are clean, fix browser initial-source/track selection so the actual initial playback follows 720-first, then repair/verify manual 480 before HH regression testing.
+Do **not** mix the 720/480 repair into #227. Once BG touch + READY-before-open are clean, fix browser initial-source/track selection so actual initial playback follows 720-first, then repair/verify manual 480 before HH regression testing.
 
 ## Current UI / backlog
 - long-press tab move/reorder WORKS;
@@ -182,21 +170,20 @@ Do not mix the 720/480 repair into the focused BG input build. Once BG touch + R
 - BG absence from Android Recents PASS/preferred;
 - exportable operations log PASS/useful;
 - refreshed icon PASS on #225;
-- language selector/change PASS on #225; persistence after reopen not separately reported in the latest result;
-- Recently closed feature is implemented but still awaits explicit device result;
-- secure GitHub log-report shortcut comes later.
+- language selector/change PASS on #225; persistence after reopen not separately reported;
+- Recently closed is implemented but awaits explicit device result;
+- secure GitHub log-report shortcut later.
 
 ## Current development priority
-1. Commit the post-#225 non-focusable transparent-window architecture and both state files together.
-2. Ensure GitHub Actions CI passes before designating the successor APK.
-3. After CI, inspect committed `main` to verify preparation is still scheduled/started at BG-share time, not dashboard/card/tab-open time.
-4. Confirm committed window flags are alpha=0.0 + NOT_TOUCHABLE + NOT_FOCUSABLE + NOT_TOUCH_MODAL, while Activity remains RESUMED and no PlayerActivity/ExoPlayer is started by BG prep.
-5. Designate exactly one focused successor APK for **ONE PH link**.
-6. Device QA must check: Vivaldi touch/scroll works immediately; no flash; automatic READY happens before ExternalPlayer/tab open; operations log shows RESUMED plus the new non-focusable flags.
-7. If that is clean, test 2–3 PH BG shares for browser-slot serialization.
-8. Then fix/verify strict 720 preference and manual 480 switching.
-9. Get the pending Recently closed device result during a later UI regression pass; do not distract the focused BG test with it.
-10. No HH testing until PH BG/quality blockers are cleared.
+1. Device-test build #227 with **ONE PH link only**.
+2. Immediately after BG share, verify Vivaldi touch/scroll is responsive instead of blocked ~7s.
+3. Do not open ExternalPlayer/the individual tab during preparation; later verify the tab already reached READY before opening it.
+4. Verify there is still no visible black/preparation/frame flash.
+5. Export the operations log even on PASS. Expected anchors include `PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED` with `alpha=0.0 notTouchable=true notFocusable=true notTouchModal=true`, Activity RESUMED, direct/browser stages, and `BG_PREPARATION_READY` when successful.
+6. If #227 is clean, test 2–3 PH shares for browser-slot serialization.
+7. Then repair/verify strict 720 preference + manual 480 switching.
+8. Later run the pending Recently closed/persistence UI regression check.
+9. No HH until PH BG/quality blockers are cleared.
 
 ## QA format
 Whenever asking the user to test, provide exactly:

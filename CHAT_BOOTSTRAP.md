@@ -19,104 +19,98 @@ Quality policy: exact 720p -> otherwise 1080p -> otherwise best below 1080p. Pre
 Operations log proved this phone destroys a preparation Activity almost immediately after it becomes STOPPED behind Vivaldi. Foreground service protects process lifetime, not a stopped Activity/WebView. Do not return to that architecture.
 
 ### #212
-Private virtual display was created, but Android denied launching the first normal app Activity onto it (`VIRTUAL_PREP_LAUNCH_FAILED`). Do not retry an Activity launch there and do not request privileged `ACTIVITY_EMBEDDING` or system permissions. A future non-Activity private-display window would be a distinct architecture and is only a fallback if the current focus experiment fails.
+Private virtual display was created, but Android denied launching the first normal app Activity onto it (`VIRTUAL_PREP_LAUNCH_FAILED`). Do not retry an Activity launch there and do not request privileged `ACTIVITY_EMBEDDING` or system permissions. A future non-Activity private-display window is a distinct fallback architecture only if the current focus experiment fails.
 
 ### #215 — first core automatic PH BG success
 App-code commit `b4d3b5eba4a3428a74f7cfccf924bd254bcee5f7`; CI #215 PASS.
 
-One-PH device QA:
+One-PH QA:
 - automatic preparation completed **before ExternalPlayer/card open**;
 - dashboard showed `READY +9s`;
-- automatic actual quality reported 720p in this run;
-- Activity reached `PRIMARY_OVERLAY_PREP_ACTIVITY_RESUMED` and automatic browser fallback started after direct miss;
-- Vivaldi touch/scroll was blocked ~3–5s after share;
-- brief ~0.5s visible preparation/video-frame flash occurred. Never inspect/describe that content.
+- one automatic result reported 720p;
+- preparation Activity RESUMED and automatic browser fallback worked after direct miss;
+- Vivaldi touch/scroll blocked ~3–5s;
+- brief ~0.5s visible preparation/frame flash. Never inspect/describe its content.
 
-Interpretation: **core BG preparation PASS; alpha-0.01 overlay UX FAIL**.
+Interpretation: **core automatic BG preparation PASS; overlay UX FAIL**.
 
-## Build #225 — authoritative device QA result
-App-code bundle commit `2525520b3b6c140db3818337456569f59725d584`; corrected build head `4a6a2225eae86e0dbae0e5e02ac6c1f2bc434890`.
+## Build #225 — authoritative device result
+App-code bundle `2525520b3b6c140db3818337456569f59725d584`; corrected head `4a6a2225eae86e0dbae0e5e02ac6c1f2bc434890`; CI #225 PASS, run `31850648050`.
 
-Included changes:
-- preparation overlay alpha `0.01 -> 0.0`, retaining RESUMED lifecycle, focus and `FLAG_NOT_TOUCHABLE`;
-- real persisted Recently closed history (max 12) with Settings restore/clear UI;
-- clearer wording that open tabs restore automatically and `Clear all tabs` replaces misleading `Clear saved tabs`;
-- app-language selector: System default / English / Español using AndroidX app locales;
-- `en`/`es` locale config + compat locale storage;
-- refreshed launcher/dashboard icon preserving white-E/purple identity, with more prominent purple and less-boxy E.
+#225 included alpha `0.01 -> 0.0`, persisted Recently closed, explicit app language selector, and refreshed icon.
 
-Do not reintroduce `moveTaskToBack()`, virtual-display Activity launch, normal BG Worker fallback, or PlayerActivity/ExoPlayer during preparation.
+User QA:
+- Vivaldi remained unresponsive about **7 seconds** after BG share: **FAIL**.
+- no visible flash: **PASS**.
+- refreshed icon: **PASS**, user liked it.
+- video loaded/played: **PASS**.
+- automatic/default playback was **1080p while 720p was available** and UI showed `Auto - 720p`: **strict 720-first FAIL confirmed**.
+- UI language change worked: **PASS**; reopen persistence not separately reported.
+- Recently closed not reported yet.
+- pasted `Log:` text was an older project brief, not exported operations telemetry; no #225 operations log was received.
+- exact READY-before-open timing was not stated, so successor QA must verify it again.
 
-### CI
-- #224, run `31850417827`: FAIL at `mergeDebugResources` because five Spanish `home_*`/thumbnail strings were duplicated between two resource files. No QA APK.
-- Fix head `4a6a2225eae86e0dbae0e5e02ac6c1f2bc434890` removed only those duplicate Spanish definitions.
-- **#225 PASS**, run ID `31850648050`.
-- Debug artifact ID `9237424502`.
-- Artifact ZIP size `26,005,544` bytes; digest `sha256:3f87ba2a4cdffbc248534ce0057708a29c580e5cd0ec1894d7e741e44764af34`.
-- Extracted APK size `35,512,362` bytes.
-- APK SHA-256 `ff84bbc469efc1ea62bb6b5c5abefb03cec3c45e33e7f4ff8ed56085c51e60f8`.
+Interpretation: alpha=0 solved visibility, but the transparent **focusable** Activity still blocked Vivaldi.
 
-### Post-CI code path
-Committed #225 path correctly started preparation at BG share time:
-- `BackgroundShareActivityV2.onCreate()` created pending tab, marked preparation requested, started foreground lease and directly launched preparation Activity;
-- dashboard/card open was not involved;
-- no `moveTaskToBack()` or `launchDisplayId` in normal path;
-- preparation Activity `onCreate()` created/configured WebView, started direct resolver and scheduled 12s browser fallback;
-- alpha was exactly `0.0f` with `FLAG_NOT_TOUCHABLE`;
-- ordinary BG prep created no PlayerActivity/ExoPlayer.
+## Build #227 — CURRENT focused QA target
+App-code commit `f53cfcdce45e6e1d982bfee97b042195969134cb` (`fix: release BG input focus after share`).
 
-### #225 user QA — PARTIAL / FAIL on two blockers
-Authoritative observations:
-- Vivaldi remained unresponsive for about **7 seconds** after BG share: **FAIL**. Alpha=0 did not solve input ownership.
-- no visible preparation/video-frame flash: **PASS**. Do not request/describe PH imagery.
-- refreshed icon: **PASS**; user liked it.
-- video loaded and played: **PASS** for ordinary playback.
-- automatic/default playback was **1080p while 720p was available**; quality UI exposed `Auto - 720p`: **strict 720-first FAIL confirmed**.
-- UI language change worked: **PASS** for selector/change. Persistence-after-reopen was not separately stated.
-- Recently closed was not reported and remains pending.
-- the text pasted under `Log:` was the old project/test brief, not an exported operations log. No #225 operations-log telemetry was actually received.
-- exact READY-before-open timing was not stated in this report, so the successor build rechecks it while testing the focus change.
+### Architecture
+Keep the known-successful RESUMED lifecycle but remove user-input focus from the invisible preparation window:
+- alpha `0.0f`;
+- `FLAG_NOT_TOUCHABLE`;
+- **`FLAG_NOT_FOCUSABLE`**;
+- explicit `FLAG_NOT_TOUCH_MODAL`;
+- preparation Activity remains on default display and RESUMED;
+- direct resolver + automatic browser fallback still begin at BG-share time;
+- no `moveTaskToBack()`, no virtual-display Activity launch, no ordinary Worker fallback, no PlayerActivity/ExoPlayer in BG preparation;
+- `PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED` logs alpha + notTouchable + notFocusable + notTouchModal.
 
-Interpretation: **alpha=0 visibility fix PASS; focusable transparent Activity still blocks the browser.**
+Reason: #205 says STOPPED is unstable; #225 says transparent-but-focusable still steals/blocks input. #227 tests separation of Activity lifecycle from input focus.
 
-## Current post-#225 BG change
-The next focused architecture keeps the successful lifecycle but removes input focus from the invisible window:
-- alpha stays `0.0f`;
-- keep `FLAG_NOT_TOUCHABLE`;
-- add `FLAG_NOT_FOCUSABLE`;
-- explicitly add `FLAG_NOT_TOUCH_MODAL` (NOT_FOCUSABLE already implies it);
-- preparation Activity stays on default display and RESUMED;
-- direct + automatic browser fallback still start from BG-share time;
-- no `moveTaskToBack()`, virtual-display Activity launch, normal Worker fallback, PlayerActivity, or ExoPlayer;
-- `PRIMARY_OVERLAY_PREP_ACTIVITY_CREATED` now logs alpha + notTouchable + notFocusable + notTouchModal.
+Risk: WebView/browser discovery may behave differently without window focus. Real device must prove **both** immediate Vivaldi interaction and READY-before-open.
 
-Reason: #205 says STOPPED is unstable; #225 says fully transparent but focusable still blocks Vivaldi. This tests whether Activity lifecycle and user-input focus can be separated on the real phone.
+Fallback only if #227 fails automatic preparation: investigate a foreground-service-owned non-Activity WebView/window on the app-private virtual display. This is distinct from #212 Activity launch and does not require privileged `ACTIVITY_EMBEDDING`.
 
-Important risk: WebView/browser discovery might behave differently without window focus. CI cannot prove this. The focused device test must prove both immediate Vivaldi input and automatic READY-before-open.
+### CI #227 — PASS
+- run ID `31852454518`;
+- built head `f53cfcdce45e6e1d982bfee97b042195969134cb`;
+- debug artifact `9237954029`, name `VivaldiExternalPlayer-debug-apk`;
+- ZIP size `26,005,116` bytes;
+- ZIP SHA-256 `68956445798771e9f98ea45be21e5471577f208f7074ce13f749bd8bbc0a76aa`;
+- extracted APK size `35,511,734` bytes;
+- APK SHA-256 `853cc2da965de5c606e2f1cd083f120787d8d55534809c84bdf77a3ccc560170`.
 
-Fallback only if this fails: investigate foreground-service-owned WebView/window on the app-private virtual display, without launching an Activity there. That is distinct from #212.
+### Post-CI code-path inspection — PASS
+- `BackgroundShareActivityV2.onCreate()` creates pending tab, calls `markPreparationRequested()`, acquires foreground lease and directly starts preparation Activity at BG-share time; dashboard/card/tab opening is not involved.
+- `BackgroundVirtualPreparationActivity.onCreate()` marks host/RESOLVING, creates/configures full-size WebView, calls `attemptDirectFirst()` immediately and schedules 12s browser fallback.
+- `TabbedPlayerApplication` applies alpha 0.0 + NOT_TOUCHABLE + NOT_FOCUSABLE + NOT_TOUCH_MODAL.
+- normal BG path has no `moveTaskToBack()`/`launchDisplayId` and does not create PlayerActivity/ExoPlayer.
+
+#227 has therefore passed all pre-device-test gates and is designated for **ONE PH focused QA only**.
 
 ## Quality status
-- #215 automatic PH result reported 720p once.
+- #215 reported 720p once.
 - #225 definitively reconfirmed automatic 1080p despite available 720p.
 - Manual 240p works.
 - Manual 480p still needs repair/verification.
-- Do not mix quality repair into the focused BG input build. Once BG touch + READY-before-open are clean, fix strict 720-first and then manual 480.
-- No HH testing yet.
+- Do **not** mix quality repair into #227. Once BG touch + READY-before-open are clean, fix strict 720-first then manual 480.
+- No HH yet.
 
 ## Other backlog
-- Recently closed is implemented but explicit device QA is still pending.
-- Secure `Report log on GitHub` shortcut is approved but comes after current QA. Keep full Android Share log. Never embed GitHub PAT/token/client secret in the APK.
+- Recently closed is implemented but explicit device QA remains pending.
+- Secure `Report log on GitHub` shortcut comes later; never embed a GitHub PAT/token/client secret.
 
 ## Current priority
-1. Commit the non-focusable transparent-window change with both state files.
-2. CI must pass before designating the next APK.
-3. Post-CI inspect committed `main`: tab creation + preparation request + foreground lease + preparation Activity + direct resolver/browser fallback must still begin from BG share, not dashboard/tab open.
-4. Confirm committed window flags are alpha=0.0 + NOT_TOUCHABLE + NOT_FOCUSABLE + NOT_TOUCH_MODAL and no BG PlayerActivity/ExoPlayer exists.
-5. Next QA is ONE PH link: immediate Vivaldi touch/scroll, no flash, READY before ExternalPlayer/tab open, export operations log.
-6. If clean, test 2–3 PH links for browser-slot serialization.
-7. Then fix/verify strict 720 preference + manual 480 switching.
-8. No HH until PH BG/quality blockers are cleared.
+1. Test #227 with ONE PH link.
+2. Immediately after BG share, Vivaldi should remain touch/scroll responsive.
+3. Do not open ExternalPlayer/tab during preparation; later verify it already reached READY before opening.
+4. Verify no visible flash.
+5. Export operations log even on PASS; expected flag line: `alpha=0.0 notTouchable=true notFocusable=true notTouchModal=true`, plus RESUMED/direct/browser/READY anchors.
+6. If clean, test 2–3 PH shares for browser-slot serialization.
+7. Then fix strict 720 preference + manual 480.
+8. Later verify Recently closed and language persistence.
+9. No HH until PH BG/quality blockers clear.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
