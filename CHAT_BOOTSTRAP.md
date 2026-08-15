@@ -60,7 +60,19 @@ APK size `35,568,537`; APK SHA-256 `e77533748a797c3ab38055d88e8be72714f61ec69fff
 - Proposed distinction: **Retry playback** = retry same resolved stream for short transient failures; **Refresh source** (working name) = re-resolve original page URL, replace stale resolved data in the same tab, and preserve saved position where possible.
 - Exact overnight Media3 error was not saved, so do not over-classify that incident.
 
-Next: discuss/confirm this focused follow-up scope before app-code changes. Remaining #251 QA is still incomplete. After a focused patch, verify placement, all four gear actions, Audio, speed, complete auto-hide, double-tap, fullscreen, end replay and protected colors. Deep PH/HH regression remains deferred until UI settles.
+## #251 preliminary working checks — CONTINUE TESTING
+Working well so far, but not final sign-off yet: tab-count placement; tab count opens dashboard; Audio; Playback speed; Video quality; Diagnostics; complete controller auto-hide; double-tap ±10s; no visible ±10s buttons; Media3 end replay; approved #249 colors.
+
+Next APK scope: Recents privacy, functional fullscreen, compact Media3-like gear presentation, and fresh-source recovery for stale saved tabs. Preserve the currently working #251 behaviors above. Deep PH/HH regression remains deferred until UI settles.
+
+## Later-stage roadmap after UI settles
+- full PH technical regression;
+- full HH technical regression;
+- both Vivaldi share-target regressions;
+- general hardening;
+- diagnostics cleanup;
+- version/release preparation;
+- permanent signing/release work only at the final release stage.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
