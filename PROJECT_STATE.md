@@ -95,12 +95,26 @@ User reported several findings before completing the full #251 checklist:
 - Proposed user-facing distinction: **Retry playback** = retry the current resolved stream for a short transient failure; **Refresh source** (name still open) = re-resolve the original page URL as a fresh load and repair the existing saved tab. Preserve the tab identity and saved position when technically possible.
 - The exact overnight Media3 error code was not saved, so do not over-classify that one incident. The stale-URL explanation is consistent with the current recovery implementation and persisted-tab model.
 
-No app-code implementation has been made for these findings yet. They are recorded so the next patch can stay focused and so #251's remaining device checks are not mistaken for completed QA.
+## Build #251 preliminary working checks — CONTINUE TESTING
+User reports the following are working well so far, but they remain under continued testing rather than final sign-off:
+1. tab count is positioned properly beside the player controls;
+2. tab count opens the dashboard;
+3. Audio works on the existing single ExoPlayer session;
+4. Playback speed works;
+5. Video quality works;
+6. Diagnostics works;
+7. controller auto-hide removes all visible controls;
+8. double-tap left/right remains -10s/+10s;
+9. no visible dedicated ±10s buttons;
+10. Media3 natural end-of-video replay remains;
+11. approved #249 colors remain unchanged.
+
+No app-code implementation has been made for the newly reported Recents/fullscreen/gear/stale-source findings yet.
 
 ## Current priority
-1. Discuss/confirm the focused #251 follow-up scope above; do not redesign unrelated UI or touch resolver/BG/720-first architecture.
-2. Focused follow-up candidates: Recents privacy, restore working fullscreen control, compact Media3-like gear presentation, and fresh-source recovery for stale saved tabs.
-3. Complete the remaining player QA after that focused patch: tab-count placement, all four gear functions, Audio, speed, full controller auto-hide, double-tap ±10s, fullscreen, end replay, and protected colors.
+1. Next APK should include the focused fixes: Recents privacy, restore working fullscreen control, compact Media3-like gear presentation, and fresh-source recovery for stale saved tabs.
+2. Preserve all eleven #251 behaviors currently working well; continue device testing them after the focused patch.
+3. Do not redesign unrelated UI or touch resolver/BG/720-first architecture.
 4. Keep #249 palette unchanged.
 5. After UI settles, run final PH/HH + both Vivaldi share-target regression, then hardening/diagnostics cleanup and release-readiness work.
 
