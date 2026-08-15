@@ -59,7 +59,7 @@ Device result:
 - likely trigger was `WRAP_CONTENT` PopupWindow height + `showAsDropDown()` from the Media3 controller's bottom row, which clipped to the tiny area below the gear on this device;
 - **rare DNS wording PASS-as-designed**: error remained unplayable but became clearer, which is the intended safe improvement when the downstream host is genuinely unresolvable. Do not add host rewriting or bypass behavior.
 
-## Build #278 — popup geometry correction: CI PASS / DEVICE QA PENDING
+## Build #278 — popup geometry correction: CI PASS / DEVICE PASS
 App commit `8b0566c68eb9082c0aed62e202edfc1a29232983`.
 Actions #278 run `31905713180`; build job `95063044270`; artifact `9252287185`.
 ZIP SHA-256 `9076f2c5aec6fb830fb0551195a1bd475e54051d0f6c380aa78c6be9504318ec`.
@@ -73,6 +73,21 @@ APK size `35,590,609`; APK SHA-256 `ee5893ef22a7a38758293ce9647ac133f09bea852785
 
 Quality verification, clearer DNS wording, fullscreen, `[tabs][gear][fullscreen]`, controller auto-hide, same-player Audio/Volume/Speed, resolver/BG architecture, share flow and approved palette are unchanged.
 
+### #278 device result — ACCEPTED PLAYER UI BASELINE
+User reports **all requested #278 checks worked as expected**. Treat as PASS for:
+- gear menu visible at normal height with accepted compactness;
+- compact Video Quality submenu and Actual-quality row;
+- requested-vs-actual manual quality verification, including the tested 480p path;
+- Audio, app-level Volume/Mute, Playback speed and Diagnostics;
+- fullscreen, exact control order, tab dashboard, controller auto-hide, double-tap ±10s, no visible ±10 buttons;
+- approved colors unchanged.
+Exact numeric requested/actual quality values were not separately recorded, but the full #278 checklist was explicitly reported working as expected.
+
+Treat player-control/menu UI as settled unless later regression evidence appears.
+
+## Brave compatibility
+Brave Mobile as-is compatibility passed on #264 using generic Android share targets. Do not add Brave-specific architecture unless future regression evidence requires it.
+
 ## Stored-for-later backlog
 - secure browser-based `Report log on GitHub` shortcut with no embedded reusable credential;
 - safe dead/historical code cleanup only after proving unused;
@@ -82,11 +97,11 @@ Quality verification, clearer DNS wording, fullscreen, `[tabs][gear][fullscreen]
 - revisit old dedicated “Return to existing Vivaldi task/tab” idea rather than automatically implementing it.
 
 ## Next priority
-1. Test #278 first: gear menu must render at a normal visible height above the lower-right controls.
-2. If visible, continue the intended #275 checks: compact Quality, requested-vs-actual quality (especially 480p), Audio/Volume/Speed/Diagnostics, auto-hide.
-3. DNS clarity is already accepted as the intended improvement; do not require a genuinely dead host to become playable.
-4. Preserve successful #264 behavior.
-5. Once menu/quality UI is accepted, run final PH + HH technical regressions, both Vivaldi share-target regressions and small Brave smoke, then hardening/diagnostics cleanup/release-readiness.
+1. Final PH technical regression against accepted #278.
+2. Final HH technical regression; known rare downstream DNS failure is a documented source-availability edge case, not a general failure.
+3. Re-test both Vivaldi share targets end-to-end and do a small Brave as-is smoke regression.
+4. Then hardening/failure edges, diagnostics/log cleanup, safe stale/dead-path cleanup, and About/version/build/docs consistency.
+5. Distribution/permanent signing remain final-stage only.
 
 ## QA format
 Whenever asking the user to test, always provide exactly:
