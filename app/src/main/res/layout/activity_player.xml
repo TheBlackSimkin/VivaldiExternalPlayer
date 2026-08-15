@@ -1,21 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-
 <!--
     Media3 player screen.
 
-    The main video surface fills the screen. Small project-specific controls are
-    overlaid at the top so they remain separate from Media3's standard transport
-    controls at the bottom.
-
-    This version includes:
-    - the normal Media3 video/controller surface;
-    - a Diagnostics button for technical playback information;
-    - a Quality button for direct and adaptive streams;
-    - an error/status banner;
-    - the existing seek-thumbnail preview.
-
-    Keep this file as plain UTF-8 XML. There must be no Markdown code fences,
-    text, spaces, or other characters before the XML declaration above.
+    The proven PlayerActivity logic still owns Quality and Diagnostics. Their
+    legacy buttons remain in the view hierarchy so existing click handlers are
+    untouched, but are hidden; PlayerChromeProvider exposes those same actions in
+    one compact gear menu beside the square tab-count button.
 -->
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
@@ -24,16 +14,6 @@
     android:layout_height="match_parent"
     android:background="@android:color/black">
 
-    <!--
-        Media3's PlayerView contains:
-        - the video rendering surface;
-        - play/pause;
-        - seek bar;
-        - standard playback controls.
-
-        GesturePlayerView is our project subclass which also handles the
-        left/right double-tap seeking behavior.
-    -->
     <com.example.vivaldiplayer.GesturePlayerView
         android:id="@+id/player_view"
         android:layout_width="match_parent"
@@ -43,68 +23,27 @@
         app:show_shuffle_button="false"
         app:use_controller="true" />
 
-    <!--
-        Development diagnostics button.
-
-        This remains available even before an error occurs, because it can show
-        which resolver/source Media3 received. If playback fails, PlayerActivity
-        changes the label to "Playback error" / "Error de reproducción".
-    -->
     <Button
         android:id="@+id/diagnostics_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:layout_marginStart="12dp"
-        android:layout_marginTop="12dp"
-        android:backgroundTint="#AA303030"
-        android:minWidth="0dp"
-        android:minHeight="40dp"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
         android:text="@string/player_diagnostics"
-        android:textAllCaps="false"
-        android:textColor="@android:color/white"
-        android:textSize="13sp" />
+        android:visibility="gone" />
 
-    <!--
-        Quality control.
-
-        For yt-dlp/direct sources, changing quality re-runs the resolver.
-
-        For browser-assisted adaptive HLS/DASH sources, PlayerActivity reads the
-        available Media3 video tracks and changes the track selection directly.
-    -->
     <Button
         android:id="@+id/quality_button"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="12dp"
-        android:layout_marginEnd="12dp"
-        android:backgroundTint="#AA303030"
-        android:minHeight="40dp"
-        android:minWidth="0dp"
-        android:paddingStart="12dp"
-        android:paddingEnd="12dp"
         android:text="@string/quality_auto"
-        android:textAllCaps="false"
-        android:textColor="@android:color/white"
-        android:textSize="13sp" />
+        android:visibility="gone" />
 
-    <!--
-        Hidden during normal playback.
-
-        PlayerActivity makes this visible after a real Media3 error so a failed
-        stream no longer looks like an unexplained black player.
-    -->
     <TextView
         android:id="@+id/playback_status"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
         android:layout_marginStart="12dp"
-        android:layout_marginTop="64dp"
+        android:layout_marginTop="68dp"
         android:layout_marginEnd="12dp"
         android:background="#CC202020"
         android:padding="10dp"
@@ -113,12 +52,6 @@
         android:textSize="13sp"
         android:visibility="gone" />
 
-    <!--
-        Thumbnail preview displayed while the user drags Media3's seek bar.
-
-        The image is decoded locally from the selected stream by FrameExtractor.
-        It is not uploaded or semantically analyzed.
-    -->
     <LinearLayout
         android:id="@+id/preview_container"
         android:layout_width="180dp"
@@ -144,7 +77,5 @@
             android:layout_marginTop="4dp"
             android:textColor="@android:color/white"
             android:textSize="13sp" />
-
     </LinearLayout>
-
 </FrameLayout>

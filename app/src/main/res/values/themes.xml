@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.VivaldiExternalPlayer" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <item name="android:fontFamily">sans</item>
+        <!-- Use Android's modern system sans family consistently; no bundled font file is required. -->
+        <item name="android:fontFamily">sans-serif</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowBackground">@color/app_background</item>
         <item name="android:navigationBarColor">@color/app_background</item>
@@ -14,5 +15,14 @@
         <item name="colorSurface">@color/app_surface</item>
         <item name="colorOnSurface">@color/app_text_primary</item>
         <item name="android:colorAccent">@color/app_accent</item>
+        <item name="materialAlertDialogTheme">@style/ThemeOverlay.VivaldiExternalPlayer.AlertDialog</item>
+    </style>
+
+    <!-- Give quality/language/confirmation dialogs the same dark graphite language as the app. -->
+    <style name="ThemeOverlay.VivaldiExternalPlayer.AlertDialog" parent="ThemeOverlay.MaterialComponents.MaterialAlertDialog">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="colorPrimary">@color/app_accent</item>
+        <item name="colorSurface">@color/app_surface</item>
+        <item name="colorOnSurface">@color/app_text_primary</item>
     </style>
 </resources>

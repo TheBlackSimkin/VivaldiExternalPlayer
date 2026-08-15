@@ -2,10 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!--
-      Foreground service used only for user-requested BG preparation.
-      It resolves technical stream metadata; it never owns playback/ExoPlayer.
-    -->
+    <!-- Foreground service used only for user-requested BG preparation. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
@@ -34,19 +31,23 @@
         <provider android:name=".PlayerRecoveryProvider" android:authorities="${applicationId}.playerrecovery" android:exported="false" />
         <provider android:name=".ForegroundPlaybackGuardProvider" android:authorities="${applicationId}.foregroundguard" android:exported="false" />
 
+        <!-- UI-only lifecycle hook. It moves existing player actions into compact chrome. -->
+        <provider
+            android:name=".PlayerChromeProvider"
+            android:authorities="${applicationId}.playerchrome"
+            android:exported="false"
+            android:initOrder="50" />
+
         <activity android:name=".PlayerActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
         <activity android:name=".BrowserResolverActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
+        <activity android:name=".RecentlyClosedActivity" android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
 
         <!--
-          Current normal BG preparation owner.
-
-          Starting with the post-#227 architecture, this foreground service owns
-          each resolver session directly. The session creates an app-private
-          virtual display and a Presentation/WebView on that display. No normal
-          BG preparation Activity is launched on the physical/default display.
-          The service/session never creates PlayerActivity or ExoPlayer.
+          Current normal BG preparation owner. The foreground service owns each
+          resolver session directly on an app-private virtual display. It never
+          creates PlayerActivity or ExoPlayer.
         -->
         <service
             android:name=".BackgroundPreparationKeepAliveService"
@@ -54,16 +55,7 @@
             android:foregroundServiceType="dataSync"
             android:stopWithTask="false" />
 
-        <!--
-          Historical default-display preparation Activity retained for source
-          compatibility/diagnostics only. Normal BG shares no longer launch it.
-
-          #212 proved an Activity cannot be launched as the first app Activity on
-          this private virtual display without privileged embedding rights.
-          #225/#227 then proved a transparent preparation Activity on display 0
-          can still disturb Vivaldi. The successor architecture reuses only the
-          private-display primitive and places a non-Activity Presentation there.
-        -->
+        <!-- Historical preparation Activity retained for compatibility/diagnostics only. -->
         <activity
             android:name=".BackgroundVirtualPreparationActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
@@ -80,15 +72,7 @@
             android:taskAffinity="${applicationId}.backgroundprepare"
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
-        <!--
-          Exported "BG - External Player" chooser target.
-
-          This Activity only validates the URL, creates the persistent tab and
-          starts the foreground service with the URL/tab/session token. It then
-          removes its own short share task. There is no follow-up preparation
-          Activity on display 0; service-owned private-display work continues
-          independently.
-        -->
+        <!-- Exported "BG - External Player" chooser target. -->
         <activity
             android:name=".BackgroundShareActivityV2"
             android:configChanges="keyboardHidden|orientation|screenSize"

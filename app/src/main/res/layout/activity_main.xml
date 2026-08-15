@@ -11,77 +11,148 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:paddingStart="22dp"
-        android:paddingTop="26dp"
-        android:paddingEnd="22dp"
-        android:paddingBottom="30dp">
+        android:paddingStart="14dp"
+        android:paddingTop="18dp"
+        android:paddingEnd="14dp"
+        android:paddingBottom="28dp">
 
+        <!-- Compact brand bar: the dashboard gets the screen, not navigation chrome. -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <FrameLayout
-                android:layout_width="62dp"
-                android:layout_height="62dp"
-                android:background="@color/app_surface_raised">
-
-                <ImageView
-                    android:layout_width="58dp"
-                    android:layout_height="58dp"
-                    android:layout_gravity="center"
-                    android:contentDescription="@string/home_brand"
-                    android:src="@drawable/ic_launcher_foreground" />
-            </FrameLayout>
+            <ImageView
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:contentDescription="@string/home_brand"
+                android:src="@drawable/ic_launcher_foreground" />
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="16dp"
+                android:layout_marginStart="12dp"
                 android:layout_weight="1"
                 android:orientation="vertical">
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
                     android:text="@string/home_brand"
                     android:textColor="@color/app_text_primary"
-                    android:textSize="28sp"
-                    android:textStyle="bold" />
+                    android:textSize="23sp" />
 
                 <TextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
+                    android:layout_marginTop="1dp"
                     android:text="@string/home_tagline"
                     android:textColor="@color/app_text_secondary"
-                    android:textSize="14sp" />
+                    android:textSize="12sp" />
             </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/settings_button"
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:background="@drawable/icon_button_background"
+                android:contentDescription="@string/settings"
+                android:padding="10dp"
+                android:src="@drawable/ic_settings_24"
+                android:tint="@color/app_text_primary" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:fontFamily="sans-serif-medium"
+                android:text="@string/home_tabs_section"
+                android:textColor="@color/app_text_primary"
+                android:textSize="19sp" />
+
+            <TextView
+                android:id="@+id/dashboard_count"
+                android:layout_width="36dp"
+                android:layout_height="32dp"
+                android:background="@drawable/count_pill_background"
+                android:gravity="center"
+                android:fontFamily="sans-serif-medium"
+                android:textColor="@color/app_text_primary"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="26dp"
-            android:text="@string/dashboard_title"
-            android:textColor="@color/app_text_primary"
-            android:textSize="20sp"
-            android:textStyle="bold" />
+            android:layout_marginTop="3dp"
+            android:text="@string/dashboard_subtitle_clean"
+            android:textColor="@color/app_text_secondary"
+            android:textSize="12sp" />
 
-        <TextView
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/dashboard_empty_state"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="@string/dashboard_subtitle"
-            android:textColor="@color/app_text_secondary"
-            android:textSize="13sp" />
+            android:layout_marginStart="5dp"
+            android:layout_marginTop="14dp"
+            android:layout_marginEnd="5dp"
+            app:cardBackgroundColor="@color/app_surface"
+            app:cardCornerRadius="18dp"
+            app:cardElevation="0dp"
+            app:strokeColor="@color/app_outline"
+            app:strokeWidth="1dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:padding="24dp">
+
+                <TextView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="@drawable/count_pill_background"
+                    android:gravity="center"
+                    android:text="＋"
+                    android:textColor="@color/app_text_secondary"
+                    android:textSize="26sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="@string/dashboard_empty_title"
+                    android:textColor="@color/app_text_primary"
+                    android:textSize="16sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="5dp"
+                    android:gravity="center"
+                    android:text="@string/dashboard_empty_message"
+                    android:textColor="@color/app_text_secondary"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/tab_dashboard_container"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="14dp"
             android:clipToPadding="false"
             android:nestedScrollingEnabled="false"
             android:overScrollMode="never" />
@@ -90,27 +161,37 @@
             android:id="@+id/dashboard_swipe_hint"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="5dp"
+            android:layout_marginStart="5dp"
+            android:layout_marginTop="2dp"
+            android:layout_marginEnd="5dp"
             android:text="@string/dashboard_swipe_hint"
             android:textColor="@color/app_text_secondary"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:visibility="gone" />
 
-        <TextView
+        <Button
+            android:id="@+id/manual_section_toggle"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="24dp"
-            android:layout_marginBottom="9dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="5dp"
+            android:layout_marginTop="22dp"
+            android:layout_marginEnd="5dp"
+            android:backgroundTint="@color/app_surface_raised"
+            android:fontFamily="sans-serif-medium"
             android:text="@string/home_manual_section"
-            android:textColor="@color/app_text_secondary"
-            android:textSize="13sp"
-            android:textStyle="bold" />
+            android:textAllCaps="false"
+            android:textColor="@color/app_text_primary" />
 
         <com.google.android.material.card.MaterialCardView
+            android:id="@+id/manual_url_card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginStart="5dp"
+            android:layout_marginTop="8dp"
+            android:layout_marginEnd="5dp"
+            android:visibility="gone"
             app:cardBackgroundColor="@color/app_surface"
-            app:cardCornerRadius="20dp"
+            app:cardCornerRadius="18dp"
             app:cardElevation="0dp"
             app:strokeColor="@color/app_outline"
             app:strokeWidth="1dp">
@@ -119,7 +200,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="18dp">
+                android:padding="16dp">
 
                 <EditText
                     android:id="@+id/url_input"
@@ -128,8 +209,8 @@
                     android:backgroundTint="@color/app_text_secondary"
                     android:hint="@string/url_hint"
                     android:inputType="textUri"
-                    android:paddingStart="12dp"
-                    android:paddingEnd="12dp"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="10dp"
                     android:singleLine="true"
                     android:textColor="@color/app_text_primary"
                     android:textColorHint="@color/app_text_secondary" />
@@ -137,28 +218,28 @@
                 <Button
                     android:id="@+id/resolve_button"
                     android:layout_width="match_parent"
-                    android:layout_height="52dp"
-                    android:layout_marginTop="12dp"
+                    android:layout_height="50dp"
+                    android:layout_marginTop="10dp"
                     android:backgroundTint="@color/app_accent"
+                    android:fontFamily="sans-serif-medium"
                     android:text="@string/resolve_and_play"
                     android:textAllCaps="false"
-                    android:textColor="@color/white"
-                    android:textStyle="bold" />
+                    android:textColor="@color/white" />
 
                 <ProgressBar
                     android:id="@+id/progress"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
+                    android:layout_width="32dp"
+                    android:layout_height="32dp"
                     android:layout_gravity="center_horizontal"
-                    android:layout_marginTop="12dp"
+                    android:layout_marginTop="10dp"
                     android:indeterminateTint="@color/app_accent"
                     android:visibility="gone" />
 
                 <Button
                     android:id="@+id/browser_resolve_button"
                     android:layout_width="match_parent"
-                    android:layout_height="48dp"
-                    android:layout_marginTop="10dp"
+                    android:layout_height="46dp"
+                    android:layout_marginTop="8dp"
                     android:backgroundTint="@color/app_surface_raised"
                     android:text="@string/open_browser_assisted_resolver"
                     android:textAllCaps="false"
@@ -169,42 +250,11 @@
                     android:id="@+id/status"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_marginTop="8dp"
                     android:textColor="@color/app_text_secondary"
                     android:textIsSelectable="true"
-                    android:textSize="13sp" />
+                    android:textSize="12sp" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
-            android:orientation="horizontal">
-
-            <Button
-                android:id="@+id/settings_button"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:backgroundTint="@color/app_surface_raised"
-                android:text="@string/settings"
-                android:textAllCaps="false"
-                android:textColor="@color/app_text_primary" />
-
-            <Space
-                android:layout_width="10dp"
-                android:layout_height="1dp" />
-
-            <Button
-                android:id="@+id/about_button"
-                android:layout_width="0dp"
-                android:layout_height="48dp"
-                android:layout_weight="1"
-                android:backgroundTint="@color/app_surface_raised"
-                android:text="@string/about"
-                android:textAllCaps="false"
-                android:textColor="@color/app_text_primary" />
-        </LinearLayout>
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>

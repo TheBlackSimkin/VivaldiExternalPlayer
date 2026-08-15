@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- UI refresh: normal surfaces stay user-facing; technical lifecycle text remains in diagnostics. -->
+    <string name="back">Back</string>
+    <string name="restore">Restore</string>
+    <string name="player_menu">Player menu</string>
+    <string name="manual_section_hide">Hide manual link</string>
+
+    <string name="dashboard_subtitle_clean">Your prepared and preparing tabs</string>
+    <string name="dashboard_empty_title">No tabs yet</string>
+    <string name="dashboard_empty_message">Share a page from Vivaldi with ExternalPlayer, or open a link manually below.</string>
+    <string name="dashboard_quality_auto_compact">Auto • %1$dp</string>
+    <string name="dashboard_quality_manual_compact">Manual %1$dp • %2$dp actual</string>
+
+    <string name="settings_section_general">GENERAL</string>
+    <string name="settings_section_browser">BROWSER PREPARATION</string>
+    <string name="settings_section_tabs">TABS &amp; HISTORY</string>
+    <string name="settings_section_support">SUPPORT &amp; ABOUT</string>
+    <string name="settings_recently_closed_summary">Recover tabs you closed recently.</string>
+    <string name="settings_clear_tabs_summary">Close all currently open ExternalPlayer tabs.</string>
+    <string name="settings_diagnostics_summary">Share the technical operations log when troubleshooting.</string>
+    <string name="settings_about_summary">Version, build and local-storage information.</string>
+
+    <string name="recently_closed_title">Recently Closed</string>
+    <string name="recently_closed_count_short">%1$d saved for recovery</string>
+    <string name="recover_all">Recover all</string>
+    <string name="delete_all">Delete all</string>
+    <string name="recently_closed_empty_title">Nothing to recover</string>
+    <string name="recently_closed_empty_message">Tabs you close normally will appear here for a while.</string>
+    <string name="recently_closed_resume_at">Resume %1$s</string>
+    <string name="recently_closed_quality">%1$dp</string>
+    <string name="recently_closed_ready_to_restore">Ready to restore</string>
+    <string name="recently_closed_all_recovered">All recently closed tabs recovered</string>
+    <string name="delete_all_recently_closed">Delete recently closed history?</string>
+    <string name="delete_all_recently_closed_confirmation">This permanently removes every item in Recently Closed. Open tabs are not affected.</string>
+
+    <string name="about_summary">A private, foreground-only external video player designed around fast browser sharing and persistent local tabs.</string>
+    <string name="browser_resolver_title">Browser-assisted resolver</string>
+</resources>

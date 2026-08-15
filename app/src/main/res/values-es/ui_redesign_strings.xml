@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Renovación de UI: los detalles técnicos siguen disponibles en Diagnósticos. -->
+    <string name="back">Atrás</string>
+    <string name="restore">Restaurar</string>
+    <string name="player_menu">Menú del reproductor</string>
+    <string name="manual_section_hide">Ocultar enlace manual</string>
+
+    <string name="dashboard_subtitle_clean">Tus pestañas preparadas y en preparación</string>
+    <string name="dashboard_empty_title">Todavía no hay pestañas</string>
+    <string name="dashboard_empty_message">Comparte una página desde Vivaldi con ExternalPlayer o abre un enlace manualmente abajo.</string>
+    <string name="dashboard_quality_auto_compact">Auto • %1$dp</string>
+    <string name="dashboard_quality_manual_compact">Manual %1$dp • real %2$dp</string>
+
+    <string name="settings_section_general">GENERAL</string>
+    <string name="settings_section_browser">PREPARACIÓN DEL NAVEGADOR</string>
+    <string name="settings_section_tabs">PESTAÑAS E HISTORIAL</string>
+    <string name="settings_section_support">SOPORTE Y ACERCA DE</string>
+    <string name="settings_recently_closed_summary">Recupera pestañas que cerraste recientemente.</string>
+    <string name="settings_clear_tabs_summary">Cierra todas las pestañas abiertas de ExternalPlayer.</string>
+    <string name="settings_diagnostics_summary">Comparte el registro técnico de operaciones al diagnosticar problemas.</string>
+    <string name="settings_about_summary">Versión, compilación y datos guardados localmente.</string>
+
+    <string name="recently_closed_title">Cerradas recientemente</string>
+    <string name="recently_closed_count_short">%1$d guardadas para recuperar</string>
+    <string name="recover_all">Recuperar todas</string>
+    <string name="delete_all">Borrar todas</string>
+    <string name="recently_closed_empty_title">Nada para recuperar</string>
+    <string name="recently_closed_empty_message">Las pestañas que cierres normalmente aparecerán aquí durante un tiempo.</string>
+    <string name="recently_closed_resume_at">Continuar %1$s</string>
+    <string name="recently_closed_quality">%1$dp</string>
+    <string name="recently_closed_ready_to_restore">Lista para restaurar</string>
+    <string name="recently_closed_all_recovered">Todas las pestañas cerradas recientemente fueron recuperadas</string>
+    <string name="delete_all_recently_closed">¿Borrar el historial de cerradas recientemente?</string>
+    <string name="delete_all_recently_closed_confirmation">Esto elimina permanentemente todos los elementos de Cerradas recientemente. Las pestañas abiertas no se verán afectadas.</string>
+
+    <string name="about_summary">Un reproductor externo privado y solo en primer plano, diseñado para compartir rápidamente desde el navegador y conservar pestañas locales.</string>
+    <string name="browser_resolver_title">Resolución asistida por navegador</string>
+</resources>
