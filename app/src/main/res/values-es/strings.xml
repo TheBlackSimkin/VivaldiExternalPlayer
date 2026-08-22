@@ -54,6 +54,9 @@
     <string name="tabs_button_count">Pestañas: %1$d</string>
     <string name="tab_active_title">▶ %1$s</string>
     <string name="close_tab_named">Cerrar pestaña: %1$s</string>
+    <string name="tab_health_checking">Comprobando…</string>
+    <string name="tab_health_needs_refresh">Necesita actualizarse</string>
+    <string name="tab_health_unavailable">No disponible</string>
 
     <!-- Controles de calidad del reproductor. -->
     <string name="video_quality">Calidad de vídeo</string>
