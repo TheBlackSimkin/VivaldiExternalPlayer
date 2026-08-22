@@ -56,6 +56,9 @@
     <string name="tabs_button_count">Tabs: %1$d</string>
     <string name="tab_active_title">▶ %1$s</string>
     <string name="close_tab_named">Close tab: %1$s</string>
+    <string name="tab_health_checking">Checking…</string>
+    <string name="tab_health_needs_refresh">Needs refresh</string>
+    <string name="tab_health_unavailable">Unavailable</string>
 
     <!-- Player quality controls. -->
     <string name="video_quality">Video quality</string>
