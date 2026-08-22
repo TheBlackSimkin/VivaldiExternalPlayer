@@ -1,6 +1,5 @@
 package com.example.vivaldiplayer
 
-import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -11,56 +10,26 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 
-/** Reusable Android-system authentication gate for Private Favorites reads/writes. */
+/**
+ * Compatibility wrapper for existing Private Favorites call sites.
+ * Authentication mechanics live in SystemAuthGate so privacy features share one
+ * Android biometric/device-credential implementation.
+ */
 object PrivateFavoriteAuthenticator {
     fun authenticate(
         activity: FragmentActivity,
         onSuccess: () -> Unit,
         onFailure: (() -> Unit)? = null
     ) {
-        val authenticators = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        } else {
-            BiometricManager.Authenticators.BIOMETRIC_WEAK or
-                BiometricManager.Authenticators.DEVICE_CREDENTIAL
-        }
-
-        if (BiometricManager.from(activity).canAuthenticate(authenticators) !=
-            BiometricManager.BIOMETRIC_SUCCESS
-        ) {
-            Toast.makeText(activity, R.string.private_favorites_auth_unavailable, Toast.LENGTH_LONG).show()
-            onFailure?.invoke()
-            return
-        }
-
-        val prompt = BiometricPrompt(
-            activity,
-            ContextCompat.getMainExecutor(activity),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    super.onAuthenticationSucceeded(result)
-                    onSuccess()
-                }
-
-                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                    super.onAuthenticationError(errorCode, errString)
-                    onFailure?.invoke()
-                }
-            }
-        )
-
-        prompt.authenticate(
-            BiometricPrompt.PromptInfo.Builder()
-                .setTitle(activity.getString(R.string.unlock_private_favorites))
-                .setSubtitle(activity.getString(R.string.private_favorites_auth_prompt))
-                .setAllowedAuthenticators(authenticators)
-                .build()
+        SystemAuthGate.authenticate(
+            activity = activity,
+            title = activity.getString(R.string.unlock_private_favorites),
+            subtitle = activity.getString(R.string.private_favorites_auth_prompt),
+            onSuccess = onSuccess,
+            onFailure = onFailure
         )
     }
 }
