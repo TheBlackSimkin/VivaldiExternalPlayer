@@ -1,6 +1,7 @@
 package com.example.vivaldiplayer
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.view.Gravity
@@ -22,6 +23,10 @@ import com.google.android.material.card.MaterialCardView
  * activated, the locked state is persisted so a process restart cannot reveal a
  * dashboard which the user deliberately hid. Revealing it requires Android
  * biometric/device-credential authentication.
+ *
+ * A shared URL received while locked must never start resolving behind the
+ * curtain. MainActivity defers it; after successful authentication we restart
+ * the same Activity intent so that pending share is handled only when visible.
  *
  * This is a privacy/UI gate, not encrypted storage for normal tabs.
  */
@@ -56,7 +61,20 @@ object AppPrivacyController {
                     .edit()
                     .putBoolean(KEY_LOCKED, false)
                     .apply()
+
+                /*
+                 * Restart the current intent rather than merely uncovering the
+                 * existing view. This lets a deferred ACTION_SEND be consumed
+                 * normally after authentication and avoids resolving it while
+                 * the privacy curtain is active.
+                 */
+                val restart = Intent(activity.intent).apply {
+                    setClass(activity, activity::class.java)
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
                 removeCurtain(activity)
+                activity.startActivity(restart)
+                activity.finish()
             }
         )
     }
