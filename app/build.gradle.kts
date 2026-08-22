@@ -53,9 +53,19 @@ android {
             if (!storeFilePath.isNullOrBlank()) {
                 signingConfig = signingConfigs.create("persistentRelease") {
                     storeFile = file(storeFilePath)
-                    storePassword = System.getenv("VEP_KEYSTORE_PASSWORD")
+                    val persistentStorePassword = System.getenv("VEP_KEYSTORE_PASSWORD")
+                    storePassword = persistentStorePassword
                     keyAlias = System.getenv("VEP_KEY_ALIAS")
-                    keyPassword = System.getenv("VEP_KEY_PASSWORD")
+
+                    /*
+                     * The permanent release keystore is PKCS#12. Its private key
+                     * is protected by the same password as the keystore itself,
+                     * so use that single authoritative value here. Keeping a
+                     * separate key-password secret would allow the two values to
+                     * drift and make otherwise-valid release builds fail at the
+                     * packaging/signing stage.
+                     */
+                    keyPassword = persistentStorePassword
                 }
             }
         }
