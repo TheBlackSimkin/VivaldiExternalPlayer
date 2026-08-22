@@ -42,6 +42,13 @@
     <string name="private_favorites_auth_unavailable">Android system authentication is not available on this device.</string>
     <string name="favorite_original_url_unavailable">The original page URL is unavailable, so this item cannot be saved.</string>
 
+    <!-- Vivaldi private-tab fallback. -->
+    <string name="vivaldi_private_copy_url">Vivaldi Private + Copy URL</string>
+    <string name="vivaldi_private_clip_label">Original page URL</string>
+    <string name="vivaldi_private_url_copied_paste">Original URL copied — paste it in the Vivaldi Private tab.</string>
+    <string name="vivaldi_private_unavailable">Vivaldi Private tab is not available on this device.</string>
+    <string name="vivaldi_private_original_url_unavailable">The original page URL is unavailable, so it cannot be copied.</string>
+
     <!-- Browser-assisted resolver. -->
     <string name="browser_resolver_intro">The app will try the best video it finds automatically. Use the list only if the first result is wrong. Start the video on this page only if detection needs it.</string>
     <string name="browser_loading">Loading page…</string>
@@ -74,6 +81,7 @@
     <string name="browser_source_performance">browser resource</string>
     <string name="browser_source_config">player config</string>
     <string name="browser_recommended_prefix">Recommended:</string>
+    <string name="browser_option_number">Option %1$d —</string>
     <string name="browser_play_detected_count">Play detected stream (%1$d)</string>
     <string name="browser_detected_status">Detected %1$d possible media request(s).</string>
     <string name="media_host_fallback">media host</string>
