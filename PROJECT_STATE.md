@@ -21,11 +21,10 @@ CI verifies signing, package metadata and APK alignment.
 0.3.1 **Vivaldi Private + Copy URL** device QA is PASS. ADB in-place update works. APK SHA-256 `6e02fb3df1ea831a42d4d4c582a37c46f4b68772f9cd8f438ae821fc9fa0db51`.
 
 ## Active candidate: 0.3.2 / versionCode 5
-Branch `work/0.3.2-correctness-ux`, PR #2. Do NOT merge until the second focused QA pass.
+Branch `work/0.3.2-correctness-ux`, PR #2. **Do NOT merge yet.** One functional bug remains in player-side recovery and direct tap installation is still unresolved.
 
-First candidate code gate: Actions `32590746439` / run #331, job `97074080536`, artifact `9480279353`, APK SHA-256 `bc5b854980faa214ee0b9d7ef5a7676923ffc2c95e3cac4029e47f79a3f77799`. Debug/release, zipalign/package and signer checks PASS.
-
-Second candidate code head: `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
+### Candidate 2 build
+Code head used for Candidate 2 APK: `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
 - Actions run `32595557947` / run #342
 - job `97085776140`
 - signed release artifact `9481470902`
@@ -34,52 +33,77 @@ Second candidate code head: `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
 - debug + signed release build PASS
 - upload/signing/package/alignment validation PASS
 
-### First-candidate device QA
-- ADB install over 0.3.1: **PASS**; existing data remained.
-- gear menu / close icon: **PASS**.
-- individual Revive from dashboard: **PASS**.
-- Revive/Refresh source from inside Player: **FAIL**; reproduced old behavior/error.
-- Check status -> open Player midway: **PASS**; prior blink/race no longer reproduced.
-- reported decoder-init case: **PASS**.
-- Recently Closed / Close All with 25 tabs: **PASS**.
-- privacy feature: **SEMI-PASS**; auth/cover worked, but the curtain conspicuously announced that content was locked and successful reveal minimized the app.
-- protected player regression: **PASS**.
+## 0.3.2 implementation retained
+- stale/error-tab recovery centralized in `TabMaintenanceController`
+- dashboard individual Revive and global Revive All use the same controller/coordinator path
+- status/player lifecycle isolation fixed the prior Check Status -> Player blinking race
+- PlayerActivity no longer triggers dashboard thumbnail warm-up; background `FrameExtractor` work is serialized/suspended during foreground playback
+- Media3 same-ExoPlayer decoder fallback enabled; reported decoder-init case now device PASS; no stream metadata forging
+- Recently Closed browser-like history cap raised 12 -> 100; Close All with 25 tabs device PASS
+- dashboard operations consolidated under gear menu; close text X replaced with proper icon
+- `SystemAuthGate` shared by Private Favorites and app privacy UI
+- app privacy is manually activated, starts unlocked, uses a neutral covered surface, `FLAG_SECURE`, biometric/device credential, in-place reveal, and deferred incoming shares
+- PR CI validation, package/alignment/signing checks
 
-### Second-candidate fixes now implemented
-- In-player Refresh source no longer has a parallel preparation implementation. `TabMaintenanceController.reviveFromPlayer(...)` now persists playback position/state and queues the same persistent tab through the exact protected revival path already proven from the dashboard. Explicit player recovery may revive even when a health probe has not yet marked the tab stale.
-- The stale `PlayerActivity.currentResolved` payload is still cleared before navigation so its onPause persistence cannot race the tab back to READY with the dead payload.
-- Privacy curtain presentation is now intentionally neutral: `External Video Player` / `Ready to open a video` / `Open`. It does not display words such as locked, hidden, private, tabs, history, or reveal on the covered surface.
-- Privacy authentication now reveals **in place**. The Activity is no longer restarted/finished after successful auth, addressing the observed minimize behavior.
-- Deferred shares remain blocked while hidden and are consumed only after successful in-place reveal; the latest reveal callback is retained even when the curtain was already on screen.
+## Candidate 1 device QA summary
+- ADB update over 0.3.1: PASS; existing data retained
+- gear menu / close icon: PASS
+- dashboard individual Revive: PASS
+- in-player Revive/Refresh: FAIL
+- Check status -> Player: PASS
+- decoder case: PASS
+- Recently Closed / Close All with 25 tabs: PASS
+- privacy: SEMI-PASS; function worked but old curtain advertised locking and reveal minimized app
+- protected player regression: PASS
+- direct tap install: FAIL; Play Protect block
 
-### Existing 0.3.2 changes retained
-- centralized stale/error-tab recovery and global Revive
-- status/player lifecycle isolation
-- no PlayerActivity-triggered dashboard thumbnail warm-up; background FrameExtractor work serialized/suspended during playback
-- Media3 same-ExoPlayer decoder fallback; decoder-specific graceful recovery; no metadata forging
-- Recently Closed cap 100 and browser-like Close All recovery
-- consolidated dashboard gear menu
-- shared `SystemAuthGate` for Private Favorites/privacy UI
-- proper close icon
-- PR CI validation
+## Candidate 2 device QA — definitive state
+User installed Candidate 2 by ADB and reported:
+- ADB update: **PASS**
+- privacy appearance: **PASS**; neutral/inconspicuous presentation accepted
+- privacy authentication/reveal: **PASS**; no minimize problem
+- share while covered: **PASS**; deferred correctly until reveal
+- short regression check: **PASS**
+- in-player Revive/Refresh: **FAIL**
+
+### Exact remaining in-player recovery failure
+When playback is failed, the Player shows:
+`Playback failed. Tap Playback error to view or copy the technical details.`
+
+Tapping **Recovery options** opens an unattractive dialog containing only:
+- title: `Recovery options`
+- text: `Playback failed. These recovery actions retry normal playback paths only; they do not bypass protected access.`
+- `CANCEL`
+
+There are **no actionable recovery entries** such as Retry playback, Refresh source/Revive, alternate detected video, or browser method. Therefore `TabMaintenanceController.reviveFromPlayer(...)` is not being reached from this failed-player state despite the underlying centralized revival path existing and dashboard Revive already passing.
+
+### Next-session first task
+Inspect why `PlayerRecoveryController.showRecoveryDialog()` builds an empty `actions` list in the actual failed Player context. The code currently always intends to add Retry first, then conditionally Refresh/alternate actions, so an empty dialog suggests the recovery controller is attaching to a state/player instance where expected action construction or player/tab association is not valid, or the displayed dialog is coming from another/older recovery surface. Trace the actual runtime path before adding more logic.
+
+Specifically verify:
+1. which class/dialog instance produces the observed exact text;
+2. whether `PlayerRecoveryController.attach()` is attached to the active `PlayerView.player` after failure;
+3. whether `currentPersistentTab()` sees `TabbedPlayerApplication.EXTRA_TAB_ID` in this launch path;
+4. whether the failed player was opened from a persistent dashboard tab or another launch path lacking tab ID;
+5. whether another recovery dialog implementation exists and is being shown instead;
+6. once identified, make player-side **Refresh source / Revive** call the same authoritative `TabMaintenanceController` path that already passes from the dashboard.
+
+Do not reintroduce a parallel service/preparation implementation.
 
 ## Decoder case
-Reported HLS playback failed on first candidate input with `ERROR_CODE_DECODER_INIT_FAILED`, Qualcomm `c2.qti.avc.decoder`, `NO_EXCEEDS_CAPABILITIES`, and implausible ~12857 fps metadata. First-candidate device retest is **PASS** with documented same-ExoPlayer decoder fallback. Do not rewrite/forge stream metadata without reproducible proof.
+Reported HLS playback previously failed with `ERROR_CODE_DECODER_INIT_FAILED`, Qualcomm `c2.qti.avc.decoder`, `NO_EXCEEDS_CAPABILITIES`, and implausible ~12857 fps metadata. 0.3.2 same-ExoPlayer decoder fallback device retest is **PASS**. Do not rewrite/forge stream metadata without reproducible proof.
 
-## Direct APK installation — confirmed blocker
+## Direct APK installation — confirmed unresolved blocker
 Standalone extracted APK normal tap update is **FAIL**. Device reports `La aplicación no se ha instalado`; Google Play Protect then shows `Aplicación bloqueada para proteger tu dispositivo`, saying it does not know another app from this developer / it may be unsafe. Tapping visible `Instalar de todas formas` does not continue.
 
-CI proves package/sign/alignment sanity and ADB in-place update proves package/signature continuity. Treat this as a Play Protect / installer-flow blocker, not a signing failure. Next investigation should capture PackageInstaller/PackageManager/Play Protect logs/reason codes during a failed tap. Do not uninstall the working app merely to test.
+CI proves package/sign/alignment sanity and ADB in-place update proves package/signature continuity. Treat this as a Play Protect / installer-flow blocker, not a signing failure. Future investigation should capture PackageInstaller/PackageManager/Play Protect logs/reason codes during a failed tap. Do not uninstall the working app merely to test.
 
-## Owed second-candidate QA
-Only the changed areas need focused retest before merge:
-- in-player Refresh/Revive: must queue same tab and recover like dashboard Revive
-- neutral privacy curtain: must be inconspicuous at a glance
-- successful auth must reveal in place without minimizing
-- share received while hidden must remain deferred until reveal
-- short player/dashboard regression spot-check
+## Merge/release gate
+Do not merge PR #2 until:
+1. in-player recovery exposes a working Refresh/Revive action and device QA passes;
+2. state files are refreshed with that final result.
 
-Direct tap installation remains separately unresolved; functional QA may use ADB in-place update.
+Direct tap installation remains a separate known blocker; ADB in-place functional QA is valid meanwhile.
 
 ## Deferred
 - Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
