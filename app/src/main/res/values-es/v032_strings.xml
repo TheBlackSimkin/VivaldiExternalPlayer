@@ -6,10 +6,11 @@
     <string name="dashboard_menu_privacy">PRIVACIDAD</string>
     <string name="dashboard_menu_app">APLICACIÓN</string>
     <string name="hide_and_lock_app">Ocultar y bloquear la app</string>
-    <string name="privacy_shield_title">ExternalPlayer está oculto</string>
-    <string name="privacy_shield_summary">Las pestañas y los detalles del panel están ocultos hasta que te autentiques.</string>
-    <string name="reveal_app">Mostrar ExternalPlayer</string>
-    <string name="privacy_shield_auth_prompt">Usa tu biometría o desbloqueo del teléfono para mostrar la app.</string>
+    <string name="privacy_neutral_title">Reproductor de video externo</string>
+    <string name="privacy_neutral_summary">Listo para abrir un video.</string>
+    <string name="privacy_neutral_open">Abrir</string>
+    <string name="privacy_auth_title">Abrir ExternalPlayer</string>
+    <string name="privacy_auth_prompt">Confirma con tu biometría o desbloqueo del teléfono.</string>
     <string name="system_auth_unavailable">La autenticación biométrica o del dispositivo no está disponible.</string>
     <string name="dashboard_revive">Revivir</string>
     <string name="decoder_compatibility_note">El decodificador de video principal no pudo iniciarse. ExternalPlayer intentará otro decodificador compatible cuando Android lo proporcione; las opciones de recuperación seguirán disponibles si todos fallan.</string>
