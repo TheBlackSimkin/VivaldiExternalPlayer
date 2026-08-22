@@ -380,6 +380,9 @@ class PlayerChromeProvider : ContentProvider() {
                     CompactMenuItem(activity.getString(R.string.add_private_favorite)) {
                         saveCurrentFavorite(activity, privateFavorite = true)
                     },
+                    CompactMenuItem(activity.getString(R.string.vivaldi_private_copy_url)) {
+                        VivaldiPrivateLauncher.openPrivateAndCopyOriginalUrl(activity)
+                    },
                     CompactMenuItem(activity.getString(R.string.player_diagnostics)) {
                         diagnosticsButton.performClick()
                     }
