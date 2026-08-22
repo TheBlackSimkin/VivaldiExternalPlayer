@@ -59,7 +59,8 @@ object TabRevivalCoordinator {
     private fun startNextLocked() {
         if (active != null) return
         val context = appContext ?: return
-        val next = pending.removeFirstOrNull() ?: return
+        if (pending.isEmpty()) return
+        val next = pending.removeFirst()
         val tab = VideoTabStore.get(next.tabId)
 
         if (tab == null) {
