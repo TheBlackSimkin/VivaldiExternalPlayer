@@ -37,6 +37,11 @@ import java.util.WeakHashMap
  * use the historical display-0 preparation Activity, and does not create a second
  * ExoPlayer.
  *
+ * Decoder initialization failures are also identified here. PlayerActivity first
+ * lets Media3 try its documented same-player decoder fallback; if every compatible
+ * decoder still fails, these manual recovery choices remain available. We do not
+ * forge frame-rate/codec metadata to force a hardware decoder to accept a stream.
+ *
  * A rare HLS case can fail because a child playlist/segment host has no DNS
  * address. We recognize UnknownHostException only to explain that situation more
  * clearly. We never guess a replacement host, rewrite DNS, or bypass access rules.
@@ -98,6 +103,7 @@ private class PlayerRecoveryController(
     private var automaticRetryCount = 0
     private var retryScheduled = false
     private var lastFailureWasDnsLookup = false
+    private var lastFailureWasDecoderInit = false
 
     private val recoveryButton = Button(activity).apply {
         isAllCaps = false
@@ -130,8 +136,16 @@ private class PlayerRecoveryController(
     override fun onPlayerError(error: PlaybackException) {
         recoveryButton.visibility = View.VISIBLE
         lastFailureWasDnsLookup = findCause<UnknownHostException>(error) != null
+        lastFailureWasDecoderInit =
+            error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
 
-        if (lastFailureWasDnsLookup) {
+        if (lastFailureWasDecoderInit) {
+            Toast.makeText(
+                activity,
+                R.string.decoder_compatibility_note,
+                Toast.LENGTH_LONG
+            ).show()
+        } else if (lastFailureWasDnsLookup) {
             /*
              * This is informational only. Retry remains useful for a temporary
              * DNS problem, and Refresh source may obtain a different legitimate
@@ -167,6 +181,7 @@ private class PlayerRecoveryController(
             retryScheduled = false
             automaticRetryCount = 0
             lastFailureWasDnsLookup = false
+            lastFailureWasDecoderInit = false
         }
     }
 
@@ -219,10 +234,10 @@ private class PlayerRecoveryController(
         AlertDialog.Builder(activity)
             .setTitle(R.string.recovery_options)
             .setMessage(
-                if (lastFailureWasDnsLookup) {
-                    R.string.recovery_dns_explanation
-                } else {
-                    R.string.recovery_explanation
+                when {
+                    lastFailureWasDecoderInit -> R.string.decoder_compatibility_note
+                    lastFailureWasDnsLookup -> R.string.recovery_dns_explanation
+                    else -> R.string.recovery_explanation
                 }
             )
             .setItems(actions.map { it.label }.toTypedArray()) { _, which ->
