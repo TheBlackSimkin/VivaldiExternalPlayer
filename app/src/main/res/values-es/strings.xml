@@ -40,6 +40,13 @@
     <string name="private_favorites_auth_unavailable">La autenticación del sistema Android no está disponible en este dispositivo.</string>
     <string name="favorite_original_url_unavailable">La URL original de la página no está disponible, por lo que no se puede guardar este elemento.</string>
 
+    <!-- Alternativa para pestaña privada de Vivaldi. -->
+    <string name="vivaldi_private_copy_url">Vivaldi privado + Copiar URL</string>
+    <string name="vivaldi_private_clip_label">URL original de la página</string>
+    <string name="vivaldi_private_url_copied_paste">URL original copiada — pégala en la pestaña privada de Vivaldi.</string>
+    <string name="vivaldi_private_unavailable">La pestaña privada de Vivaldi no está disponible en este dispositivo.</string>
+    <string name="vivaldi_private_original_url_unavailable">La URL original de la página no está disponible, por lo que no se puede copiar.</string>
+
     <!-- Resolución asistida por navegador. -->
     <string name="browser_resolver_intro">La aplicación probará automáticamente el mejor vídeo que encuentre. Usa la lista solo si el primer resultado es incorrecto. Inicia el vídeo en esta página únicamente si hace falta para detectarlo.</string>
     <string name="browser_loading">Cargando página…</string>
