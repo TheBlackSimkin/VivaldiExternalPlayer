@@ -1,70 +1,55 @@
-# Vivaldi External Player — Android prototype
+# Vivaldi External Player — Android
 
-This Android app receives a shared webpage URL from Vivaldi, resolves an
-accessible non-DRM media stream, and plays it in AndroidX Media3 / ExoPlayer.
+Vivaldi External Player receives an ordinary Android-shared webpage URL, resolves an accessible non-DRM media stream, and plays it with AndroidX Media3 / ExoPlayer. Vivaldi is the primary browser workflow; Brave Mobile is also compatible through the same generic Android share targets.
 
 ## Current behavior
 
-- Android Share target for `text/plain`.
-- Direct yt-dlp resolution first, then automatic browser-assisted fallback.
-- Browser-assisted mode automatically tries its best detected video; manual
-  candidate selection is a fallback, not the normal workflow.
-- Quality preference: 720p, then 1080p, then best available below 1080p.
-- HLS, DASH, progressive playback, and yt-dlp separate video/audio merging.
-- Quality selection for adaptive Media3 tracks and page players which expose
-  separate URLs per quality.
-- Visible extracted-frame preview while dragging the timeline where supported.
-- Double-tap left/right for -10/+10 seconds.
+- Two Android share flows: play now and background preparation.
+- Background preparation uses a foreground service, an app-private virtual display, and a non-Activity Presentation/WebView. It does not create PlayerActivity or ExoPlayer and does not perform background playback.
+- Direct yt-dlp resolution first, then serialized browser-assisted fallback when needed.
+- Automatic quality preference: exact 720p, otherwise 1080p, otherwise the highest available quality below 1080p; above 1080p is only a rare fallback.
+- Manual video quality, including adaptive Media3 tracks and page players which expose sibling URLs per quality.
+- HLS, DASH, progressive playback, and separate video/audio merging.
+- Exactly one ExoPlayer playback session.
+- Audio-track selection, app-level Volume/Mute, playback speed, fullscreen, and copyable diagnostics.
+- Visible extracted-frame seek preview where supported.
+- Double-tap left/right for -10/+10 seconds, with no dedicated visible seek buttons.
+- Persistent multi-video tab dashboard with local titles, playback position, requested/actual quality state, drag reordering, close/recovery, and Recently Closed.
+- Recents privacy for the dashboard.
+- Permanent original-page URL storage for refresh/revival instead of treating temporary CDN/media URLs as permanent identity.
+- Conservative serialized **Update status** checks and **Revive expired** recovery through the same protected background-preparation architecture.
+- Main-screen **Close all tabs** confirmation using Recently Closed as a safety net.
+- **Favorites** store original page URLs and local titles.
+- **Private Favorites** encrypt titles/URLs at rest with an Android Keystore AES-GCM key and require Android biometric/device authentication before displaying them. The private screen is screenshot/Recents protected and does not use thumbnails.
+- Player gear actions for adding the current original page to Favorites or Private Favorites.
 - English and Spanish user-facing strings.
-- Copyable playback diagnostics.
+- Permanently signed release APKs from GitHub Actions; private signing key material is never committed.
 
-Batch 4 has passed the main validation set: Bitmovin, PH, and HH all report
-automatic playback with video+audio, and PH/HH quality switching works. Further
-Cloudinary testing was intentionally skipped and is not a required gate.
+## Browser privacy note
 
-## Planned player UX
-
-The next major direction is a tabbed multi-video player:
-
-- every video shared from Vivaldi becomes an independent app tab;
-- the user can switch between and close video tabs similarly to browser tabs;
-- each tab shows the original video/page title using locally available metadata;
-- each open tab preserves its own playback position and media selection;
-- resolution internals should be hidden behind a simple "Opening video…" state;
-- Media3 buffering should show a simple visible "Buffering…" indicator;
-- the current brief browser-resolver screen/flicker should be removed without
-  changing the working resolver-selection logic;
-- the prototype launcher icon should be replaced with a polished custom Android
-  adaptive icon.
-
-See `PROJECT_STATE.md` for the exact requirements and development priorities.
+The app does **not** claim that an external Android intent can force Vivaldi to open an arbitrary URL directly in a Private/Incognito tab. A normal `ACTION_VIEW` intent does not provide that guarantee, so an “always private” Vivaldi action is intentionally not presented as supported unless Vivaldi exposes a reliable documented mechanism in the future.
 
 ## Important boundary
 
-The app is not intended to bypass DRM, authentication, subscriptions, regional
-restrictions, anti-bot challenges, or other access controls. Use it only for
-media you are authorized to access.
+The app is not intended to bypass DRM, authentication, subscriptions, regional restrictions, CAPTCHA/anti-bot challenges, paywalls, or other access controls. It does not import browser passwords or credentials. Use it only for media you are authorized to access.
 
 ## Build configuration
 
+- Version 0.3.0 (`versionCode 3`)
 - Android Gradle Plugin 8.13.2
 - Gradle 8.13
 - compileSdk/targetSdk 36
-- JDK 17
 - Minimum Android API 24
+- JDK 17
 - Chaquopy 17.0 / Python 3.13
+- yt-dlp 2026.06.09
 - Media3 1.10.1
+- arm64-v8a APK
 
-See `BUILD_APK.md` for the GitHub Actions build workflow.
+See `BUILD_APK.md` for the GitHub Actions workflow and `PROJECT_STATE.md` for the protected architecture, accepted QA baseline, signing continuity, and current development status.
 
-## Current backlog
+## Current follow-up work
 
-- Multi-video tab/session system.
-- Per-tab original video/page title.
-- Transparent opening/buffering UI and resolver-transition cleanup.
-- Custom adaptive launcher icon.
-- Playback-speed control.
-- App-level volume/mute.
-- Dedicated return to the existing Vivaldi task/tab.
-- Persistent APK signing for GitHub Actions.
-- Brave evaluation after Vivaldi behavior is mature.
+- Focused device QA for the 0.3.0 tab-maintenance and Favorites changes.
+- Conservative diagnostics/operations-log noise cleanup where it can be proven not to affect resolver or playback behavior.
+- Broader hardening only when real personal-use regressions justify it.
