@@ -14,6 +14,7 @@ import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.card.MaterialCardView
+import java.util.WeakHashMap
 
 /**
  * Manually activated privacy curtain for the main dashboard.
@@ -30,21 +31,24 @@ object AppPrivacyController {
     private const val KEY_LOCKED = "dashboard_locked"
     private const val OVERLAY_TAG = "vep_privacy_shield"
 
+    /* Activity keys are weak so this controller never owns an Activity lifecycle. */
+    private val revealCallbacks = WeakHashMap<AppCompatActivity, () -> Unit>()
+
     fun isLocked(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_LOCKED, false)
 
     /**
      * [onRevealed] is used by MainActivity to consume a share that arrived while
-     * hidden. Revealing happens in-place; we deliberately do not restart/finish
-     * the Activity because doing so caused some devices to minimize the app after
-     * successful system authentication.
+     * hidden. The latest callback is retained even when the curtain already exists,
+     * so a share delivered after the user manually hid the app is not lost.
      */
     fun attachIfNeeded(
         activity: AppCompatActivity,
         onRevealed: (() -> Unit)? = null
     ) {
-        if (isLocked(activity)) showCurtain(activity, onRevealed)
+        if (onRevealed != null) revealCallbacks[activity] = onRevealed
+        if (isLocked(activity)) showCurtain(activity)
     }
 
     fun lock(activity: AppCompatActivity) {
@@ -52,13 +56,10 @@ object AppPrivacyController {
             .edit()
             .putBoolean(KEY_LOCKED, true)
             .apply()
-        showCurtain(activity, null)
+        showCurtain(activity)
     }
 
-    private fun reveal(
-        activity: AppCompatActivity,
-        onRevealed: (() -> Unit)?
-    ) {
+    private fun reveal(activity: AppCompatActivity) {
         SystemAuthGate.authenticate(
             activity = activity,
             title = activity.getString(R.string.privacy_auth_title),
@@ -69,15 +70,12 @@ object AppPrivacyController {
                     .putBoolean(KEY_LOCKED, false)
                     .apply()
                 removeCurtain(activity)
-                onRevealed?.invoke()
+                revealCallbacks.remove(activity)?.invoke()
             }
         )
     }
 
-    private fun showCurtain(
-        activity: AppCompatActivity,
-        onRevealed: (() -> Unit)?
-    ) {
+    private fun showCurtain(activity: AppCompatActivity) {
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val root = activity.findViewById<FrameLayout>(android.R.id.content) ?: return
         if (root.findViewWithTag<View>(OVERLAY_TAG) != null) return
@@ -127,7 +125,7 @@ object AppPrivacyController {
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(color(activity, R.color.white))
             backgroundTintList = ColorStateList.valueOf(color(activity, R.color.app_accent))
-            setOnClickListener { reveal(activity, onRevealed) }
+            setOnClickListener { reveal(activity) }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 50)))
 
         card.addView(content)
