@@ -42,6 +42,11 @@
         <activity android:name=".BrowserResolverActivity" android:configChanges="keyboardHidden|orientation|screenSize" android:exported="false" />
         <activity android:name=".SettingsActivity" android:exported="false" />
         <activity android:name=".RecentlyClosedActivity" android:exported="false" />
+        <activity android:name=".FavoritesActivity" android:exported="false" />
+        <activity
+            android:name=".PrivateFavoritesActivity"
+            android:excludeFromRecents="true"
+            android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
 
         <!--
