@@ -48,12 +48,16 @@ jobs:
           VEP_KEY_PASSWORD: ${{ secrets.VEP_KEY_PASSWORD }}
         run: |
           gradle :app:assembleDebug --stacktrace
+          "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 app/build/outputs/apk/debug/app-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | head -n 4
 
           if [ -n "$KEYSTORE_B64" ] && [ -n "$VEP_KEYSTORE_PASSWORD" ] && [ -n "$VEP_KEY_ALIAS" ] && [ -n "$VEP_KEY_PASSWORD" ]; then
             export VEP_KEYSTORE_PATH="$RUNNER_TEMP/vep-release.jks"
             echo "$KEYSTORE_B64" | base64 --decode > "$VEP_KEYSTORE_PATH"
             gradle :app:assembleRelease --stacktrace
+            "$ANDROID_HOME/build-tools/35.0.0/zipalign" -c -v 4 app/build/outputs/apk/release/app-release.apk
             "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/release/app-release.apk
+            "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/release/app-release.apk | head -n 4
             rm -f "$VEP_KEYSTORE_PATH"
           else
             echo "Persistent signing secrets are not configured; debug APK only."
