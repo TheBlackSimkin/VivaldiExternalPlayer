@@ -11,6 +11,8 @@ import android.widget.EditText
 import android.widget.ImageButton
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
@@ -46,12 +48,17 @@ class MainActivity : AppCompatActivity() {
     private lateinit var dashboardSwipeHint: TextView
     private lateinit var dashboardEmptyState: View
     private lateinit var dashboardCount: TextView
+    private lateinit var maintenanceActions: View
+    private lateinit var updateStatusButton: Button
+    private lateinit var reviveExpiredButton: Button
+    private lateinit var closeAllButton: Button
     private lateinit var manualToggle: Button
     private lateinit var manualCard: View
     private lateinit var dashboardAdapter: TabDashboardAdapter
 
     private val dashboardHandler = Handler(Looper.getMainLooper())
     private var lastFailedUrl: String? = null
+    private var statusCheckRunning = false
 
     private val dashboardRefreshRunnable = object : Runnable {
         override fun run() {
@@ -76,6 +83,10 @@ class MainActivity : AppCompatActivity() {
         dashboardSwipeHint = findViewById(R.id.dashboard_swipe_hint)
         dashboardEmptyState = findViewById(R.id.dashboard_empty_state)
         dashboardCount = findViewById(R.id.dashboard_count)
+        maintenanceActions = findViewById(R.id.tab_maintenance_actions)
+        updateStatusButton = findViewById(R.id.update_tab_status_button)
+        reviveExpiredButton = findViewById(R.id.revive_expired_tabs_button)
+        closeAllButton = findViewById(R.id.close_all_tabs_button)
         manualToggle = findViewById(R.id.manual_section_toggle)
         manualCard = findViewById(R.id.manual_url_card)
 
@@ -86,6 +97,9 @@ class MainActivity : AppCompatActivity() {
             launchBrowserResolver(lastFailedUrl ?: urlInput.text.toString().trim())
         }
         settingsButton.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        updateStatusButton.setOnClickListener { updateTabStatuses() }
+        reviveExpiredButton.setOnClickListener { reviveExpiredTabs() }
+        closeAllButton.setOnClickListener { confirmCloseAllTabs() }
         manualToggle.setOnClickListener { toggleManualSection() }
 
         refreshDashboard()
@@ -146,6 +160,7 @@ class MainActivity : AppCompatActivity() {
                  * which also removes thumbnails for entries evicted by the 12-item limit.
                  */
                 VideoTabStore.close(tab.id)
+                TabHealthStore.clear(this, tab.id)
                 pruneThumbnailCache()
                 dashboard.post { refreshDashboard() }
             },
@@ -227,6 +242,105 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * Check cached playback sources one tab at a time. This is intentionally not a re-resolve;
+     * it only updates the user-facing health badge and therefore cannot disturb playback state.
+     */
+    private fun updateTabStatuses() {
+        if (statusCheckRunning) return
+        val tabs = VideoTabStore.allTabs()
+        if (tabs.isEmpty()) return
+
+        statusCheckRunning = true
+        refreshDashboard()
+
+        lifecycleScope.launch {
+            val summary = TabStatusChecker.checkAll(this@MainActivity, tabs) {
+                if (!isFinishing && !isDestroyed) refreshDashboard()
+            }
+            statusCheckRunning = false
+            refreshDashboard()
+
+            Toast.makeText(
+                this@MainActivity,
+                getString(
+                    R.string.tab_status_summary,
+                    summary.ready,
+                    summary.needsRefresh,
+                    summary.unavailable
+                ),
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    /**
+     * Re-run the protected preparation path only for tabs which a status check marked stale.
+     * Mark all candidates QUEUED first; the existing coordinator then processes them serially.
+     */
+    private fun reviveExpiredTabs() {
+        val candidates = VideoTabStore.allTabs().filter { tab ->
+            val health = TabHealthStore.get(this, tab.id).state
+            health == TabHealthStore.State.NEEDS_REFRESH ||
+                tab.preparationState == VideoTabStore.PreparationState.ERROR
+        }
+
+        if (candidates.isEmpty()) {
+            Toast.makeText(this, R.string.no_expired_tabs, Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val usable = candidates.filter { isHttpUrl(it.sourceUrl) }
+        val unusable = candidates.filterNot { isHttpUrl(it.sourceUrl) }
+
+        unusable.forEach { tab ->
+            TabHealthStore.set(
+                this,
+                tab.id,
+                TabHealthStore.State.NEEDS_ATTENTION,
+                getString(R.string.original_webpage_unavailable)
+            )
+        }
+
+        usable.forEach { tab ->
+            TabHealthStore.set(this, tab.id, TabHealthStore.State.UNKNOWN)
+            VideoTabStore.markQueued(tab.id, getString(R.string.refresh_requested))
+            TabPreparationManager.cancelScheduled(applicationContext, tab.id)
+        }
+
+        usable.firstOrNull()?.let { first ->
+            UnifiedPreparationCoordinator.retry(this, first.id)
+        }
+
+        refreshDashboard()
+        Toast.makeText(
+            this,
+            getString(R.string.revive_started_count, usable.size),
+            Toast.LENGTH_LONG
+        ).show()
+    }
+
+    private fun confirmCloseAllTabs() {
+        val tabs = VideoTabStore.allTabs()
+        if (tabs.isEmpty()) return
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.close_all_tabs_main)
+            .setMessage(getString(R.string.close_all_tabs_confirmation_main, tabs.size))
+            .setPositiveButton(R.string.close) { _, _ ->
+                tabs.forEach { tab ->
+                    TabPreparationManager.cancelScheduled(applicationContext, tab.id)
+                    VideoTabStore.close(tab.id)
+                    TabHealthStore.clear(this, tab.id)
+                }
+                pruneThumbnailCache()
+                refreshDashboard()
+                Toast.makeText(this, R.string.all_tabs_moved_recently_closed, Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
     private fun refreshDashboard() {
         if (!::dashboardAdapter.isInitialized) return
         val tabs = VideoTabStore.allTabs()
@@ -236,6 +350,15 @@ class MainActivity : AppCompatActivity() {
         dashboard.visibility = if (tabs.isEmpty()) View.GONE else View.VISIBLE
         dashboardEmptyState.visibility = if (tabs.isEmpty()) View.VISIBLE else View.GONE
         dashboardSwipeHint.visibility = if (tabs.isEmpty()) View.GONE else View.VISIBLE
+        maintenanceActions.visibility = if (tabs.isEmpty()) View.GONE else View.VISIBLE
+
+        updateStatusButton.isEnabled = tabs.isNotEmpty() && !statusCheckRunning
+        closeAllButton.isEnabled = tabs.isNotEmpty()
+        reviveExpiredButton.isEnabled = tabs.any { tab ->
+            TabHealthStore.get(this, tab.id).state == TabHealthStore.State.NEEDS_REFRESH ||
+                tab.preparationState == VideoTabStore.PreparationState.ERROR
+        }
+        reviveExpiredButton.alpha = if (reviveExpiredButton.isEnabled) 1f else 0.58f
     }
 
     private fun performPrimaryAction(tab: VideoTabStore.VideoTab) {
