@@ -20,6 +20,11 @@ import java.util.WeakHashMap
  * that internal hand-off from pausing playback if the SAME PlayerActivity has
  * already resumed. Home, lock, browser/app switching and dashboard/settings
  * navigation leave the player non-resumed, so they still pause reliably.
+ *
+ * 0.3.2 also makes codec ownership calmer: dashboard thumbnail warm-up belongs
+ * to MainActivity only. Starting PlayerActivity must not launch background
+ * FrameExtractors for every missing tab thumbnail while ExoPlayer is acquiring
+ * the real video decoder.
  */
 class ForegroundPlaybackGuardProvider : ContentProvider() {
     override fun onCreate(): Boolean {
@@ -49,9 +54,11 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
     private val resumedPlayers = WeakHashMap<PlayerActivity, Boolean>()
 
     override fun onActivityResumed(activity: Activity) {
-        if (activity is PlayerActivity) resumedPlayers[activity] = true
-
-        if (activity is MainActivity || activity is PlayerActivity) {
+        if (activity is PlayerActivity) {
+            resumedPlayers[activity] = true
+            TabThumbnailCapture.pauseBackgroundCapture()
+        } else if (activity is MainActivity) {
+            TabThumbnailCapture.resumeBackgroundCapture()
             TabThumbnailWarmup.warm(activity.applicationContext)
         }
     }

@@ -1,150 +1,114 @@
 # Vivaldi External Player — Project State
 
-GitHub `main` is authoritative. Read this file and `CHAT_BOOTSTRAP.md` before substantive work. Keep both current whenever architecture, QA, failures, priorities, or decisions change.
+Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. Read this file and `CHAT_BOOTSTRAP.md` before substantive work.
 
-## Working / safety rules
-- Explain plainly; Android UI remains bilingual English/Spanish. Keep source comments in English.
-- Use connected GitHub directly whenever possible.
-- PH/HH are technical playback targets only: URLs, manifests, codecs, resolutions, request metadata, resolver/candidate ranking, playback state/errors, and local titles are allowed.
-- Never inspect, describe, classify, summarize, request, or analyze PH/HH media content or thumbnail imagery.
-- Never bypass DRM, paywalls/subscriptions, authentication, regional restrictions, CAPTCHA/anti-bot, or import browser credentials.
-- Never add background playback or a second ExoPlayer.
+## Safety / protected architecture
+- Android UI bilingual English/Spanish; source comments English.
+- PH/HH are technical playback targets only: URLs, manifests, codecs, resolutions, request metadata, resolver/candidate ranking, playback state/errors, local titles. Never inspect/describe media content or thumbnail imagery.
+- Never bypass DRM/paywalls/auth/geo/CAPTCHA, import browser credentials, add background playback, or add a second ExoPlayer.
 
-## Protected architecture
-Build #234 background preparation architecture is protected:
+Protected Build #234 preparation path:
 `short share Activity -> persistent pending tab -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct yt-dlp -> serialized browser fallback -> READY / ERROR / NEEDS_ATTENTION`.
 
-Do not reintroduce a preparation Activity on display 0. Do not use PlayerActivity/Media3/ExoPlayer during BG preparation.
+Preserve one ExoPlayer and existing resolver/quality policy. Build #278 is accepted player/UI baseline; Build #249 palette remains protected.
 
-## Protected playback policy
-Preserve exactly one ExoPlayer, yt-dlp first/browser fallback, automatic + manual quality, video + audio, adaptive/sibling switching, double-tap ±10 seconds, seek preview, rotation, bilingual UI, existing candidate limits/order, and no imagery-based ranking.
-
-Automatic quality policy:
-1. exact 720p
-2. otherwise 1080p
-3. otherwise highest below 1080p
-4. >1080p only as rare fallback
-
-## Protected UI baseline
-Build #249 palette is approved: purple `#B05CFF`, charcoal `#17191F` family, white primary content; green/amber/red semantic only. Do not change unless explicitly requested.
-
-Build #278 is the accepted player/UI DEVICE PASS baseline.
-- App-code commit: `8b0566c68eb9082c0aed62e202edfc1a29232983`
-- Actions run `31905713180`; build job `95063044270`; artifact `9252287185`
-- APK SHA-256 `ee5893ef22a7a38758293ce9647ac133f09bea8527855c836c8dd65f13ba6043`
-
-Accepted behavior includes compact gear and Video Quality menus, requested-vs-actual verification including 480p, Audio, app-level Volume/Mute, speed, Diagnostics, fullscreen, exact lower-right `[tab count] [gear] [fullscreen]`, tab dashboard, controller auto-hide, double-tap ±10s, no visible dedicated ±10 buttons, and approved colors.
-
-Player-control/menu UI is settled unless regression evidence appears.
-
-## Build #264 retained behavior
-Build #264 established Recents privacy, stale-source `Refresh source`, Vivaldi health, and Brave Mobile compatibility using generic Android share targets. Do not add Brave-specific code without a concrete regression.
-
-## Rare HH DNS edge case
-A very small number of older HH HLS sources may fail because a downstream host genuinely does not resolve (`UnknownHostException` / `EAI_NODATA`). Treat this as source/upstream availability, not a general app regression.
-
-Safe recovery only: Retry playback, Refresh source, or an already-detected legitimate alternate candidate. Never rewrite hostnames, invent mirrors, substitute DNS hosts, or bypass access controls.
-
-## 0.3.0 feature baseline and device QA
-Version `0.3.0` / versionCode `3` was the first permanently signed feature release after the large post-signing feature phase.
-
-Final 0.3.0 build:
-- head `4eea6d33c17bf2eeab029238ce837809d3debe6f`
-- Actions run `32546673916`
-- build job `96966228456`
-- signed artifact `9468760721`
-- signed artifact ZIP SHA-256 `5a3fc8b6c44484131afc110f0977cf59aec19418d55a43b1755129189943a863`
-- release APK SHA-256 `eff2656754ae4ed1515218823cb8ba38205a058276d82aab005bb6f8ee0d4ace`
-- `apksigner`: v2=true, one signer, certificate SHA-256 `8c87e1f6a7a4873f12cb25ba348bef665057159f16a65b9059e5e1d7c0b95e7c`
-
-0.3.0 device QA result: every tested item passed. `Revive expired` was the only item NOT TESTED because there was no naturally expired tab available. Tested-pass areas included playback/player baseline, original-URL foundation, Update status, Close all, Recently Closed, Favorites, Private Favorites auth/privacy, private favorite launch/remove, English/Spanish UI, Brave regression, persistence, and player sanity checks.
-
-Installation note: Android's normal file-tap installer has repeatedly shown `App not installed` for these release APKs for an unexplained installer/file-manager-path reason. ADB in-place update works normally. 0.3.0 installed successfully over the previous signed release using `adb install -r` without uninstalling, proving package/signing continuity.
-
-## Permanent release signing — established
-Permanent signing is established. No permanent key material is stored in the repository.
-
-Signing-only fix commit: `cd92c51936cb34594cfb820de0e2c311b8b09253`. Gradle uses `VEP_KEYSTORE_PASSWORD` for both PKCS#12 store and private-key password.
-
-Permanent certificate SHA-256 fingerprint:
+## Permanent signing
+Permanent signer certificate SHA-256:
 `8C:87:E1:F6:A7:A4:87:3F:12:CB:25:BA:34:8B:EF:66:50:57:15:9F:16:A6:5B:90:59:E5:E1:D7:C0:B9:5E:7C`.
+CI verifies signing, package metadata and APK alignment.
 
-CI now runs `apksigner verify --verbose --print-certs`, so signer continuity can be checked directly from the Actions log. Do not change signing secrets casually.
+## Released baseline: 0.3.1 / versionCode 4
+0.3.1 **Vivaldi Private + Copy URL** device QA is PASS. ADB in-place update works. APK SHA-256 `6e02fb3df1ea831a42d4d4c582a37c46f4b68772f9cd8f438ae821fc9fa0db51`.
 
-## Current release: 0.3.1
-Current `main` release is `0.3.1` / versionCode `4`.
+## Active candidate: 0.3.2 / versionCode 5
+Branch `work/0.3.2-correctness-ux`, PR #2. **Do NOT merge yet.** One functional bug remains in player-side recovery and direct tap installation is still unresolved.
 
-Current head before this state-file update: `6a195bd0019b3335236375650f4123f11f3bc3fc`.
+### Candidate 2 build
+Code head used for Candidate 2 APK: `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
+- Actions run `32595557947` / run #342
+- job `97085776140`
+- signed release artifact `9481470902`
+- artifact ZIP SHA-256 `b64f8842f5412f36ce6d314331e7df9edc7d760486c479ac0bdd4528d98029de`
+- release APK SHA-256 `e756e65670f06e7c2be1e4aa58022fed5c71696c4df3178e051196b34a50c01c`
+- debug + signed release build PASS
+- upload/signing/package/alignment validation PASS
 
-0.3.1 adds the explicit Vivaldi Private fallback after deeper ADB/APK investigation proved that Vivaldi does not expose a usable arbitrary-URL private launch route for third-party apps.
+## 0.3.2 implementation retained
+- stale/error-tab recovery centralized in `TabMaintenanceController`
+- dashboard individual Revive and global Revive All use the same controller/coordinator path
+- status/player lifecycle isolation fixed the prior Check Status -> Player blinking race
+- PlayerActivity no longer triggers dashboard thumbnail warm-up; background `FrameExtractor` work is serialized/suspended during foreground playback
+- Media3 same-ExoPlayer decoder fallback enabled; reported decoder-init case now device PASS; no stream metadata forging
+- Recently Closed browser-like history cap raised 12 -> 100; Close All with 25 tabs device PASS
+- dashboard operations consolidated under gear menu; close text X replaced with proper icon
+- `SystemAuthGate` shared by Private Favorites and app privacy UI
+- app privacy is manually activated, starts unlocked, uses a neutral covered surface, `FLAG_SECURE`, biometric/device credential, in-place reveal, and deferred incoming shares
+- PR CI validation, package/alignment/signing checks
 
-### Vivaldi Private investigation decision
-Tested on Vivaldi Android `8.1.4099.123`, package `com.vivaldi.browser`:
-- `org.chromium.chrome.browser.incognito.OPEN_PRIVATE_TAB` -> opens a genuine blank private tab.
-- Adding `-d https://...` to that launcher -> URL is ignored; private tab remains blank.
-- `LauncherShortcutActivity` private shortcut route -> blocked because the component is not exported.
-- normal `ACTION_VIEW` with Chromium incognito extra -> no usable private navigation.
-- private-tab launcher followed by normal `ACTION_VIEW` -> URL opens in a new normal tab.
-- `chromium.shortcut.action.OPEN_NEW_INCOGNITO_WINDOW` -> no activity found; Vivaldi never opens.
-- local APK/Dex string inspection found no safe exported arbitrary-URL private entry point.
+## Candidate 1 device QA summary
+- ADB update over 0.3.1: PASS; existing data retained
+- gear menu / close icon: PASS
+- dashboard individual Revive: PASS
+- in-player Revive/Refresh: FAIL
+- Check status -> Player: PASS
+- decoder case: PASS
+- Recently Closed / Close All with 25 tabs: PASS
+- privacy: SEMI-PASS; function worked but old curtain advertised locking and reveal minimized app
+- protected player regression: PASS
+- direct tap install: FAIL; Play Protect block
 
-Conclusion: never pretend normal `ACTION_VIEW` is private. The supported fallback is deliberately explicit.
+## Candidate 2 device QA — definitive state
+User installed Candidate 2 by ADB and reported:
+- ADB update: **PASS**
+- privacy appearance: **PASS**; neutral/inconspicuous presentation accepted
+- privacy authentication/reveal: **PASS**; no minimize problem
+- share while covered: **PASS**; deferred correctly until reveal
+- short regression check: **PASS**
+- in-player Revive/Refresh: **FAIL**
 
-### 0.3.1 behavior
-Player gear now includes **Vivaldi Private + Copy URL**. It:
-1. obtains the stored original webpage URL via the same permanent origin path used by Favorites;
-2. copies the original URL to clipboard;
-3. opens Vivaldi's genuine blank Private tab via the exported `IncognitoTabLauncher` action/component;
-4. tells the user that the original URL was copied and should be pasted into the Private tab;
-5. never sends the URL through normal `ACTION_VIEW` as part of this action.
+### Exact remaining in-player recovery failure
+When playback is failed, the Player shows:
+`Playback failed. Tap Playback error to view or copy the technical details.`
 
-Implementation is isolated in `VivaldiPrivateLauncher.kt`; player/resolver/background-preparation ownership and policies were not changed. English and Spanish strings are included.
+Tapping **Recovery options** opens an unattractive dialog containing only:
+- title: `Recovery options`
+- text: `Playback failed. These recovery actions retry normal playback paths only; they do not bypass protected access.`
+- `CANCEL`
 
-0.3.1 build:
-- Actions run `32552025984`
-- build job `96980224294`
-- head `6a195bd0019b3335236375650f4123f11f3bc3fc`
-- debug build success
-- release build success
-- `apksigner`: v2=true, one signer
-- signer certificate SHA-256 `8c87e1f6a7a4873f12cb25ba348bef665057159f16a65b9059e5e1d7c0b95e7c` — matches permanent certificate
-- signed artifact ID `9470356520`
-- signed artifact ZIP SHA-256 `c4660868785eb06b52ba274a14e4f0b9e3f34aa7ac452e7374be9c0b55a90606`
-- release APK SHA-256 `6e02fb3df1ea831a42d4d4c582a37c46f4b68772f9cd8f438ae821fc9fa0db51`
+There are **no actionable recovery entries** such as Retry playback, Refresh source/Revive, alternate detected video, or browser method. Therefore `TabMaintenanceController.reviveFromPlayer(...)` is not being reached from this failed-player state despite the underlying centralized revival path existing and dashboard Revive already passing.
 
-The user installed 0.3.1 successfully with ADB as an in-place update. The focused device QA for **Vivaldi Private + Copy URL** has been requested but the user has NOT YET reported PASS/FAIL. Do not mark it passed until the result is received.
+### Next-session first task
+Inspect why `PlayerRecoveryController.showRecoveryDialog()` builds an empty `actions` list in the actual failed Player context. The code currently always intends to add Retry first, then conditionally Refresh/alternate actions, so an empty dialog suggests the recovery controller is attaching to a state/player instance where expected action construction or player/tab association is not valid, or the displayed dialog is coming from another/older recovery surface. Trace the actual runtime path before adding more logic.
 
-## Implemented feature set on current main
-- permanent original-page URL via `TabOriginStore`, including exact V2 BG share capture
-- conservative serialized Update status checks
-- Revive expired tabs through `TabRevivalCoordinator` using the protected service/private-display architecture
-- Close all tabs confirmation using Recently Closed safety path
-- Favorites storing original page URL + title
-- Private Favorites with encrypted local storage, Android biometric/device-auth UI gate, `FLAG_SECURE`, Recents exclusion, no thumbnails, relock on leaving
-- Favorites launch fresh tabs through protected service/private-display preparation
-- Settings exposes Favorites + Private Favorites
-- player gear Add to Favorites + Add to Private Favorites
-- player gear Vivaldi Private + Copy URL fallback
-- bilingual English/Spanish strings
+Specifically verify:
+1. which class/dialog instance produces the observed exact text;
+2. whether `PlayerRecoveryController.attach()` is attached to the active `PlayerView.player` after failure;
+3. whether `currentPersistentTab()` sees `TabbedPlayerApplication.EXTRA_TAB_ID` in this launch path;
+4. whether the failed player was opened from a persistent dashboard tab or another launch path lacking tab ID;
+5. whether another recovery dialog implementation exists and is being shown instead;
+6. once identified, make player-side **Refresh source / Revive** call the same authoritative `TabMaintenanceController` path that already passes from the dashboard.
 
-Private Favorites caveat: the encrypted blob uses Android Keystore AES-GCM, but the key itself is not currently configured as a hardware/user-auth-bound key. The UI requires system authentication before decrypt/render; do not overclaim stronger cryptographic binding.
+Do not reintroduce a parallel service/preparation implementation.
 
-## Remaining / next work
-1. Receive focused device QA result for **Vivaldi Private + Copy URL**.
-2. `Revive expired` still needs a real naturally expired-tab device test when available.
-3. Conservative diagnostics / operations-log cleanup only; do not alter resolver ranking, playback policy, #234 architecture, or one-player ownership.
-4. Inspect the Recently Closed retention limit before relying on Close All for very large tab sets; prior code inspection suggested a small limit around 12, while the app has demonstrated 31-tab use.
-5. Refresh PROJECT_STATE/CHAT_BOOTSTRAP after any new QA result or release change.
+## Decoder case
+Reported HLS playback previously failed with `ERROR_CODE_DECODER_INIT_FAILED`, Qualcomm `c2.qti.avc.decoder`, `NO_EXCEEDS_CAPABILITIES`, and implausible ~12857 fps metadata. 0.3.2 same-ExoPlayer decoder fallback device retest is **PASS**. Do not rewrite/forge stream metadata without reproducible proof.
 
-## Stored-for-later backlog
-- secure browser-based `Report log on GitHub` shortcut; never embed reusable GitHub credentials in the APK
-- safe dead/historical code-path cleanup only after proving paths unused
-- old dedicated “Return to existing Vivaldi task/tab” idea: reconsider later, do not automatically implement
-- broader failure/stress hardening only when real personal-use regressions justify it
+## Direct APK installation — confirmed unresolved blocker
+Standalone extracted APK normal tap update is **FAIL**. Device reports `La aplicación no se ha instalado`; Google Play Protect then shows `Aplicación bloqueada para proteger tu dispositivo`, saying it does not know another app from this developer / it may be unsafe. Tapping visible `Instalar de todas formas` does not continue.
+
+CI proves package/sign/alignment sanity and ADB in-place update proves package/signature continuity. Treat this as a Play Protect / installer-flow blocker, not a signing failure. Future investigation should capture PackageInstaller/PackageManager/Play Protect logs/reason codes during a failed tap. Do not uninstall the working app merely to test.
+
+## Merge/release gate
+Do not merge PR #2 until:
+1. in-player recovery exposes a working Refresh/Revive action and device QA passes;
+2. state files are refreshed with that final result.
+
+Direct tap installation remains a separate known blocker; ADB in-place functional QA is valid meanwhile.
+
+## Deferred
+- Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
+- Return-to-Vivaldi stays unchanged.
+- Continue disciplined cleanup/refactoring; delete historical paths only after proving unused.
 
 ## QA request format
-Whenever explicitly asking the user to test an APK, use exactly:
-1. one detailed code block containing steps, EXPECTED, RESULT;
-2. one separate short code block containing only the compact answer format.
-
-Do not add extra code blocks to that QA request.
+Whenever explicitly asking the user to test an APK, provide exactly one detailed code block with steps/EXPECTED/RESULT, then one separate compact-answer code block. No extra code blocks.

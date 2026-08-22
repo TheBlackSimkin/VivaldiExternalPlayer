@@ -27,6 +27,7 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.datasource.HttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.ScrubbingModeParameters
 import androidx.media3.exoplayer.SeekParameters
@@ -47,16 +48,15 @@ import kotlin.math.abs
 /**
  * Media3/ExoPlayer playback screen.
  *
- * Batch 2 has two important goals in this class:
+ * Playback keeps exactly one ExoPlayer. 0.3.2 additionally enables Media3's
+ * documented decoder fallback so a primary hardware decoder initialization
+ * failure can fall through to another decoder which Android/Media3 already
+ * considers compatible. We deliberately do not rewrite stream metadata or
+ * create a second player to work around malformed/unusual sources.
  *
- * 1. Never leave the user with only a mysterious black/empty player. Media3
- *    playback failures are captured and shown as copyable diagnostics.
- *
- * 2. Browser-assisted HLS/DASH streams can now expose their actual video tracks
- *    to the quality button. The automatic browser policy prefers 720p, then
- *    1080p, then the best quality below 1080p, matching the project requirement.
- *
- * This class still does not contain any site-specific adult-content logic.
+ * Browser-assisted HLS/DASH streams expose their actual video tracks to the
+ * quality button. The automatic browser policy prefers 720p, then 1080p, then
+ * the best quality below 1080p, matching the protected project requirement.
  */
 @OptIn(UnstableApi::class)
 class PlayerActivity : AppCompatActivity() {
@@ -148,9 +148,17 @@ class PlayerActivity : AppCompatActivity() {
         )
     }
 
-    /** Create ExoPlayer once and attach the listeners used throughout the screen. */
+    /** Create the single ExoPlayer and attach the listeners used throughout the screen. */
     private fun createPlayer() {
-        val exoPlayer = ExoPlayer.Builder(this)
+        /*
+         * Media3's decoder fallback remains inside this same ExoPlayer. If the
+         * preferred MediaCodec cannot initialize, Media3 may try a lower-priority
+         * compatible decoder rather than immediately failing playback.
+         */
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+
+        val exoPlayer = ExoPlayer.Builder(this, renderersFactory)
             .setSeekBackIncrementMs(10_000)
             .setSeekForwardIncrementMs(10_000)
             .setScrubbingModeParameters(
@@ -782,6 +790,7 @@ class PlayerActivity : AppCompatActivity() {
             appendLine("Video codec: ${source?.videoCodec ?: "unknown"}")
             appendLine("Audio codec: ${source?.audioCodec ?: "unknown"}")
             appendLine("Declared size: ${source?.width ?: "?"}x${source?.height ?: "?"}")
+            appendLine("Decoder fallback: enabled")
             appendLine()
             appendLine("Media3 error: ${error.errorCodeName} (${error.errorCode})")
             appendLine("Message: ${error.message ?: "none"}")
@@ -806,7 +815,7 @@ class PlayerActivity : AppCompatActivity() {
 
     /**
      * When there is no failure yet, Diagnostics still shows what source the app
-     * received. This is useful for a working HH/Bitmovin stream too.
+     * received. This is useful for a working browser stream too.
      */
     private fun updateIdleDiagnostics(resolved: ResolvedMedia) {
         val source = resolved.primarySource
@@ -828,6 +837,7 @@ class PlayerActivity : AppCompatActivity() {
             appendLine("Video codec: ${source?.videoCodec ?: "unknown"}")
             appendLine("Audio codec: ${source?.audioCodec ?: "unknown"}")
             appendLine("Declared size: ${source?.width ?: "?"}x${source?.height ?: "?"}")
+            appendLine("Decoder fallback: enabled")
         }.trim()
     }
 
@@ -892,6 +902,7 @@ class PlayerActivity : AppCompatActivity() {
             appendLine("Protocol: ${source?.protocol ?: "unknown"}")
             appendLine("Extension: ${source?.extension ?: "unknown"}")
             appendLine("Declared size: ${source?.width ?: "?"}x${source?.height ?: "?"}")
+            appendLine("Decoder fallback: enabled")
         }.trim()
     }
 

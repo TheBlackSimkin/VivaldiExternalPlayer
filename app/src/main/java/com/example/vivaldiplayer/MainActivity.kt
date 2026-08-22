@@ -14,6 +14,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -25,12 +26,11 @@ import kotlinx.coroutines.withContext
 /**
  * Main ExternalPlayer screen and persistent tab dashboard.
  *
- * UI redesign notes:
- * - the tab grid is now the primary surface, inspired by browser tab switchers;
- * - normal cards intentionally omit lifecycle/technical stage strings;
- * - technical details remain available through diagnostics and the operations log;
- * - manual URL entry is still available, but collapses when not needed;
- * - playback/resolver architecture is intentionally unchanged.
+ * 0.3.2 keeps this Activity focused on navigation and user-visible state. Global
+ * maintenance actions live under the gear menu, while the actual stale-tab
+ * revival policy is centralized in [TabMaintenanceController].
+ *
+ * Playback/resolver ownership is intentionally unchanged.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -96,13 +96,17 @@ class MainActivity : AppCompatActivity() {
         browserResolveButton.setOnClickListener {
             launchBrowserResolver(lastFailedUrl ?: urlInput.text.toString().trim())
         }
-        settingsButton.setOnClickListener { startActivity(Intent(this, SettingsActivity::class.java)) }
+        settingsButton.setOnClickListener { showDashboardMenu() }
+
         updateStatusButton.setOnClickListener { updateTabStatuses() }
         reviveExpiredButton.setOnClickListener { reviveExpiredTabs() }
         closeAllButton.setOnClickListener { confirmCloseAllTabs() }
+        maintenanceActions.visibility = View.GONE
+
         manualToggle.setOnClickListener { toggleManualSection() }
 
         refreshDashboard()
+        attachPrivacyCurtain()
 
         /* Avoid resolving the same shared URL twice after Activity recreation. */
         if (savedInstanceState == null) acceptSharedUrl(intent)
@@ -111,14 +115,10 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
-        /*
-         * This host registration is only for older retry/preload/process-recovery work.
-         * Normal BG shares and the new stale-tab revival path use the protected
-         * foreground-service/private-display architecture.
-         */
         UnifiedPreparationCoordinator.onHostResumed(this)
         TabThumbnailWarmup.warm(this)
         refreshDashboard()
+        attachPrivacyCurtain()
         dashboardHandler.removeCallbacks(dashboardRefreshRunnable)
         dashboardHandler.postDelayed(dashboardRefreshRunnable, DASHBOARD_REFRESH_MS)
     }
@@ -155,12 +155,6 @@ class MainActivity : AppCompatActivity() {
             onClose = { tab ->
                 TabPreparationManager.cancelScheduled(applicationContext, tab.id)
                 TabRevivalCoordinator.cancel(tab.id)
-
-                /*
-                 * Keep the thumbnail while the tab lives in Recently Closed.
-                 * The cache is pruned against open + recently-closed IDs after the move,
-                 * which also removes thumbnails for entries evicted by the 12-item limit.
-                 */
                 VideoTabStore.close(tab.id)
                 TabHealthStore.clear(this, tab.id)
                 pruneThumbnailCache()
@@ -169,7 +163,11 @@ class MainActivity : AppCompatActivity() {
             onMove = { tab, delta -> VideoTabStore.move(tab.id, delta) },
             onThumbnailNeeded = { tab ->
                 TabThumbnailCapture.captureResolved(this, tab) {
-                    if (!isFinishing && !isDestroyed) refreshDashboard()
+                    if (!isFinishing && !isDestroyed &&
+                        lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                    ) {
+                        refreshDashboard()
+                    }
                 }
             }
         )
@@ -178,8 +176,21 @@ class MainActivity : AppCompatActivity() {
         dashboardAdapter.attachTouchHelper(dashboard)
     }
 
+    private fun attachPrivacyCurtain() {
+        AppPrivacyController.attachIfNeeded(this) {
+            /* Process only the latest Activity intent after successful reveal. */
+            acceptSharedUrl(intent)
+        }
+    }
+
     /** Browsers may share "page title + URL", not only a bare URL. */
     private fun acceptSharedUrl(intent: Intent) {
+        if (AppPrivacyController.isLocked(this)) {
+            /* Keep the latest current intent pending; no resolver runs while hidden. */
+            attachPrivacyCurtain()
+            return
+        }
+
         val url = extractSharedHttpUrl(intent) ?: return
         urlInput.setText(url)
         resolveAndPlay(url)
@@ -244,10 +255,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /**
-     * Check cached playback sources one tab at a time. This is intentionally not a re-resolve;
-     * it only updates the user-facing health badge and therefore cannot disturb playback state.
-     */
     private fun updateTabStatuses() {
         if (statusCheckRunning) return
         val tabs = VideoTabStore.allTabs()
@@ -258,60 +265,39 @@ class MainActivity : AppCompatActivity() {
 
         lifecycleScope.launch {
             val summary = TabStatusChecker.checkAll(this@MainActivity, tabs) {
-                if (!isFinishing && !isDestroyed) refreshDashboard()
+                if (!isFinishing && !isDestroyed &&
+                    lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                ) {
+                    refreshDashboard()
+                }
             }
             statusCheckRunning = false
-            refreshDashboard()
-
-            Toast.makeText(
-                this@MainActivity,
-                getString(
-                    R.string.tab_status_summary,
-                    summary.ready,
-                    summary.needsRefresh,
-                    summary.unavailable
-                ),
-                Toast.LENGTH_LONG
-            ).show()
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                refreshDashboard()
+                Toast.makeText(
+                    this@MainActivity,
+                    getString(
+                        R.string.tab_status_summary,
+                        summary.ready,
+                        summary.needsRefresh,
+                        summary.unavailable
+                    ),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
         }
     }
 
-    /**
-     * Re-run only stale/failed tabs from permanent original page URLs. The dedicated revival
-     * coordinator feeds them one-at-a-time to the same foreground-service/private-display
-     * preparation owner used by the accepted BG share architecture.
-     */
     private fun reviveExpiredTabs() {
-        val candidates = VideoTabStore.allTabs().filter { tab ->
-            val health = TabHealthStore.get(this, tab.id).state
-            health == TabHealthStore.State.NEEDS_REFRESH ||
-                tab.preparationState == VideoTabStore.PreparationState.ERROR
-        }
+        val tabs = VideoTabStore.allTabs()
+        val candidates = tabs.filter { TabMaintenanceController.canRevive(this, it) }
 
         if (candidates.isEmpty()) {
             Toast.makeText(this, R.string.no_expired_tabs, Toast.LENGTH_SHORT).show()
             return
         }
 
-        val usable = candidates.filter { isHttpUrl(TabOriginStore.pageUrl(this, it)) }
-        val unusable = candidates.filterNot { isHttpUrl(TabOriginStore.pageUrl(this, it)) }
-
-        unusable.forEach { tab ->
-            TabHealthStore.set(
-                this,
-                tab.id,
-                TabHealthStore.State.NEEDS_ATTENTION,
-                getString(R.string.original_webpage_unavailable)
-            )
-        }
-
-        usable.forEach { tab ->
-            TabHealthStore.set(this, tab.id, TabHealthStore.State.UNKNOWN)
-            VideoTabStore.markQueued(tab.id, getString(R.string.refresh_requested))
-            TabPreparationManager.cancelScheduled(applicationContext, tab.id)
-        }
-
-        val queued = TabRevivalCoordinator.enqueue(this, usable)
+        val queued = TabMaintenanceController.reviveAll(this, candidates)
         refreshDashboard()
         Toast.makeText(
             this,
@@ -342,6 +328,18 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
+    private fun showDashboardMenu() {
+        DashboardMenu.show(
+            this,
+            DashboardMenu.Actions(
+                checkStatus = ::updateTabStatuses,
+                reviveExpired = ::reviveExpiredTabs,
+                closeAll = ::confirmCloseAllTabs,
+                lockApp = { AppPrivacyController.lock(this) }
+            )
+        )
+    }
+
     private fun refreshDashboard() {
         if (!::dashboardAdapter.isInitialized) return
         val tabs = VideoTabStore.allTabs()
@@ -352,18 +350,21 @@ class MainActivity : AppCompatActivity() {
         dashboard.visibility = if (tabs.isEmpty()) View.GONE else View.VISIBLE
         dashboardEmptyState.visibility = if (tabs.isEmpty()) View.VISIBLE else View.GONE
         dashboardSwipeHint.visibility = if (tabs.isEmpty()) View.GONE else View.VISIBLE
-        maintenanceActions.visibility = if (tabs.isEmpty()) View.GONE else View.VISIBLE
 
+        maintenanceActions.visibility = View.GONE
         updateStatusButton.isEnabled = tabs.isNotEmpty() && !statusCheckRunning
         closeAllButton.isEnabled = tabs.isNotEmpty()
-        reviveExpiredButton.isEnabled = tabs.any { tab ->
-            TabHealthStore.get(this, tab.id).state == TabHealthStore.State.NEEDS_REFRESH ||
-                tab.preparationState == VideoTabStore.PreparationState.ERROR
-        }
+        reviveExpiredButton.isEnabled = tabs.any { TabMaintenanceController.canRevive(this, it) }
         reviveExpiredButton.alpha = if (reviveExpiredButton.isEnabled) 1f else 0.58f
     }
 
     private fun performPrimaryAction(tab: VideoTabStore.VideoTab) {
+        if (TabMaintenanceController.canRevive(this, tab)) {
+            TabMaintenanceController.reviveOne(this, tab)
+            refreshDashboard()
+            return
+        }
+
         when {
             tab.isReady -> startActivity(
                 Intent(this, PlayerActivity::class.java)
@@ -371,20 +372,14 @@ class MainActivity : AppCompatActivity() {
                     .putExtra(TabbedPlayerApplication.EXTRA_TAB_ID, tab.id)
             )
 
-            /* Genuine interaction may be required only after automatic browser work stopped safely. */
             tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION ->
                 launchBrowserResolver(TabOriginStore.pageUrl(this, tab), tab.id)
 
-            /* Explicit error recovery also uses the protected private-display service path. */
             tab.preparationState == VideoTabStore.PreparationState.ERROR -> {
-                TabHealthStore.set(this, tab.id, TabHealthStore.State.UNKNOWN)
-                VideoTabStore.markQueued(tab.id, getString(R.string.refresh_requested))
-                TabPreparationManager.cancelScheduled(applicationContext, tab.id)
-                TabRevivalCoordinator.enqueue(this, listOf(tab))
+                TabMaintenanceController.reviveOne(this, tab)
                 refreshDashboard()
             }
 
-            /* QUEUED/RESOLVING cards are deliberately inert. */
             else -> Unit
         }
     }

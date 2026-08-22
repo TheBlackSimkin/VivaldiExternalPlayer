@@ -9,6 +9,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -21,9 +22,9 @@ import java.util.Locale
 /**
  * Grid adapter for persistent open tabs.
  *
- * This UI intentionally shows user-facing state only. Resolver lifecycle markers
- * such as DIRECT_STARTED/BROWSER_* remain in diagnostics and OperationLog instead
- * of occupying normal card space.
+ * User-facing action labels derive from both preparation state and health state.
+ * The actual recovery operation stays outside the adapter so there is one revival
+ * policy in TabMaintenanceController/MainActivity rather than duplicated logic.
  */
 class TabDashboardAdapter(
     private val context: Context,
@@ -141,9 +142,13 @@ class TabDashboardAdapter(
             backgroundTintList = ColorStateList.valueOf(color(R.color.app_surface_raised))
         }
 
-        val close = compactButton("×", context.getString(R.string.dashboard_close)).apply {
-            textSize = 20f
-            backgroundTintList = ColorStateList.valueOf(color(R.color.app_surface_raised))
+        /* A real icon is quieter and cleaner than the historical text "×" button. */
+        val close = ImageButton(context).apply {
+            setImageResource(R.drawable.ic_close_24)
+            contentDescription = context.getString(R.string.dashboard_close)
+            background = ContextCompat.getDrawable(context, R.drawable.icon_button_background)
+            imageTintList = ColorStateList.valueOf(color(R.color.app_text_secondary))
+            setPadding(dp(10), dp(10), dp(10), dp(10))
         }
         actions.addView(
             close,
@@ -192,7 +197,7 @@ class TabDashboardAdapter(
             if (tab.isReady) onThumbnailNeeded(tab)
         }
 
-        holder.primary.text = primaryActionLabel(tab)
+        holder.primary.text = primaryActionLabel(tab, health)
         holder.primary.isEnabled = when (tab.preparationState) {
             VideoTabStore.PreparationState.READY,
             VideoTabStore.PreparationState.NEEDS_ATTENTION,
@@ -235,7 +240,7 @@ class TabDashboardAdapter(
         return true
     }
 
-    /** Called from both swipe-to-close and the explicit × affordance. */
+    /** Called from both swipe-to-close and the explicit close affordance. */
     fun removeAt(position: Int) {
         if (position !in items.indices) return
         val removed = items.removeAt(position)
@@ -286,7 +291,6 @@ class TabDashboardAdapter(
         val stored = tab.title.trim()
         if (stored.isNotBlank() && !stored.equals("Video", ignoreCase = true)) return stored
 
-        /* Pending tabs may not have a title yet; the host is useful non-content metadata. */
         val host = runCatching { Uri.parse(tab.sourceUrl).host.orEmpty() }.getOrDefault("")
         return if (host.isNotBlank()) "Video • $host" else stored.ifBlank { "Video" }
     }
@@ -310,14 +314,19 @@ class TabDashboardAdapter(
         return details.joinToString(" • ")
     }
 
-    private fun primaryActionLabel(tab: VideoTabStore.VideoTab): String = when {
+    private fun primaryActionLabel(
+        tab: VideoTabStore.VideoTab,
+        health: TabHealthStore.Status
+    ): String = when {
+        tab.preparationState == VideoTabStore.PreparationState.READY &&
+            health.state == TabHealthStore.State.NEEDS_REFRESH -> context.getString(R.string.dashboard_revive)
         tab.isReady && tab.positionMs > 0L -> context.getString(R.string.dashboard_continue)
         tab.isReady -> context.getString(R.string.dashboard_play)
         tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION ->
             context.getString(R.string.dashboard_browser)
         tab.preparationState == VideoTabStore.PreparationState.RESOLVING ->
             context.getString(R.string.tab_state_resolving)
-        tab.preparationState == VideoTabStore.PreparationState.ERROR -> context.getString(R.string.retry)
+        tab.preparationState == VideoTabStore.PreparationState.ERROR -> context.getString(R.string.dashboard_revive)
         else -> context.getString(R.string.tab_state_queued)
     }
 
@@ -405,6 +414,6 @@ class TabDashboardAdapter(
         val meta: TextView,
         val primary: Button,
         val browser: Button,
-        val close: Button
+        val close: ImageButton
     ) : RecyclerView.ViewHolder(itemView)
 }
