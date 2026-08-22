@@ -25,6 +25,15 @@ Branch `work/0.3.2-correctness-ux`, PR #2. Do NOT merge until the second focused
 
 First candidate code gate: Actions `32590746439` / run #331, job `97074080536`, artifact `9480279353`, APK SHA-256 `bc5b854980faa214ee0b9d7ef5a7676923ffc2c95e3cac4029e47f79a3f77799`. Debug/release, zipalign/package and signer checks PASS.
 
+Second candidate code head: `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
+- Actions run `32595557947` / run #342
+- job `97085776140`
+- signed release artifact `9481470902`
+- artifact ZIP SHA-256 `b64f8842f5412f36ce6d314331e7df9edc7d760486c479ac0bdd4528d98029de`
+- release APK SHA-256 `e756e65670f06e7c2be1e4aa58022fed5c71696c4df3178e051196b34a50c01c`
+- debug + signed release build PASS
+- upload/signing/package/alignment validation PASS
+
 ### First-candidate device QA
 - ADB install over 0.3.1: **PASS**; existing data remained.
 - gear menu / close icon: **PASS**.
