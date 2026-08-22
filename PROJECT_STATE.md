@@ -57,70 +57,78 @@ User also repeated the same normal flows in Brave and reports they worked correc
 
 User reports the protected background-preparation architecture successfully handled **31 tabs** without issue. General stress hardening is therefore intentionally lower priority for this personal-use app unless a concrete regression appears.
 
-## Known unresolved functional gap
-### Old/expired tab revival
-Some old tabs cannot be revived reliably. The agreed direction is to treat the original page URL as permanent tab identity and temporary resolved media URLs as replaceable playback state.
+## Permanent release signing — established
+Permanent signing is now established. No permanent key material is stored in the repository.
 
-Future revival should use:
-`expired/failed media -> stored original page URL -> existing #234 preparation path -> refreshed legitimate playback candidates`
+Failure history:
+- Build #284 original attempt and retry reached release packaging but failed with `UnrecoverableKeyException` / PKCS#12 bad-padding because the generated separate key-password value did not match the private key password.
+- Local keystore validation proved the backup PKCS#12 file was healthy and that the keystore password is also the effective private-key password.
+- Signing-only fix commit `cd92c51936cb34594cfb820de0e2c311b8b09253` makes Gradle use `VEP_KEYSTORE_PASSWORD` for both store and key password. Runtime/player/resolver/UI behavior was not changed by that fix.
+- Run `32543326847` then built and v2-verified the release successfully but could not upload artifacts because GitHub Actions artifact storage quota was full.
 
-Do not attempt to repair expired CDN/HLS URLs by guessing or rewriting hosts.
+Successful downloadable checkpoint:
+- Actions run `32546091175`
+- build job `96964652777`
+- head commit `74ff674e912e10d6b78fb1ba5fe8544d0325fdc1`
+- debug build: success
+- release build: success
+- `apksigner verify`: success, APK Signature Scheme v2 = true, one signer
+- signed artifact `9468570335`
+- signed artifact ZIP SHA-256 `b4e70c64f9aa594b402a87ee819ad669ac3ea20aa8926dbed23dc99bf25e849e`
+- contained `app-release.apk` SHA-256 `1fe9f098aa202634c7a2a45f61ec8e1d40fecb6f15b9eb79e81e94a3a179f74d`
 
-## Permanent signed release — current immediate priority
-The user chose to establish a proper permanently signed release APK before the next feature build.
+The compile/signing/upload pipeline is therefore working. Do not change signing secrets casually.
 
-Repository support already exists:
-- `app/build.gradle.kts` reads release signing only from environment variables.
-- `.github/workflows/build-apk.yml` reconstructs the keystore only in the runner, builds `assembleRelease`, verifies the APK with `apksigner`, removes the runner keystore, and uploads `VivaldiExternalPlayer-signed-release-apk`.
-- No permanent private signing material may ever be committed.
+The permanent certificate fingerprint recorded from the backup is:
+`8C:87:E1:F6:A7:A4:87:3F:12:CB:25:BA:34:8B:EF:66:50:57:15:9F:16:A6:5B:90:59:E5:E1:D7:C0:B9:5E:7C`.
 
-The user confirmed the four GitHub Actions repository secrets are now configured:
-- `VEP_KEYSTORE_BASE64`
-- `VEP_KEYSTORE_PASSWORD`
-- `VEP_KEY_ALIAS`
-- `VEP_KEY_PASSWORD`
+The current CI workflow verifies signature validity but does not print the certificate fingerprint, so do not claim the downloaded feature-checkpoint APK fingerprint was independently matched unless that verification is actually performed.
 
-First signed-release CI verification is now the immediate task. Keep the accepted app code on #278 while establishing signing unless a signing-specific build fix is required.
+Important installation note: an installed debug APK and the permanent release APK use different signatures. Android normally rejects the release APK as an update over the debug APK with the same application ID. Uninstalling the debug app normally removes app-local tabs/settings. Do not casually instruct the user to uninstall before state-preservation implications are understood.
 
-Important installation note: the existing debug APK and the permanent release APK use different signatures. The first migration may require uninstalling the debug app, which normally removes app-local tabs/settings. Do not tell the user to uninstall until the signed artifact has been verified and migration implications are clear.
+## Current feature / cleanup phase
+The combined post-signing feature phase is now in progress on `main`, preserving the protected architecture/playback/UI baseline.
 
-## Agreed next combined feature / cleanup build
-After permanent signing is established, implement the following as one scoped phase, preserving protected architecture/playback/UI:
-
-1. **Original-page-URL revival foundation**
-   - Favorites and revival should store/use the original page URL, never a temporary resolved media URL as permanent identity.
+Implemented and compile-verified at run `32546091175`:
+1. **Permanent original-page URL foundation**
+   - `TabOriginStore` retains the original page URL independently from temporary resolved media state.
+   - The real V2 BG share handoff records the exact shared original URL.
+   - Recovery paths prefer the permanent origin rather than allowing refreshed media payloads to replace tab identity.
 
 2. **Update status of tabs**
-   - Check tab health conservatively with serialized/limited work.
-   - Distinguish states such as Ready, Needs refresh, Checking, Unavailable, Needs attention.
-   - Avoid marking a tab permanently dead from one transient network failure.
+   - Main-screen action performs conservative serialized health checks.
+   - Health is stored separately from preparation state.
+   - Hard expiry-like responses can become `Needs refresh`; transient DNS/timeouts/5xx are treated conservatively rather than immediately declaring a tab permanently dead.
 
 3. **Revive expired tabs**
-   - Re-resolve only tabs needing refresh, from stored original page URLs, through the existing protected #234 path.
+   - Revival uses original page URLs.
+   - `TabRevivalCoordinator` serializes stale-tab revival through the protected foreground-service/private-display preparation architecture.
+   - It does not create a preparation Activity, PlayerActivity, Media3 or another ExoPlayer.
 
 4. **Close all tabs**
-   - Main-screen action with confirmation using the approved UI family.
-   - Prefer moving closed tabs into Recently Closed rather than destructive deletion.
-   - Safely cancel relevant pending preparation work.
+   - Main-screen action with confirmation.
+   - Tabs are moved through the existing close/Recently Closed safety path rather than being silently destroyed.
+   - queued scheduled work is cancelled where applicable.
 
-5. **Favorites / Private Favorites**
-   - Favorites store original page URLs.
-   - Preferred privacy design: normal Favorites plus an optional Private Favorites collection protected with Android system/device authentication rather than a custom password system.
-   - When locked, do not expose protected titles/URLs/thumbnails through ordinary UI, Recents, or routine diagnostics.
+5. **Favorites / Private Favorites foundation**
+   - Normal Favorites store original page URL + title locally.
+   - Private Favorites store encrypted title/URL data in app-private preferences using an Android Keystore AES-GCM key.
+   - Private Favorites UI requires Android biometric/device authentication before decrypting/rendering entries.
+   - Private Favorites uses `FLAG_SECURE`, is excluded from Recents, uses no thumbnails, and locks again when leaving.
+   - Favorites launch a fresh tab through the protected foreground-service/private-display preparation path.
+   - Settings exposes both Favorites screens.
 
-6. **Open in Vivaldi**
-   - Desired player gear submenu action opens the stored original URL in Vivaldi.
-   - User requires it to **always** open in Vivaldi Private/Incognito mode.
-   - Do not implement a one-tap version unless a reliable supported mechanism can actually guarantee private mode; do not falsely label normal `ACTION_VIEW` as private.
+6. **Bilingual UI**
+   - New tab-maintenance and Favorites copy has English and Spanish resources.
 
-7. **Diagnostics / operations-log cleanup**
-   - Remove duplicate/noisy routine entries and obsolete debug wording while preserving useful resolver/playback evidence.
-   - Improve separation of resolver vs playback failures and retain requested-vs-actual quality and source/DNS causes where useful.
-   - No resolver ranking, playback policy, BG architecture, or ExoPlayer ownership changes for cosmetic cleanup.
+The compile checkpoint confirms the new Android biometric dependency and all currently added feature files compile in both debug and release builds.
 
-8. **Release-readiness consistency**
-   - Align About/version/build/README/release-note wording with actual behavior.
-   - Keep permanent signing material private and outside the repository.
+## Still to finish in this feature phase
+1. Add player-facing **Add to Favorites** and **Add to Private Favorites** actions while preserving the approved compact #278 gear behavior.
+2. **Open in Vivaldi Private** remains intentionally unimplemented unless a reliable supported Vivaldi mechanism can guarantee opening an arbitrary URL directly in a private/incognito tab. A normal Android `ACTION_VIEW` must never be labeled as guaranteed private.
+3. Conservative diagnostics / operations-log cleanup only; no resolver ranking, playback policy, BG architecture or player ownership changes.
+4. Release-readiness consistency: About/version/build/README/release wording.
+5. Build final signed feature APK and run focused device QA on changed areas plus quick protected-baseline sanity checks.
 
 ## Stored-for-later backlog
 - secure browser-based `Report log on GitHub` shortcut; never embed reusable GitHub credentials in the APK
@@ -129,10 +137,10 @@ After permanent signing is established, implement the following as one scoped ph
 - broader failure/stress hardening if real personal-use regressions justify it
 
 ## Current roadmap
-1. Verify the first permanent signed release APK from GitHub Actions while app code remains the accepted #278 baseline.
-2. After signing is confirmed, implement the agreed combined feature/cleanup build above.
+1. Finish player Favorites controls, conservative diagnostics cleanup, and release consistency.
+2. Build and verify the final permanently signed feature APK.
 3. Run focused QA on the changed areas only, plus quick protected-baseline sanity checks.
-4. Keep distribution/signing continuity documented for future updates.
+4. Preserve signing continuity for all future release APK updates.
 
 ## QA request format
 Whenever explicitly asking the user to test an APK, use exactly:
