@@ -98,10 +98,6 @@ class MainActivity : AppCompatActivity() {
         }
         settingsButton.setOnClickListener { showDashboardMenu() }
 
-        /*
-         * These legacy layout buttons stay wired for compatibility, but the whole
-         * maintenance strip is hidden. The gear menu is now the sole global UX.
-         */
         updateStatusButton.setOnClickListener { updateTabStatuses() }
         reviveExpiredButton.setOnClickListener { reviveExpiredTabs() }
         closeAllButton.setOnClickListener { confirmCloseAllTabs() }
@@ -110,7 +106,7 @@ class MainActivity : AppCompatActivity() {
         manualToggle.setOnClickListener { toggleManualSection() }
 
         refreshDashboard()
-        AppPrivacyController.attachIfNeeded(this)
+        attachPrivacyCurtain()
 
         /* Avoid resolving the same shared URL twice after Activity recreation. */
         if (savedInstanceState == null) acceptSharedUrl(intent)
@@ -119,15 +115,10 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
-        /*
-         * This host registration is only for older retry/preload/process-recovery work.
-         * Normal BG shares and stale-tab revival use the protected
-         * foreground-service/private-display architecture.
-         */
         UnifiedPreparationCoordinator.onHostResumed(this)
         TabThumbnailWarmup.warm(this)
         refreshDashboard()
-        AppPrivacyController.attachIfNeeded(this)
+        attachPrivacyCurtain()
         dashboardHandler.removeCallbacks(dashboardRefreshRunnable)
         dashboardHandler.postDelayed(dashboardRefreshRunnable, DASHBOARD_REFRESH_MS)
     }
@@ -164,7 +155,6 @@ class MainActivity : AppCompatActivity() {
             onClose = { tab ->
                 TabPreparationManager.cancelScheduled(applicationContext, tab.id)
                 TabRevivalCoordinator.cancel(tab.id)
-
                 VideoTabStore.close(tab.id)
                 TabHealthStore.clear(this, tab.id)
                 pruneThumbnailCache()
@@ -186,16 +176,18 @@ class MainActivity : AppCompatActivity() {
         dashboardAdapter.attachTouchHelper(dashboard)
     }
 
+    private fun attachPrivacyCurtain() {
+        AppPrivacyController.attachIfNeeded(this) {
+            /* Process only the latest Activity intent after successful reveal. */
+            acceptSharedUrl(intent)
+        }
+    }
+
     /** Browsers may share "page title + URL", not only a bare URL. */
     private fun acceptSharedUrl(intent: Intent) {
-        /*
-         * A deliberately hidden app must not resolve a newly shared URL behind
-         * its privacy curtain. Keep the exact ACTION_SEND intent as this
-         * Activity's current intent; AppPrivacyController restarts it after
-         * successful authentication, at which point this method is called again.
-         */
         if (AppPrivacyController.isLocked(this)) {
-            AppPrivacyController.attachIfNeeded(this)
+            /* Keep the latest current intent pending; no resolver runs while hidden. */
+            attachPrivacyCurtain()
             return
         }
 
@@ -263,12 +255,6 @@ class MainActivity : AppCompatActivity() {
         )
     }
 
-    /**
-     * Check cached playback sources one tab at a time. The operation may continue
-     * while the user opens a PlayerActivity, but dashboard redraws are suppressed
-     * while MainActivity is not RESUMED. This prevents background health updates
-     * from starting thumbnail/UI work under the active player.
-     */
     private fun updateTabStatuses() {
         if (statusCheckRunning) return
         val tabs = VideoTabStore.allTabs()
@@ -302,7 +288,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** Revive every stale/error tab using the same policy as an individual card. */
     private fun reviveExpiredTabs() {
         val tabs = VideoTabStore.allTabs()
         val candidates = tabs.filter { TabMaintenanceController.canRevive(this, it) }
@@ -366,7 +351,6 @@ class MainActivity : AppCompatActivity() {
         dashboardEmptyState.visibility = if (tabs.isEmpty()) View.VISIBLE else View.GONE
         dashboardSwipeHint.visibility = if (tabs.isEmpty()) View.GONE else View.VISIBLE
 
-        /* Global actions moved to the gear menu in 0.3.2. */
         maintenanceActions.visibility = View.GONE
         updateStatusButton.isEnabled = tabs.isNotEmpty() && !statusCheckRunning
         closeAllButton.isEnabled = tabs.isNotEmpty()
@@ -375,7 +359,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun performPrimaryAction(tab: VideoTabStore.VideoTab) {
-        /* Health comes before cached READY state: a known-dead source should revive, not play. */
         if (TabMaintenanceController.canRevive(this, tab)) {
             TabMaintenanceController.reviveOne(this, tab)
             refreshDashboard()
@@ -397,7 +380,6 @@ class MainActivity : AppCompatActivity() {
                 refreshDashboard()
             }
 
-            /* QUEUED/RESOLVING cards are deliberately inert. */
             else -> Unit
         }
     }
