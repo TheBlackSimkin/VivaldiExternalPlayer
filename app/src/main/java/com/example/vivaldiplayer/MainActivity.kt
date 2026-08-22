@@ -188,6 +188,17 @@ class MainActivity : AppCompatActivity() {
 
     /** Browsers may share "page title + URL", not only a bare URL. */
     private fun acceptSharedUrl(intent: Intent) {
+        /*
+         * A deliberately hidden app must not resolve a newly shared URL behind
+         * its privacy curtain. Keep the exact ACTION_SEND intent as this
+         * Activity's current intent; AppPrivacyController restarts it after
+         * successful authentication, at which point this method is called again.
+         */
+        if (AppPrivacyController.isLocked(this)) {
+            AppPrivacyController.attachIfNeeded(this)
+            return
+        }
+
         val url = extractSharedHttpUrl(intent) ?: return
         urlInput.setText(url)
         resolveAndPlay(url)
