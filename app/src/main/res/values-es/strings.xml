@@ -22,6 +22,24 @@
     <string name="revive_started_count">Actualizando %1$d pestaña(s) en segundo plano.</string>
     <string name="tab_status_summary">Estado: %1$d listas • %2$d necesitan actualizarse • %3$d no disponibles</string>
 
+    <!-- Favoritos. -->
+    <string name="favorites">Favoritos</string>
+    <string name="private_favorites">Favoritos privados</string>
+    <string name="add_favorite">Añadir a Favoritos</string>
+    <string name="add_private_favorite">Añadir a Favoritos privados</string>
+    <string name="favorite_saved">Guardado en Favoritos</string>
+    <string name="private_favorite_saved">Guardado en Favoritos privados</string>
+    <string name="favorite_preparing">Preparando favorito en segundo plano</string>
+    <string name="remove_favorite">Eliminar favorito</string>
+    <string name="remove_private_favorite">Eliminar favorito privado</string>
+    <string name="favorites_empty">Aún no hay Favoritos.</string>
+    <string name="private_favorites_empty">Aún no hay Favoritos privados.</string>
+    <string name="private_favorites_locked">Los Favoritos privados están bloqueados.</string>
+    <string name="unlock_private_favorites">Desbloquear Favoritos privados</string>
+    <string name="private_favorites_auth_prompt">Usa el bloqueo de pantalla o la autenticación biométrica de Android.</string>
+    <string name="private_favorites_auth_unavailable">La autenticación del sistema Android no está disponible en este dispositivo.</string>
+    <string name="favorite_original_url_unavailable">La URL original de la página no está disponible, por lo que no se puede guardar este elemento.</string>
+
     <!-- Resolución asistida por navegador. -->
     <string name="browser_resolver_intro">La aplicación probará automáticamente el mejor vídeo que encuentre. Usa la lista solo si el primer resultado es incorrecto. Inicia el vídeo en esta página únicamente si hace falta para detectarlo.</string>
     <string name="browser_loading">Cargando página…</string>
