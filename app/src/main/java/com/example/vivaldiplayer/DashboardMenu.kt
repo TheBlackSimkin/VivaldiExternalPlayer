@@ -4,10 +4,10 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
 import android.view.Gravity
-import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.google.android.material.bottomsheet.BottomSheetDialog
 
@@ -23,56 +23,56 @@ object DashboardMenu {
         val lockApp: () -> Unit
     )
 
-    fun show(context: Context, actions: Actions) {
-        val dialog = BottomSheetDialog(context)
-        val content = LinearLayout(context).apply {
+    fun show(activity: AppCompatActivity, actions: Actions) {
+        val dialog = BottomSheetDialog(activity)
+        val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(context, 20), dp(context, 12), dp(context, 20), dp(context, 28))
-            setBackgroundColor(color(context, R.color.app_surface))
+            setPadding(dp(activity, 20), dp(activity, 12), dp(activity, 20), dp(activity, 28))
+            setBackgroundColor(color(activity, R.color.app_surface))
         }
 
-        content.addView(TextView(context).apply {
-            text = context.getString(R.string.dashboard_menu_title)
+        content.addView(TextView(activity).apply {
+            text = activity.getString(R.string.dashboard_menu_title)
             textSize = 22f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-            setTextColor(color(context, R.color.app_text_primary))
-            setPadding(dp(context, 4), dp(context, 4), dp(context, 4), dp(context, 12))
+            setTextColor(color(activity, R.color.app_text_primary))
+            setPadding(dp(activity, 4), dp(activity, 4), dp(activity, 4), dp(activity, 12))
         })
 
-        section(content, context, R.string.dashboard_menu_tabs)
-        row(content, context, R.string.update_tab_status) {
+        section(content, activity, R.string.dashboard_menu_tabs)
+        row(content, activity, R.string.update_tab_status) {
             dialog.dismiss(); actions.checkStatus()
         }
-        row(content, context, R.string.revive_expired_tabs) {
+        row(content, activity, R.string.revive_expired_tabs) {
             dialog.dismiss(); actions.reviveExpired()
         }
-        row(content, context, R.string.recently_closed_title) {
+        row(content, activity, R.string.recently_closed_title) {
             dialog.dismiss()
-            context.startActivity(Intent(context, RecentlyClosedActivity::class.java))
+            activity.startActivity(Intent(activity, RecentlyClosedActivity::class.java))
         }
-        row(content, context, R.string.close_all_tabs_main, destructive = true) {
+        row(content, activity, R.string.close_all_tabs_main, destructive = true) {
             dialog.dismiss(); actions.closeAll()
         }
 
-        section(content, context, R.string.dashboard_menu_library)
-        row(content, context, R.string.favorites) {
-            dialog.dismiss(); context.startActivity(Intent(context, FavoritesActivity::class.java))
+        section(content, activity, R.string.dashboard_menu_library)
+        row(content, activity, R.string.favorites) {
+            dialog.dismiss(); activity.startActivity(Intent(activity, FavoritesActivity::class.java))
         }
-        row(content, context, R.string.private_favorites) {
-            dialog.dismiss(); context.startActivity(Intent(context, PrivateFavoritesActivity::class.java))
+        row(content, activity, R.string.private_favorites) {
+            dialog.dismiss(); activity.startActivity(Intent(activity, PrivateFavoritesActivity::class.java))
         }
 
-        section(content, context, R.string.dashboard_menu_privacy)
-        row(content, context, R.string.hide_and_lock_app) {
+        section(content, activity, R.string.dashboard_menu_privacy)
+        row(content, activity, R.string.hide_and_lock_app) {
             dialog.dismiss(); actions.lockApp()
         }
 
-        section(content, context, R.string.dashboard_menu_app)
-        row(content, context, R.string.settings) {
-            dialog.dismiss(); context.startActivity(Intent(context, SettingsActivity::class.java))
+        section(content, activity, R.string.dashboard_menu_app)
+        row(content, activity, R.string.settings) {
+            dialog.dismiss(); activity.startActivity(Intent(activity, SettingsActivity::class.java))
         }
-        row(content, context, R.string.share_operations_log) {
-            dialog.dismiss(); OperationLog.share(context)
+        row(content, activity, R.string.share_operations_log) {
+            dialog.dismiss(); OperationLog.share(activity)
         }
 
         dialog.setContentView(content)
