@@ -12,6 +12,15 @@
     <string name="status_direct_failed">El método rápido no pudo abrir esta página.</string>
     <string name="status_opening_browser_fallback">Probando automáticamente el método del navegador…</string>
     <string name="status_browser_fallback_explanation">El método del navegador observa solicitudes multimedia normales hechas por esta aplicación. No automatiza desafíos, DRM, suscripciones, inicio de sesión ni controles regionales.</string>
+    <string name="update_tab_status">Actualizar estado</string>
+    <string name="revive_expired_tabs">Revivir caducadas</string>
+    <string name="close_all_tabs_main">Cerrar todas las pestañas</string>
+    <string name="close_all_tabs_confirmation_main">¿Cerrar las %1$d pestañas? Se moverán a Cerradas recientemente.</string>
+    <string name="all_tabs_moved_recently_closed">Pestañas movidas a Cerradas recientemente</string>
+    <string name="no_expired_tabs">Ninguna pestaña necesita actualizarse ahora.</string>
+    <string name="refresh_requested">Actualización solicitada</string>
+    <string name="revive_started_count">Actualizando %1$d pestaña(s) en segundo plano.</string>
+    <string name="tab_status_summary">Estado: %1$d listas • %2$d necesitan actualizarse • %3$d no disponibles</string>
 
     <!-- Resolución asistida por navegador. -->
     <string name="browser_resolver_intro">La aplicación probará automáticamente el mejor vídeo que encuentre. Usa la lista solo si el primer resultado es incorrecto. Inicia el vídeo en esta página únicamente si hace falta para detectarlo.</string>
