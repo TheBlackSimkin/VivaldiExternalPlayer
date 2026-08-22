@@ -112,8 +112,9 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
 
         /*
-         * This host registration is only for retry/preload/process-recovery work.
-         * Normal BG shares already own their preparation in the private-display service path.
+         * This host registration is only for older retry/preload/process-recovery work.
+         * Normal BG shares and the new stale-tab revival path use the protected
+         * foreground-service/private-display architecture.
          */
         UnifiedPreparationCoordinator.onHostResumed(this)
         TabThumbnailWarmup.warm(this)
@@ -153,6 +154,7 @@ class MainActivity : AppCompatActivity() {
             onBrowser = { tab -> launchBrowserResolver(TabOriginStore.pageUrl(this, tab), tab.id) },
             onClose = { tab ->
                 TabPreparationManager.cancelScheduled(applicationContext, tab.id)
+                TabRevivalCoordinator.cancel(tab.id)
 
                 /*
                  * Keep the thumbnail while the tab lives in Recently Closed.
@@ -275,8 +277,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Re-run the protected preparation path only for tabs which a status check marked stale.
-     * Mark all candidates QUEUED first; the existing coordinator then processes them serially.
+     * Re-run only stale/failed tabs from permanent original page URLs. The dedicated revival
+     * coordinator feeds them one-at-a-time to the same foreground-service/private-display
+     * preparation owner used by the accepted BG share architecture.
      */
     private fun reviveExpiredTabs() {
         val candidates = VideoTabStore.allTabs().filter { tab ->
@@ -308,14 +311,11 @@ class MainActivity : AppCompatActivity() {
             TabPreparationManager.cancelScheduled(applicationContext, tab.id)
         }
 
-        usable.firstOrNull()?.let { first ->
-            UnifiedPreparationCoordinator.retry(this, first.id)
-        }
-
+        val queued = TabRevivalCoordinator.enqueue(this, usable)
         refreshDashboard()
         Toast.makeText(
             this,
-            getString(R.string.revive_started_count, usable.size),
+            getString(R.string.revive_started_count, queued),
             Toast.LENGTH_LONG
         ).show()
     }
@@ -330,6 +330,7 @@ class MainActivity : AppCompatActivity() {
             .setPositiveButton(R.string.close) { _, _ ->
                 tabs.forEach { tab ->
                     TabPreparationManager.cancelScheduled(applicationContext, tab.id)
+                    TabRevivalCoordinator.cancel(tab.id)
                     VideoTabStore.close(tab.id)
                     TabHealthStore.clear(this, tab.id)
                 }
@@ -374,9 +375,12 @@ class MainActivity : AppCompatActivity() {
             tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION ->
                 launchBrowserResolver(TabOriginStore.pageUrl(this, tab), tab.id)
 
-            /* ERROR keeps an explicit recovery path, but normal BG preparation never depends on it. */
+            /* Explicit error recovery also uses the protected private-display service path. */
             tab.preparationState == VideoTabStore.PreparationState.ERROR -> {
-                UnifiedPreparationCoordinator.retry(this, tab.id)
+                TabHealthStore.set(this, tab.id, TabHealthStore.State.UNKNOWN)
+                VideoTabStore.markQueued(tab.id, getString(R.string.refresh_requested))
+                TabPreparationManager.cancelScheduled(applicationContext, tab.id)
+                TabRevivalCoordinator.enqueue(this, listOf(tab))
                 refreshDashboard()
             }
 
