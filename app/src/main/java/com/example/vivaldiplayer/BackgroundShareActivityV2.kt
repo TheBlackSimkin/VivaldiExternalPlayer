@@ -41,6 +41,14 @@ class BackgroundShareActivityV2 : Activity() {
 
         val tab = VideoTabStore.createPendingTab(sourceUrl)
         val tabId = tab.id
+
+        /*
+         * Store the exact shared page URL before any resolver can update temporary
+         * playback metadata. This value is the permanent identity used by revival
+         * and Favorites; it is never replaced by a media/CDN URL.
+         */
+        TabOriginStore.remember(applicationContext, tabId, sourceUrl)
+
         val sessionToken = "private-$tabId-${System.currentTimeMillis()}"
 
         VideoTabStore.markPreparationRequested(tabId)
