@@ -1,7 +1,6 @@
 package com.example.vivaldiplayer
 
 import android.content.Context
-import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Typeface
 import android.view.Gravity
@@ -17,18 +16,14 @@ import androidx.core.content.ContextCompat
 import com.google.android.material.card.MaterialCardView
 
 /**
- * Manually activated privacy curtain for the main tab dashboard.
+ * Manually activated privacy curtain for the main dashboard.
  *
- * The app starts unlocked unless the user explicitly activates the shield. Once
- * activated, the locked state is persisted so a process restart cannot reveal a
- * dashboard which the user deliberately hid. Revealing it requires Android
- * biometric/device-credential authentication.
+ * The app starts normally unlocked. Once the user explicitly hides it, the state
+ * persists across process recreation so the real dashboard cannot flash on screen.
+ * The curtain intentionally looks like a neutral ExternalPlayer landing surface:
+ * it must not advertise that tabs, history, or private content exist underneath.
  *
- * A shared URL received while locked must never start resolving behind the
- * curtain. MainActivity defers it; after successful authentication we restart
- * the same Activity intent so that pending share is handled only when visible.
- *
- * This is a privacy/UI gate, not encrypted storage for normal tabs.
+ * This is a UI/privacy gate, not encrypted storage for ordinary tabs.
  */
 object AppPrivacyController {
     private const val PREFS = "app_privacy"
@@ -39,8 +34,17 @@ object AppPrivacyController {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .getBoolean(KEY_LOCKED, false)
 
-    fun attachIfNeeded(activity: AppCompatActivity) {
-        if (isLocked(activity)) showCurtain(activity)
+    /**
+     * [onRevealed] is used by MainActivity to consume a share that arrived while
+     * hidden. Revealing happens in-place; we deliberately do not restart/finish
+     * the Activity because doing so caused some devices to minimize the app after
+     * successful system authentication.
+     */
+    fun attachIfNeeded(
+        activity: AppCompatActivity,
+        onRevealed: (() -> Unit)? = null
+    ) {
+        if (isLocked(activity)) showCurtain(activity, onRevealed)
     }
 
     fun lock(activity: AppCompatActivity) {
@@ -48,38 +52,32 @@ object AppPrivacyController {
             .edit()
             .putBoolean(KEY_LOCKED, true)
             .apply()
-        showCurtain(activity)
+        showCurtain(activity, null)
     }
 
-    private fun reveal(activity: AppCompatActivity) {
+    private fun reveal(
+        activity: AppCompatActivity,
+        onRevealed: (() -> Unit)?
+    ) {
         SystemAuthGate.authenticate(
             activity = activity,
-            title = activity.getString(R.string.reveal_app),
-            subtitle = activity.getString(R.string.privacy_shield_auth_prompt),
+            title = activity.getString(R.string.privacy_auth_title),
+            subtitle = activity.getString(R.string.privacy_auth_prompt),
             onSuccess = {
                 activity.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
                     .edit()
                     .putBoolean(KEY_LOCKED, false)
                     .apply()
-
-                /*
-                 * Restart the current intent rather than merely uncovering the
-                 * existing view. This lets a deferred ACTION_SEND be consumed
-                 * normally after authentication and avoids resolving it while
-                 * the privacy curtain is active.
-                 */
-                val restart = Intent(activity.intent).apply {
-                    setClass(activity, activity::class.java)
-                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                }
                 removeCurtain(activity)
-                activity.startActivity(restart)
-                activity.finish()
+                onRevealed?.invoke()
             }
         )
     }
 
-    private fun showCurtain(activity: AppCompatActivity) {
+    private fun showCurtain(
+        activity: AppCompatActivity,
+        onRevealed: (() -> Unit)?
+    ) {
         activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         val root = activity.findViewById<FrameLayout>(android.R.id.content) ?: return
         if (root.findViewWithTag<View>(OVERLAY_TAG) != null) return
@@ -103,30 +101,33 @@ object AppPrivacyController {
         val content = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            setPadding(dp(activity, 24), dp(activity, 26), dp(activity, 24), dp(activity, 24))
+            setPadding(dp(activity, 24), dp(activity, 28), dp(activity, 24), dp(activity, 24))
         }
+
         content.addView(TextView(activity).apply {
-            text = activity.getString(R.string.privacy_shield_title)
+            text = activity.getString(R.string.privacy_neutral_title)
             textSize = 23f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             gravity = Gravity.CENTER
             setTextColor(color(activity, R.color.app_text_primary))
         })
+
         content.addView(TextView(activity).apply {
-            text = activity.getString(R.string.privacy_shield_summary)
+            text = activity.getString(R.string.privacy_neutral_summary)
             textSize = 13f
             gravity = Gravity.CENTER
             setTextColor(color(activity, R.color.app_text_secondary))
             setPadding(0, dp(activity, 10), 0, dp(activity, 22))
         })
+
         content.addView(Button(activity).apply {
             isAllCaps = false
-            text = activity.getString(R.string.reveal_app)
+            text = activity.getString(R.string.privacy_neutral_open)
             textSize = 15f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(color(activity, R.color.white))
             backgroundTintList = ColorStateList.valueOf(color(activity, R.color.app_accent))
-            setOnClickListener { reveal(activity) }
+            setOnClickListener { reveal(activity, onRevealed) }
         }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(activity, 50)))
 
         card.addView(content)
