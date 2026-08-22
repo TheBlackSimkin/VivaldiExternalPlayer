@@ -48,7 +48,7 @@ import kotlin.math.abs
  * - keep the agreed double-tap seek gestures while hiding visible +/-10s buttons;
  * - place [tab count] [gear] [fullscreen] in Media3's own lower controller row;
  * - provide one compact anchored gear for Quality, Audio, Volume/Mute,
- *   Playback speed and Diagnostics;
+ *   Playback speed, Favorites and Diagnostics;
  * - make every simple choice submenu compact instead of using centered dialogs;
  * - verify manual video quality against Media3's ACTIVE video format rather than
  *   treating a requested/declared height as proof that the renderer switched;
@@ -374,12 +374,79 @@ class PlayerChromeProvider : ContentProvider() {
                     ) {
                         anchor.post { showPlaybackSpeedMenu(activity, anchor, activePlayer) }
                     },
+                    CompactMenuItem(activity.getString(R.string.add_favorite)) {
+                        saveCurrentFavorite(activity, privateFavorite = false)
+                    },
+                    CompactMenuItem(activity.getString(R.string.add_private_favorite)) {
+                        saveCurrentFavorite(activity, privateFavorite = true)
+                    },
                     CompactMenuItem(activity.getString(R.string.player_diagnostics)) {
                         diagnosticsButton.performClick()
                     }
                 )
             )
         }
+
+        /** Save only the tab's permanent original page URL, never a temporary media URL. */
+        private fun saveCurrentFavorite(activity: PlayerActivity, privateFavorite: Boolean) {
+            val tabId = currentTabId(activity)
+            val tab = tabId?.let(VideoTabStore::get)
+            val originalPageUrl = tab
+                ?.let { TabOriginStore.pageUrl(activity, it) }
+                ?.trim()
+                .orEmpty()
+                .ifBlank { tab?.sourceUrl?.trim().orEmpty() }
+            val title = tab?.title
+                ?.trim()
+                .orEmpty()
+                .ifBlank { currentResolved(activity)?.title?.trim().orEmpty() }
+                .ifBlank { "Favorite" }
+
+            if (!isHttpUrl(originalPageUrl)) {
+                Toast.makeText(
+                    activity,
+                    R.string.favorite_original_url_unavailable,
+                    Toast.LENGTH_LONG
+                ).show()
+                return
+            }
+
+            if (tab != null) {
+                TabOriginStore.remember(activity, tab.id, originalPageUrl)
+            }
+
+            if (!privateFavorite) {
+                val saved = FavoriteStore.add(activity, originalPageUrl, title)
+                Toast.makeText(
+                    activity,
+                    if (saved != null) R.string.favorite_saved
+                    else R.string.favorite_original_url_unavailable,
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+
+            PrivateFavoriteAuthenticator.authenticate(
+                activity,
+                onSuccess = {
+                    val saved = PrivateFavoriteStore.addAfterAuthentication(
+                        activity,
+                        originalPageUrl,
+                        title
+                    )
+                    Toast.makeText(
+                        activity,
+                        if (saved != null) R.string.private_favorite_saved
+                        else R.string.favorite_original_url_unavailable,
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            )
+        }
+
+        private fun isHttpUrl(value: String): Boolean =
+            value.startsWith("https://", ignoreCase = true) ||
+                value.startsWith("http://", ignoreCase = true)
 
         /**
          * Compact quality submenu which delegates the actual switching algorithms
