@@ -36,7 +36,8 @@ object TabPreparationManager {
 
     fun enqueue(context: Context, tabId: String, replace: Boolean = false) {
         val tab = VideoTabStore.get(tabId) ?: return
-        if (tab.sourceUrl.isBlank() || tab.isReady) return
+        val originalPageUrl = TabOriginStore.pageUrl(context, tab)
+        if (originalPageUrl.isBlank() || tab.isReady) return
 
         VideoTabStore.markPreparationRequested(tabId)
         VideoTabStore.markTechnicalStage(tabId, "WORKER_ENQUEUED")
@@ -103,8 +104,10 @@ class ResolveTabWorker(
         val tabId = inputData.getString(KEY_TAB_ID).orEmpty()
         val tab = VideoTabStore.get(tabId) ?: return Result.success()
         if (tab.isReady) return Result.success()
-        if (tab.sourceUrl.isBlank()) {
-            VideoTabStore.markError(tabId, "Missing source URL")
+
+        val originalPageUrl = TabOriginStore.pageUrl(applicationContext, tab)
+        if (originalPageUrl.isBlank()) {
+            VideoTabStore.markError(tabId, "Missing original page URL")
             return Result.failure()
         }
 
@@ -116,7 +119,7 @@ class ResolveTabWorker(
             withContext(Dispatchers.IO) {
                 Python.getInstance()
                     .getModule("resolver")
-                    .callAttr("resolve", tab.sourceUrl, "auto")
+                    .callAttr("resolve", originalPageUrl, "auto")
                     .toString()
             }
         }.fold(
