@@ -22,12 +22,15 @@ Vivaldi External Player receives an ordinary Android-shared webpage URL, resolve
 - **Favorites** store original page URLs and local titles.
 - **Private Favorites** encrypt titles/URLs at rest with an Android Keystore AES-GCM key and require Android biometric/device authentication before displaying them. The private screen is screenshot/Recents protected and does not use thumbnails.
 - Player gear actions for adding the current original page to Favorites or Private Favorites.
+- Player gear action **Vivaldi Private + Copy URL** copies the stored original page URL and opens Vivaldi's genuine blank Private tab so the user can paste it there.
 - English and Spanish user-facing strings.
 - Permanently signed release APKs from GitHub Actions; private signing key material is never committed.
 
 ## Browser privacy note
 
-The app does **not** claim that an external Android intent can force Vivaldi to open an arbitrary URL directly in a Private/Incognito tab. A normal `ACTION_VIEW` intent does not provide that guarantee, so an “always private” Vivaldi action is intentionally not presented as supported unless Vivaldi exposes a reliable documented mechanism in the future.
+Device inspection of Vivaldi 8.1.4099.123 confirmed that Vivaldi exposes Chromium's genuine `IncognitoTabLauncher`, but that exported launcher intentionally opens a blank Private tab and ignores an incoming URL. A normal `ACTION_VIEW` opens a regular tab, the launcher shortcut activity is not exported, and the tested Chromium incognito extras do not provide a reliable arbitrary-URL private launch.
+
+For that reason the app does **not** pretend it can force an arbitrary URL directly into a Vivaldi Private tab. The supported fallback is explicit: **Vivaldi Private + Copy URL** copies the stored original webpage URL, opens Vivaldi's real blank Private tab, and tells the user to paste the copied URL there.
 
 ## Important boundary
 
@@ -35,7 +38,7 @@ The app is not intended to bypass DRM, authentication, subscriptions, regional r
 
 ## Build configuration
 
-- Version 0.3.0 (`versionCode 3`)
+- Version 0.3.1 (`versionCode 4`)
 - Android Gradle Plugin 8.13.2
 - Gradle 8.13
 - compileSdk/targetSdk 36
@@ -50,6 +53,6 @@ See `BUILD_APK.md` for the GitHub Actions workflow and `PROJECT_STATE.md` for th
 
 ## Current follow-up work
 
-- Focused device QA for the 0.3.0 tab-maintenance and Favorites changes.
+- Focused device QA for the 0.3.1 Vivaldi Private + Copy URL action, plus a quick player-menu regression check.
 - Conservative diagnostics/operations-log noise cleanup where it can be proven not to affect resolver or playback behavior.
 - Broader hardening only when real personal-use regressions justify it.
