@@ -1,96 +1,81 @@
 # Vivaldi External Player — Project State
 
-GitHub `main` is authoritative for released code. Active 0.3.2 QA work is on `work/0.3.2-correctness-ux`, PR #2. Read this file and `CHAT_BOOTSTRAP.md` before substantive work.
+Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. Read this file and `CHAT_BOOTSTRAP.md` before substantive work.
 
 ## Safety / protected architecture
-- Android UI remains bilingual English/Spanish; source comments English.
-- PH/HH are technical playback targets only: URLs, manifests, codecs, resolutions, request metadata, resolver/candidate ranking, playback states/errors, local titles. Never inspect/describe media content or thumbnail imagery.
-- Never bypass DRM/paywalls/auth/geo/CAPTCHA or import browser credentials.
-- Never add background playback or a second ExoPlayer.
+- Android UI bilingual English/Spanish; source comments English.
+- PH/HH are technical playback targets only: URLs, manifests, codecs, resolutions, request metadata, resolver/candidate ranking, playback state/errors, local titles. Never inspect/describe media content or thumbnail imagery.
+- Never bypass DRM/paywalls/auth/geo/CAPTCHA, import browser credentials, add background playback, or add a second ExoPlayer.
 
-Build #234 background preparation remains protected:
+Protected Build #234 preparation path:
 `short share Activity -> persistent pending tab -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct yt-dlp -> serialized browser fallback -> READY / ERROR / NEEDS_ATTENTION`.
 
-No preparation Activity on display 0. No PlayerActivity/Media3/ExoPlayer during BG preparation.
-
-Preserve one ExoPlayer, yt-dlp first/browser fallback, automatic/manual quality, video+audio, adaptive/sibling switching, gestures, seek preview, rotation, candidate limits/order and no imagery-based ranking.
-Automatic quality: exact 720p -> 1080p -> highest below 1080p -> >1080p rare fallback.
-
-Build #278 remains accepted player/UI DEVICE PASS baseline. Build #249 palette remains protected.
+Preserve one ExoPlayer and existing resolver/quality policy. Build #278 is accepted player/UI baseline; Build #249 palette remains protected.
 
 ## Permanent signing
-Permanent signing is established. No permanent key material is stored in the repository.
-Certificate SHA-256:
+Permanent signer certificate SHA-256:
 `8C:87:E1:F6:A7:A4:87:3F:12:CB:25:BA:34:8B:EF:66:50:57:15:9F:16:A6:5B:90:59:E5:E1:D7:C0:B9:5E:7C`.
-CI verifies signing; 0.3.2 also checks zip alignment and package metadata.
+CI verifies signing, package metadata and APK alignment.
 
 ## Released baseline: 0.3.1 / versionCode 4
-0.3.1 implements **Vivaldi Private + Copy URL**. It was installed successfully by ADB in-place update and its focused device QA is PASS.
-
-0.3.1 build: head `6a195bd0019b3335236375650f4123f11f3bc3fc`, Actions `32552025984`, job `96980224294`, artifact `9470356520`, APK SHA-256 `6e02fb3df1ea831a42d4d4c582a37c46f4b68772f9cd8f438ae821fc9fa0db51`.
+0.3.1 **Vivaldi Private + Copy URL** device QA is PASS. ADB in-place update works. APK SHA-256 `6e02fb3df1ea831a42d4d4c582a37c46f4b68772f9cd8f438ae821fc9fa0db51`.
 
 ## Active candidate: 0.3.2 / versionCode 5
-Branch `work/0.3.2-correctness-ux`, PR #2. Do NOT merge until device QA.
+Branch `work/0.3.2-correctness-ux`, PR #2. Do NOT merge until the second focused QA pass.
 
-Final code gate:
-- Actions run `32590746439` / run #331
-- job `97074080536`
-- signed artifact `9480279353`
-- APK SHA-256 `bc5b854980faa214ee0b9d7ef5a7676923ffc2c95e3cac4029e47f79a3f77799`
-- debug + signed release PASS
-- zipalign/package sanity PASS
-- signing verification PASS with permanent signer continuity
+First candidate code gate: Actions `32590746439` / run #331, job `97074080536`, artifact `9480279353`, APK SHA-256 `bc5b854980faa214ee0b9d7ef5a7676923ffc2c95e3cac4029e47f79a3f77799`. Debug/release, zipalign/package and signer checks PASS.
 
-### Implemented in 0.3.2
-- single/bulk stale-tab recovery centralized in `TabMaintenanceController`
-- READY + `NEEDS_REFRESH` and ERROR tabs expose the same individual Revive path
-- MainActivity suppresses status redraw/thumbnail callbacks while not RESUMED
-- PlayerActivity no longer triggers dashboard thumbnail warm-up; background `FrameExtractor` work is serialized and suspended/cancelled during foreground playback
-- Media3 same-ExoPlayer decoder fallback enabled with `DefaultRenderersFactory.setEnableDecoderFallback(true)`
-- decoder-init-specific recovery after fallback exhaustion; no stream metadata rewriting
-- Recently Closed cap raised 12 -> 100; Close All archives through the same history
-- global dashboard operations moved into gear sections Tabs / Library / Privacy / App
-- manually activated **Hide & lock app**, app starts unlocked, privacy curtain + `FLAG_SECURE`, **Reveal ExternalPlayer** requires biometric/device credential
-- incoming share while hidden is deferred until successful reveal
-- shared `SystemAuthGate` serves both Private Favorites and privacy curtain
-- tab-card text X replaced with a proper close icon
-- CI runs on PRs and validates alignment/package/signing
+### First-candidate device QA
+- ADB install over 0.3.1: **PASS**; existing data remained.
+- gear menu / close icon: **PASS**.
+- individual Revive from dashboard: **PASS**.
+- Revive/Refresh source from inside Player: **FAIL**; reproduced old behavior/error.
+- Check status -> open Player midway: **PASS**; prior blink/race no longer reproduced.
+- reported decoder-init case: **PASS**.
+- Recently Closed / Close All with 25 tabs: **PASS**.
+- privacy feature: **SEMI-PASS**; auth/cover worked, but the curtain conspicuously announced that content was locked and successful reveal minimized the app.
+- protected player regression: **PASS**.
 
-Private Favorites caveat: local AES-GCM storage remains encrypted, but its Keystore key is not currently hardware/user-auth-bound. Do not overclaim.
+### Second-candidate fixes now implemented
+- In-player Refresh source no longer has a parallel preparation implementation. `TabMaintenanceController.reviveFromPlayer(...)` now persists playback position/state and queues the same persistent tab through the exact protected revival path already proven from the dashboard. Explicit player recovery may revive even when a health probe has not yet marked the tab stale.
+- The stale `PlayerActivity.currentResolved` payload is still cleared before navigation so its onPause persistence cannot race the tab back to READY with the dead payload.
+- Privacy curtain presentation is now intentionally neutral: `External Video Player` / `Ready to open a video` / `Open`. It does not display words such as locked, hidden, private, tabs, history, or reveal on the covered surface.
+- Privacy authentication now reveals **in place**. The Activity is no longer restarted/finished after successful auth, addressing the observed minimize behavior.
+- Deferred shares remain blocked while hidden and are consumed only after successful in-place reveal; the latest reveal callback is retained even when the curtain was already on screen.
 
-### Decoder case
-Reported PH HLS playback reached Media3 but failed with `ERROR_CODE_DECODER_INIT_FAILED`, Qualcomm `c2.qti.avc.decoder`, `format_supported=NO_EXCEEDS_CAPABILITIES`, 1280x720 AVC and implausible reported frame rate ~12857.142 fps.
+### Existing 0.3.2 changes retained
+- centralized stale/error-tab recovery and global Revive
+- status/player lifecycle isolation
+- no PlayerActivity-triggered dashboard thumbnail warm-up; background FrameExtractor work serialized/suspended during playback
+- Media3 same-ExoPlayer decoder fallback; decoder-specific graceful recovery; no metadata forging
+- Recently Closed cap 100 and browser-like Close All recovery
+- consolidated dashboard gear menu
+- shared `SystemAuthGate` for Private Favorites/privacy UI
+- proper close icon
+- PR CI validation
 
-0.3.2 first lets Media3 try another compatible decoder inside the SAME ExoPlayer. If all fail, safe recovery remains. Do not forge codec/frame-rate metadata or rewrite manifests without reproducible proof.
+## Decoder case
+Reported HLS playback failed on first candidate input with `ERROR_CODE_DECODER_INIT_FAILED`, Qualcomm `c2.qti.avc.decoder`, `NO_EXCEEDS_CAPABILITIES`, and implausible ~12857 fps metadata. First-candidate device retest is **PASS** with documented same-ExoPlayer decoder fallback. Do not rewrite/forge stream metadata without reproducible proof.
 
-### Direct APK install — confirmed blocker
-Historical normal file-tap installation showed generic `App not installed` while `adb install -r` worked.
+## Direct APK installation — confirmed blocker
+Standalone extracted APK normal tap update is **FAIL**. Device reports `La aplicación no se ha instalado`; Google Play Protect then shows `Aplicación bloqueada para proteger tu dispositivo`, saying it does not know another app from this developer / it may be unsafe. Tapping visible `Instalar de todas formas` does not continue.
 
-0.3.2 was tested as a standalone extracted APK (not from inside a GitHub artifact ZIP). Device result: **FAIL**. The installer reports `La aplicación no se ha instalado`, then Google Play Protect shows **`Aplicación bloqueada para proteger tu dispositivo`** and states that Play Protect does not know any other app from this developer / it may be unsafe. The visible **`Instalar de todas formas`** action was tapped but nothing further happened.
+CI proves package/sign/alignment sanity and ADB in-place update proves package/signature continuity. Treat this as a Play Protect / installer-flow blocker, not a signing failure. Next investigation should capture PackageInstaller/PackageManager/Play Protect logs/reason codes during a failed tap. Do not uninstall the working app merely to test.
 
-Interpretation: direct-tap installation is now reproducibly blocked in the Play Protect/install flow. CI already proves package metadata, alignment, APK signing and signer continuity, and prior ADB in-place updates prove package/signature compatibility. Do NOT call this a signing failure. The remaining investigation should capture PackageInstaller/PackageManager/Play Protect logs or reason codes during the failed tap flow. Do not uninstall the working signed app just to test.
+## Owed second-candidate QA
+Only the changed areas need focused retest before merge:
+- in-player Refresh/Revive: must queue same tab and recover like dashboard Revive
+- neutral privacy curtain: must be inconspicuous at a glance
+- successful auth must reveal in place without minimizing
+- share received while hidden must remain deferred until reveal
+- short player/dashboard regression spot-check
 
-For 0.3.2 functional QA, use the known-good ADB in-place update path unless a safer direct-tap workaround is proven.
-
-## Owed 0.3.2 device QA
-- direct standalone APK tap update: **FAIL — Play Protect block; Install anyway produced no continuation**
-- individual stale-tab Revive: NOT TESTED
-- Check status -> open Player midway: NOT TESTED
-- decoder-failure source: NOT TESTED
-- Close All / Recently Closed >12: NOT TESTED
-- gear-menu UX + close icon: NOT TESTED
-- Hide & lock / Reveal auth + deferred share: NOT TESTED
-- protected player regression spot-check: NOT TESTED
-
-Do not mark remaining items PASS until user reports them.
+Direct tap installation remains separately unresolved; functional QA may use ADB in-place update.
 
 ## Deferred
 - Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
 - Return-to-Vivaldi stays unchanged.
-- Continue disciplined cleanup/refactoring; delete historical paths only after proving them unused.
+- Continue disciplined cleanup/refactoring; delete historical paths only after proving unused.
 
 ## QA request format
-Whenever explicitly asking the user to test an APK, provide exactly:
-1. one detailed code block with steps, EXPECTED, RESULT;
-2. one separate short code block containing only the compact answer format.
-Do not add extra code blocks to that QA request.
+Whenever explicitly asking the user to test an APK, provide exactly one detailed code block with steps/EXPECTED/RESULT, then one separate compact-answer code block. No extra code blocks.
