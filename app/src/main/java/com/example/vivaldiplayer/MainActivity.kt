@@ -150,7 +150,7 @@ class MainActivity : AppCompatActivity() {
         dashboardAdapter = TabDashboardAdapter(
             context = this,
             onPrimary = ::performPrimaryAction,
-            onBrowser = { tab -> launchBrowserResolver(tab.sourceUrl, tab.id) },
+            onBrowser = { tab -> launchBrowserResolver(TabOriginStore.pageUrl(this, tab), tab.id) },
             onClose = { tab ->
                 TabPreparationManager.cancelScheduled(applicationContext, tab.id)
 
@@ -290,8 +290,8 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val usable = candidates.filter { isHttpUrl(it.sourceUrl) }
-        val unusable = candidates.filterNot { isHttpUrl(it.sourceUrl) }
+        val usable = candidates.filter { isHttpUrl(TabOriginStore.pageUrl(this, it)) }
+        val unusable = candidates.filterNot { isHttpUrl(TabOriginStore.pageUrl(this, it)) }
 
         unusable.forEach { tab ->
             TabHealthStore.set(
@@ -344,6 +344,7 @@ class MainActivity : AppCompatActivity() {
     private fun refreshDashboard() {
         if (!::dashboardAdapter.isInitialized) return
         val tabs = VideoTabStore.allTabs()
+        tabs.forEach { TabOriginStore.ensureFallback(this, it) }
         dashboardAdapter.submitTabs(tabs)
 
         dashboardCount.text = tabs.size.toString()
@@ -371,7 +372,7 @@ class MainActivity : AppCompatActivity() {
 
             /* Genuine interaction may be required only after automatic browser work stopped safely. */
             tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION ->
-                launchBrowserResolver(tab.sourceUrl, tab.id)
+                launchBrowserResolver(TabOriginStore.pageUrl(this, tab), tab.id)
 
             /* ERROR keeps an explicit recovery path, but normal BG preparation never depends on it. */
             tab.preparationState == VideoTabStore.PreparationState.ERROR -> {
