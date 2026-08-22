@@ -79,6 +79,18 @@ class SettingsActivity : AppCompatActivity() {
         content.addView(sectionTitle(R.string.settings_section_tabs))
         content.addView(sectionCard(
             actionRow(
+                title = getString(R.string.favorites),
+                value = FavoriteStore.all(this).size.toString(),
+                onClick = { startActivity(Intent(this, FavoritesActivity::class.java)) }
+            ),
+            divider(),
+            actionRow(
+                title = getString(R.string.private_favorites),
+                subtitle = getString(R.string.private_favorites_locked),
+                onClick = { startActivity(Intent(this, PrivateFavoritesActivity::class.java)) }
+            ),
+            divider(),
+            actionRow(
                 title = getString(R.string.recently_closed_title),
                 value = VideoTabStore.recentlyClosedTabs().size.toString(),
                 subtitle = getString(R.string.settings_recently_closed_summary),
@@ -118,7 +130,7 @@ class SettingsActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        /* Refresh the Recently Closed count after returning from its dedicated screen. */
+        /* Refresh counts after returning from Favorites/Recently Closed screens. */
         if (firstResume) {
             firstResume = false
         } else {
