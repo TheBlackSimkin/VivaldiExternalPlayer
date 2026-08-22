@@ -1,109 +1,100 @@
 # Temporary Chat Bootstrap — Vivaldi External Player
 
 Repository: `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
-GitHub `main` is authoritative. Always read `PROJECT_STATE.md` and this file before substantive work. Keep both current whenever QA, architecture, failures, priorities, or decisions change.
+GitHub `main` is authoritative. Read `PROJECT_STATE.md` and this file before substantive work. Keep both current whenever QA, architecture, failures, priorities, or decisions change.
 
 ## Safety / communication
-- Explain plainly; user is not an advanced developer. Use connected GitHub directly. Keep source well-commented in English.
-- PH/HH are technical playback targets. Technical URLs/manifests/codecs/resolutions/request metadata/candidate ranking/states/errors/local titles are allowed.
-- Never inspect/describe/classify PH/HH media content or thumbnail imagery and never ask the user to provide it.
+- Explain plainly; user is not an advanced developer. Use connected GitHub directly. Keep source well commented in English.
+- PH/HH are technical playback targets only. Allowed: URLs, manifests, codecs, resolutions, request metadata, resolver/candidate ranking, playback states/errors, local titles.
+- Never inspect/describe/classify/summarize/request PH/HH media content or thumbnail imagery.
 - Never bypass DRM, paywall/subscription, authentication, regional restriction, CAPTCHA/anti-bot, or import browser credentials.
-- Never add background playback or a second ExoPlayer session.
+- Never add background playback or a second ExoPlayer.
 
-## Protected baseline
-#234 BG architecture is protected:
-`short share Activity -> persistent pending tab -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct yt-dlp -> serialized browser fallback -> READY/ERROR/NEEDS_ATTENTION`.
-No preparation Activity on display 0 and no PlayerActivity/Media3/ExoPlayer during preparation.
+## Protected architecture / playback
+Build #234 background preparation is protected:
+`short share Activity -> persistent pending tab -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct yt-dlp -> serialized browser fallback -> READY / ERROR / NEEDS_ATTENTION`.
 
-#236 commit `d6c1328823ce2027beecab7970b02420d1cffc7b` is the protected playback baseline. Preserve Auto exact 720 -> 1080 -> highest below 1080, manual quality, video+audio, browser fallback, gestures, rotation, bilingual UI and exactly one ExoPlayer.
+No preparation Activity on display 0. No PlayerActivity/Media3/ExoPlayer during BG preparation.
 
-#242 UI structure passed. #249 palette passed and user said “colors are perfect, love them”: keep purple `#B05CFF`, charcoal `#17191F` family, white primary; green/amber/red semantic only.
+Preserve exactly one ExoPlayer, yt-dlp first/browser fallback, automatic/manual quality, video+audio, adaptive/sibling switching, gestures, seek preview, rotation, bilingual UI, candidate limits/order, and no imagery-based ranking.
 
-## Player specification
-- Media3 controller/timeline/play-pause/fullscreen/end replay.
-- No visible ±10s buttons; double-tap left/right remains ±10s.
-- Lower-right `[tab count] [gear] [fullscreen]`; tab count opens dashboard.
-- One gear: Video quality, Audio, Volume/mute, Playback speed, Diagnostics.
-- Audio/Volume/Speed use same Player; Volume never changes Android global volume.
-- Controls auto-hide together. Diagnostics may remain full dialog; simple settings should use compact anchored menus.
+Automatic quality: exact 720p -> otherwise 1080p -> otherwise highest below 1080p -> >1080p rare fallback only.
 
-## Build #264 — CI PASS / DEVICE QA MOSTLY PASS
-App commit `5b1906f1d43643a46458a77e2de67691c1f299c0`; Actions #264 run `31900203463`; APK SHA-256 `d110c4257f9d44c47820ac15627c7a577a0d54cc3f7a2a52dcf42f65e56784e0`.
+## Accepted player/UI baseline
+Build #278 is DEVICE PASS and is the accepted app-code baseline.
+- App commit: `8b0566c68eb9082c0aed62e202edfc1a29232983`
+- Actions run `31905713180`; build job `95063044270`; artifact `9252287185`
+- APK SHA-256 `ee5893ef22a7a38758293ce9647ac133f09bea8527855c836c8dd65f13ba6043`
 
-#264 implemented Recents privacy, functional fullscreen, compact Audio/Volume/Speed, app-level Volume/Mute, and stale-source Refresh source through protected #234 BG preparation.
+Accepted behavior: compact gear and Video Quality menus, requested-vs-actual quality verification including 480p path, Audio, app-level Volume/Mute, speed, Diagnostics, fullscreen, exact `[tab count] [gear] [fullscreen]`, tab dashboard, controller auto-hide, double-tap ±10s, no visible ±10 buttons.
 
-User reports almost all #264 tests succeeded, including Vivaldi health and **Brave Mobile as-is compatibility** using the generic Android share targets. No Brave-specific code is justified.
+Build #249 palette remains protected: purple `#B05CFF`, charcoal `#17191F` family, white primary; green/amber/red semantic only.
 
-Remaining #264 issues which motivated #275:
-- Video Quality still used centered AlertDialogs.
-- 480p request showed no obvious visual change; requested quality must not be treated as proof of actual rendition.
-- user requested slightly more compact vertical spacing in gear menus/submenus.
+Build #264 retained behavior: Recents privacy, stale-source `Refresh source`, Vivaldi health, Brave-as-is compatibility with generic Android share targets. No Brave-specific code without a real regression.
 
 ## Rare HH DNS edge case
-One rare older-looking HH HLS source produced Media3 network error 2001 with nested `UnknownHostException`: HLS master host `master-lengs.org` referenced downstream `eng-jaen.top`, which Android DNS could not resolve (`EAI_NODATA`). Most HH sources still work.
+Some rare older HH HLS sources can fail because a downstream host genuinely does not resolve (`UnknownHostException` / `EAI_NODATA`). Treat as source availability. Safe recovery only: Retry, Refresh source, or an already-detected legitimate alternate candidate. Never rewrite hosts or invent mirrors.
 
-Treat as rare source/host availability, before codec decoding. No host rewriting, DNS substitution, guessed mirror, credentials or bypass. Safe recovery: clearer DNS wording, Retry for transient DNS, Refresh source for a fresh legitimate manifest, and legitimate alternate candidates if already detected.
+## Latest QA / decisions
+User reports broad PH/HH technical regression is complete and passed, except the previously known old/expired-tab revival limitation.
 
-## Build #274 — compile failure caught in CI
-App/source head `3fcbabd1c953d1021ca6c28b9317be6ff024a62b`; Actions run `31904748898`; job `95060714556`.
-Initial quality-verification code referenced `Player.videoFormat`, which pinned Media3 1.10.1 does not expose. Kotlin compile failed; no APK was handed to the user. Scope was unchanged and corrected in #275.
+User repeated the same normal Vivaldi-style flows in Brave and reports they worked correctly. No Brave-specific work is needed.
 
-## Build #275 — CI PASS / DEVICE MENU FAIL
-App commit `dabd3054b0cfaaae820145cf8240c1c57672e4b3`; Actions #275 run `31904918938`; APK SHA-256 `a3659a7887e08ac4950bafb28d766b325f215c79f3737bc9df37c7c952d8ff55`.
+User reports **31 tabs** could be opened/prepared in background without issue. Broader stress hardening is postponed/lower priority for this personal-use project unless a concrete regression appears.
 
-#275 added the compact PopupWindow family, compact Quality UI, requested-vs-actual quality verification, and clearer DNS recovery wording without changing resolver/BG/quality policy/share architecture/colors.
+## Known unresolved gap: revive old tabs
+Agreed model:
+- store/retain original page URL as permanent tab identity;
+- treat resolved media URLs/candidates as temporary playback state;
+- revival uses `original page URL -> existing #234 preparation path -> refreshed legitimate candidates`.
 
-Device result:
-- **gear menu FAIL**: tapping gear showed only a roughly 2 mm-high rectangle, so no submenu/quality QA could continue;
-- treat this as popup clipping/geometry failure, not simply a preference that 42dp rows were too dense;
-- likely trigger was `WRAP_CONTENT` PopupWindow height + `showAsDropDown()` from the Media3 controller's bottom row, which clipped to the tiny area below the gear on this device;
-- **rare DNS wording PASS-as-designed**: error remained unplayable but became clearer, which is the intended safe improvement when the downstream host is genuinely unresolvable. Do not add host rewriting or bypass behavior.
+Do not repair expired media URLs by guessed hostname/CDN substitutions.
 
-## Build #278 — popup geometry correction: CI PASS / DEVICE PASS
-App commit `8b0566c68eb9082c0aed62e202edfc1a29232983`.
-Actions #278 run `31905713180`; build job `95063044270`; artifact `9252287185`.
-ZIP SHA-256 `9076f2c5aec6fb830fb0551195a1bd475e54051d0f6c380aa78c6be9504318ec`.
-APK size `35,590,609`; APK SHA-256 `ee5893ef22a7a38758293ce9647ac133f09bea8527855c836c8dd65f13ba6043`.
+## Immediate priority: permanent signed release APK
+User explicitly chose signing before the next feature build.
 
-#278 changes only `PlayerChromeProvider.kt` relative to #275 app code:
-- row height relaxed from 42dp to 44dp;
-- popup height calculated explicitly from row count + insets instead of WRAP_CONTENT;
-- popup placed explicitly above the gear using screen coordinates/visible frame instead of relying on `showAsDropDown()` auto-flip;
-- bounded below-anchor fallback only when there is truly insufficient space above.
+Current repository already supports signing:
+- `app/build.gradle.kts` reads signing from environment variables only;
+- `.github/workflows/build-apk.yml` reconstructs the keystore in the runner, builds release, verifies with `apksigner`, deletes temporary keystore, and uploads `VivaldiExternalPlayer-signed-release-apk`.
 
-Quality verification, clearer DNS wording, fullscreen, `[tabs][gear][fullscreen]`, controller auto-hide, same-player Audio/Volume/Speed, resolver/BG architecture, share flow and approved palette are unchanged.
+User confirmed the four required GitHub Actions repository secrets are configured:
+- `VEP_KEYSTORE_BASE64`
+- `VEP_KEYSTORE_PASSWORD`
+- `VEP_KEY_ALIAS`
+- `VEP_KEY_PASSWORD`
 
-### #278 device result — ACCEPTED PLAYER UI BASELINE
-User reports **all requested #278 checks worked as expected**. Treat as PASS for:
-- gear menu visible at normal height with accepted compactness;
-- compact Video Quality submenu and Actual-quality row;
-- requested-vs-actual manual quality verification, including the tested 480p path;
-- Audio, app-level Volume/Mute, Playback speed and Diagnostics;
-- fullscreen, exact control order, tab dashboard, controller auto-hide, double-tap ±10s, no visible ±10 buttons;
-- approved colors unchanged.
-Exact numeric requested/actual quality values were not separately recorded, but the full #278 checklist was explicitly reported working as expected.
+Never commit permanent signing material.
 
-Treat player-control/menu UI as settled unless later regression evidence appears.
+The first signed-release CI run should keep the accepted #278 app code unchanged unless a signing-specific fix is required. Clearly distinguish the #278 app-code commit from later docs-only main HEAD commits.
 
-## Brave compatibility
-Brave Mobile as-is compatibility passed on #264 using generic Android share targets. Do not add Brave-specific architecture unless future regression evidence requires it.
+First transition from installed debug APK to release APK may require uninstalling the debug app because the signatures differ; uninstall normally removes app-local tabs/settings. Do not ask the user to uninstall until the signed release artifact is fully verified.
 
-## Stored-for-later backlog
-- secure browser-based `Report log on GitHub` shortcut with no embedded reusable credential;
-- safe dead/historical code cleanup only after proving unused;
-- diagnostics/operations-log noise cleanup;
-- About/version/build/README/release-note consistency;
-- distribution + permanent signing last, never commit permanent signing material;
-- revisit old dedicated “Return to existing Vivaldi task/tab” idea rather than automatically implementing it.
+## Next combined feature / cleanup build after signing
+Agreed scope:
+1. Original-page-URL foundation for tab revival and Favorites.
+2. Main-screen **Update status of tabs** with conservative serialized/limited checking and clear states.
+3. Main-screen **Revive expired tabs**, re-resolving only stale/failed tabs from original page URLs through #234 architecture.
+4. Main-screen **Close all tabs** with approved-style confirmation; prefer Recently Closed safety net over destructive deletion.
+5. **Favorites / Private Favorites**: store original page URLs. Preferred private design uses Android system/device authentication rather than a custom password. Locked private entries must not leak titles/URLs/thumbnails through normal UI, Recents, or routine diagnostics.
+6. Player gear **Open in Vivaldi** using stored original URL, but user requires ALWAYS Private/Incognito. Do not implement unless a reliable supported mechanism can guarantee private mode; normal `ACTION_VIEW` is not enough.
+7. Diagnostics / operations-log noise cleanup, without altering resolver ranking, playback policy, #234 architecture, or one-player ownership.
+8. About/version/build/README/release-note consistency.
 
-## Next priority
-1. Final PH technical regression against accepted #278.
-2. Final HH technical regression; known rare downstream DNS failure is a documented source-availability edge case, not a general failure.
-3. Re-test both Vivaldi share targets end-to-end and do a small Brave as-is smoke regression.
-4. Then hardening/failure edges, diagnostics/log cleanup, safe stale/dead-path cleanup, and About/version/build/docs consistency.
-5. Distribution/permanent signing remain final-stage only.
+## Stored backlog
+- secure browser-based `Report log on GitHub` shortcut; never embed reusable GitHub credentials
+- safe proven-dead historical code cleanup only later
+- old “Return to existing Vivaldi task/tab” idea: reconsider later, never auto-implement
+- broader hardening only when personal-use evidence justifies it
+
+## Current roadmap
+1. Verify first permanent signed release from GitHub Actions on accepted #278 app code.
+2. Then implement the agreed combined feature/cleanup build.
+3. Focused QA on changed areas + quick protected-baseline sanity checks.
+4. Preserve signing continuity for all future release APK updates.
 
 ## QA format
-Whenever asking the user to test, always provide exactly:
+Whenever explicitly asking the user to test an APK, always provide exactly:
 1. one detailed code block with steps, EXPECTED, RESULT;
 2. one separate short code block containing only the compact answer format.
+
+Do not add extra code blocks to that QA request.
