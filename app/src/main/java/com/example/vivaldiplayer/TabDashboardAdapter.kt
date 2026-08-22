@@ -173,11 +173,12 @@ class TabDashboardAdapter(
 
     override fun onBindViewHolder(holder: TabViewHolder, position: Int) {
         val tab = items[position]
+        val health = TabHealthStore.get(context, tab.id)
 
         holder.title.text = displayTitle(tab)
-        holder.status.text = stateLabel(tab.preparationState)
-        holder.status.setTextColor(stateColor(tab.preparationState))
-        holder.status.background = statusBackground(tab.preparationState)
+        holder.status.text = stateLabel(tab, health)
+        holder.status.setTextColor(stateColor(tab, health))
+        holder.status.background = statusBackground(tab, health)
         holder.meta.text = dashboardMetadata(tab)
         holder.meta.visibility = if (holder.meta.text.isBlank()) View.GONE else View.VISIBLE
 
@@ -320,30 +321,52 @@ class TabDashboardAdapter(
         else -> context.getString(R.string.tab_state_queued)
     }
 
-    private fun stateLabel(state: VideoTabStore.PreparationState): String = when (state) {
-        VideoTabStore.PreparationState.QUEUED -> context.getString(R.string.tab_state_queued)
-        VideoTabStore.PreparationState.RESOLVING -> context.getString(R.string.tab_state_resolving)
-        VideoTabStore.PreparationState.READY -> context.getString(R.string.tab_state_ready)
-        VideoTabStore.PreparationState.NEEDS_ATTENTION -> context.getString(R.string.tab_state_needs_attention)
-        VideoTabStore.PreparationState.ERROR -> context.getString(R.string.tab_state_error)
+    private fun stateLabel(tab: VideoTabStore.VideoTab, health: TabHealthStore.Status): String {
+        if (tab.preparationState != VideoTabStore.PreparationState.READY) {
+            return when (tab.preparationState) {
+                VideoTabStore.PreparationState.QUEUED -> context.getString(R.string.tab_state_queued)
+                VideoTabStore.PreparationState.RESOLVING -> context.getString(R.string.tab_state_resolving)
+                VideoTabStore.PreparationState.READY -> context.getString(R.string.tab_state_ready)
+                VideoTabStore.PreparationState.NEEDS_ATTENTION -> context.getString(R.string.tab_state_needs_attention)
+                VideoTabStore.PreparationState.ERROR -> context.getString(R.string.tab_state_error)
+            }
+        }
+
+        return when (health.state) {
+            TabHealthStore.State.CHECKING -> context.getString(R.string.tab_health_checking)
+            TabHealthStore.State.READY -> context.getString(R.string.tab_state_ready)
+            TabHealthStore.State.NEEDS_REFRESH -> context.getString(R.string.tab_health_needs_refresh)
+            TabHealthStore.State.UNAVAILABLE -> context.getString(R.string.tab_health_unavailable)
+            TabHealthStore.State.NEEDS_ATTENTION -> context.getString(R.string.tab_state_needs_attention)
+            TabHealthStore.State.UNKNOWN -> context.getString(R.string.tab_state_ready)
+        }
     }
 
-    private fun stateColor(state: VideoTabStore.PreparationState): Int = color(
-        when (state) {
-            VideoTabStore.PreparationState.READY -> R.color.app_success
-            VideoTabStore.PreparationState.ERROR,
-            VideoTabStore.PreparationState.NEEDS_ATTENTION -> R.color.app_warning
+    private fun stateColor(tab: VideoTabStore.VideoTab, health: TabHealthStore.Status): Int = color(
+        when {
+            tab.preparationState == VideoTabStore.PreparationState.READY &&
+                health.state == TabHealthStore.State.READY -> R.color.app_success
+            tab.preparationState == VideoTabStore.PreparationState.READY &&
+                health.state in setOf(
+                    TabHealthStore.State.NEEDS_REFRESH,
+                    TabHealthStore.State.UNAVAILABLE,
+                    TabHealthStore.State.NEEDS_ATTENTION
+                ) -> R.color.app_warning
+            tab.preparationState == VideoTabStore.PreparationState.ERROR ||
+                tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION -> R.color.app_warning
             else -> R.color.app_text_secondary
         }
     )
 
-    private fun statusBackground(state: VideoTabStore.PreparationState): GradientDrawable =
-        GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = dp(50).toFloat()
-            setColor(color(R.color.app_surface_raised))
-            setStroke(dp(1), stateColor(state))
-        }
+    private fun statusBackground(
+        tab: VideoTabStore.VideoTab,
+        health: TabHealthStore.Status
+    ): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = dp(50).toFloat()
+        setColor(color(R.color.app_surface_raised))
+        setStroke(dp(1), stateColor(tab, health))
+    }
 
     private fun formatPosition(ms: Long): String {
         val totalSeconds = ms.coerceAtLeast(0L) / 1000L
