@@ -81,7 +81,7 @@ object UnifiedPreparationCoordinator {
     fun preloadNext(activity: Activity, currentTabId: String): Boolean {
         if (!AppSettings.preloadNextTab(activity)) return false
         val next = VideoTabStore.nextAfter(currentTabId) ?: return false
-        if (next.sourceUrl.isBlank()) return false
+        if (TabOriginStore.pageUrl(activity, next).isBlank()) return false
         if (next.preparationState != VideoTabStore.PreparationState.QUEUED) return false
         return startNow(activity, next.id)
     }
@@ -112,10 +112,13 @@ object UnifiedPreparationCoordinator {
 
         val candidate = preferredTabId
             ?.let(VideoTabStore::get)
-            ?.takeIf { it.preparationState == VideoTabStore.PreparationState.QUEUED }
+            ?.takeIf {
+                it.preparationState == VideoTabStore.PreparationState.QUEUED &&
+                    TabOriginStore.pageUrl(host, it).isNotBlank()
+            }
             ?: VideoTabStore.allTabs().firstOrNull {
                 it.preparationState == VideoTabStore.PreparationState.QUEUED &&
-                    it.sourceUrl.isNotBlank()
+                    TabOriginStore.pageUrl(host, it).isNotBlank()
             }
             ?: return
 
@@ -128,7 +131,8 @@ object UnifiedPreparationCoordinator {
         tabId: String
     ): Boolean {
         val tab = VideoTabStore.get(tabId) ?: return false
-        if (tab.isReady || tab.sourceUrl.isBlank()) return false
+        val originalPageUrl = TabOriginStore.pageUrl(activity, tab)
+        if (tab.isReady || originalPageUrl.isBlank()) return false
         if (tabId in activeTabIds || tabId in launchingTabIds) return true
 
         if (activeTabIds.isNotEmpty() || launchingTabIds.isNotEmpty()) {
@@ -147,7 +151,7 @@ object UnifiedPreparationCoordinator {
         TabPreparationManager.cancelScheduled(activity.applicationContext, tabId)
 
         val launchIntent = Intent(activity, BackgroundPreparationActivity::class.java)
-            .putExtra(BackgroundPreparationActivity.EXTRA_URL, tab.sourceUrl)
+            .putExtra(BackgroundPreparationActivity.EXTRA_URL, originalPageUrl)
             .putExtra(BackgroundPreparationActivity.EXTRA_TAB_ID, tab.id)
             .addFlags(
                 Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
