@@ -20,6 +20,14 @@ Branch `work/0.3.2-correctness-ux`, PR #2. Do NOT merge until second focused QA.
 
 First candidate code gate: Actions `32590746439` / run #331, job `97074080536`, artifact `9480279353`, APK SHA-256 `bc5b854980faa214ee0b9d7ef5a7676923ffc2c95e3cac4029e47f79a3f77799`; build/package/alignment/signing PASS.
 
+Second candidate code head `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`:
+- Actions `32595557947` / run #342
+- job `97085776140`
+- signed artifact `9481470902`
+- artifact ZIP SHA-256 `b64f8842f5412f36ce6d314331e7df9edc7d760486c479ac0bdd4528d98029de`
+- release APK SHA-256 `e756e65670f06e7c2be1e4aa58022fed5c71696c4df3178e051196b34a50c01c`
+- debug/release build and upload/sign/package/alignment checks PASS
+
 First-candidate device results:
 - ADB update PASS; existing data retained
 - menu/close icon PASS
@@ -37,7 +45,7 @@ Second candidate changes:
 - position/play state persisted; stale PlayerActivity payload cleared before pause persistence can restore it
 - neutral covered surface: `External Video Player` / `Ready to open a video` / `Open`; no locked/hidden/private wording
 - successful auth reveals in place, no Activity restart/finish
-- latest deferred share callback is retained while curtain exists and consumed only after reveal
+- latest deferred share callback retained while curtain exists and consumed only after reveal
 
 Retained 0.3.2 features: centralized revive, status/player lifecycle isolation, thumbnail codec-contention fix, same-ExoPlayer decoder fallback, Recently Closed 100, consolidated gear menu, shared SystemAuthGate, proper close icon, PR CI.
 
