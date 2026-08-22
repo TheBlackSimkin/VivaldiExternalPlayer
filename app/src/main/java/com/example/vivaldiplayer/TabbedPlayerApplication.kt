@@ -52,6 +52,10 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         super.onCreate()
         VideoTabStore.initialize(this)
 
+        /* Preserve the best available page identity for tabs created by older builds. */
+        VideoTabStore.allTabs().forEach { TabOriginStore.ensureFallback(this, it) }
+        VideoTabStore.recentlyClosedTabs().forEach { TabOriginStore.ensureFallback(this, it) }
+
         /*
          * VideoTabStore converts stale RESOLVING state to QUEUED after process
          * restart. A normal BG session which had already created its preparation
@@ -66,6 +70,11 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         if (activity is BackgroundPreparationActivity) {
             UnifiedPreparationCoordinator.onPreparationCreated(activity)
+            return
+        }
+
+        if (activity is BackgroundShareActivity) {
+            rememberOriginalBackgroundShare(activity)
             return
         }
 
@@ -124,6 +133,11 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
             } else {
                 VideoTabStore.createTab(tabJson).id
             }
+
+        /* Foreground-created tabs use the resolver's page URL as the best available origin. */
+        runCatching { ResolvedMedia.fromJson(tabJson).webpageUrl }
+            .getOrNull()
+            ?.let { TabOriginStore.remember(this, tabId, it) }
 
         activity.intent.putExtra(EXTRA_TAB_ID, tabId)
         activityTabs[activity] = tabId
@@ -260,6 +274,22 @@ class TabbedPlayerApplication : PyApplication(), Application.ActivityLifecycleCa
         }
 
         activityTabs.remove(activity)
+    }
+
+    /** Capture the exact shared page before resolver results can replace temporary metadata. */
+    private fun rememberOriginalBackgroundShare(activity: BackgroundShareActivity) {
+        val sharedUrl = Regex("https?://\\S+")
+            .find(activity.intent.getStringExtra(Intent.EXTRA_TEXT).orEmpty())
+            ?.value
+            ?.trimEnd('.', ',', ')', ']', '}')
+            ?: return
+
+        val candidate = VideoTabStore.allTabs()
+            .filter { it.sourceUrl == sharedUrl }
+            .maxByOrNull { it.createdAtMs }
+            ?: return
+
+        TabOriginStore.remember(this, candidate.id, sharedUrl)
     }
 
     /**
