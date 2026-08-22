@@ -42,55 +42,59 @@ User repeated the same normal Vivaldi-style flows in Brave and reports they work
 
 User reports **31 tabs** could be opened/prepared in background without issue. Broader stress hardening is postponed/lower priority for this personal-use project unless a concrete regression appears.
 
-## Known unresolved gap: revive old tabs
-Agreed model:
-- store/retain original page URL as permanent tab identity;
-- treat resolved media URLs/candidates as temporary playback state;
-- revival uses `original page URL -> existing #234 preparation path -> refreshed legitimate candidates`.
+## Permanent signing status
+Permanent release signing is established and the upload pipeline now works.
 
-Do not repair expired media URLs by guessed hostname/CDN substitutions.
+Signing history:
+- Build #284 original + retry failed at release packaging because the separate generated key-password value did not match the effective PKCS#12 private-key password.
+- Local validation proved the backup keystore is healthy and that the store password is also the key password.
+- Signing-only fix commit `cd92c51936cb34594cfb820de0e2c311b8b09253` makes Gradle use `VEP_KEYSTORE_PASSWORD` for both.
+- Run `32543326847` then built and v2-verified release but artifact upload failed only because GitHub Actions storage quota was full.
+- Run `32546091175`, job `96964652777`, head `74ff674e912e10d6b78fb1ba5fe8544d0325fdc1` succeeded completely: debug build, release build, `apksigner` v2 verification with one signer, debug upload and signed release upload.
+- Signed artifact `9468570335`.
+- Artifact ZIP SHA-256 `b4e70c64f9aa594b402a87ee819ad669ac3ea20aa8926dbed23dc99bf25e849e`.
+- Contained release APK SHA-256 `1fe9f098aa202634c7a2a45f61ec8e1d40fecb6f15b9eb79e81e94a3a179f74d`.
 
-## Immediate priority: permanent signed release APK
-User explicitly chose signing before the next feature build.
+Permanent certificate fingerprint recorded from the backup:
+`8C:87:E1:F6:A7:A4:87:3F:12:CB:25:BA:34:8B:EF:66:50:57:15:9F:16:A6:5B:90:59:E5:E1:D7:C0:B9:5E:7C`.
 
-Current repository already supports signing:
-- `app/build.gradle.kts` reads signing from environment variables only;
-- `.github/workflows/build-apk.yml` reconstructs the keystore in the runner, builds release, verifies with `apksigner`, deletes temporary keystore, and uploads `VivaldiExternalPlayer-signed-release-apk`.
+Current workflow verifies signature validity but does not print the certificate fingerprint. Do not claim the downloaded feature-checkpoint APK fingerprint was independently matched unless actually verified.
 
-User confirmed the four required GitHub Actions repository secrets are configured:
-- `VEP_KEYSTORE_BASE64`
-- `VEP_KEYSTORE_PASSWORD`
-- `VEP_KEY_ALIAS`
-- `VEP_KEY_PASSWORD`
+Do not change signing secrets casually. Never commit permanent signing material.
 
-Never commit permanent signing material.
+Debug -> release migration warning remains: same application ID, different signatures, so Android may reject installing release over debug. Uninstall normally clears app-local state; do not casually tell the user to uninstall.
 
-The first signed-release CI run should keep the accepted #278 app code unchanged unless a signing-specific fix is required. Clearly distinguish the #278 app-code commit from later docs-only main HEAD commits.
+## Feature / cleanup phase now in progress
+Compile-verified at run `32546091175`:
+1. **Permanent original page URL** via `TabOriginStore`, including capture at the real V2 BG share handoff.
+2. **Update status of tabs** with conservative serialized checks and separate health state.
+3. **Revive expired tabs** from original page URLs through `TabRevivalCoordinator`, serialized through the protected foreground-service/private-display architecture. No preparation Activity, PlayerActivity, Media3 or second ExoPlayer.
+4. **Close all tabs** main-screen confirmation, using the existing close/Recently Closed safety path and cancelling queued work where applicable.
+5. **Favorites** storing original page URL + title.
+6. **Private Favorites** storing encrypted title/URL data with Android Keystore AES-GCM; Android biometric/device authentication before decrypt/render; `FLAG_SECURE`; excluded from Recents; no thumbnails; locks again when leaving.
+7. Favorites launch new tabs through the protected service/private-display preparation path.
+8. Settings exposes Favorites and Private Favorites.
+9. New feature copy is bilingual English/Spanish.
+10. Android biometric dependency and all currently added feature code compile in both debug and release.
 
-First transition from installed debug APK to release APK may require uninstalling the debug app because the signatures differ; uninstall normally removes app-local tabs/settings. Do not ask the user to uninstall until the signed release artifact is fully verified.
+## Still to finish
+- Player compact gear actions for **Add to Favorites** and **Add to Private Favorites**, without disturbing #278 player controls.
+- **Open in Vivaldi Private** stays unimplemented unless a supported mechanism can guarantee private/incognito launch for an arbitrary URL. Never label ordinary `ACTION_VIEW` as guaranteed private.
+- Conservative diagnostics/operations-log cleanup only; do not alter resolver ranking, playback policy, #234 architecture or one-player ownership.
+- About/version/build/README/release consistency.
+- Final signed feature build and focused QA.
 
-## Next combined feature / cleanup build after signing
-Agreed scope:
-1. Original-page-URL foundation for tab revival and Favorites.
-2. Main-screen **Update status of tabs** with conservative serialized/limited checking and clear states.
-3. Main-screen **Revive expired tabs**, re-resolving only stale/failed tabs from original page URLs through #234 architecture.
-4. Main-screen **Close all tabs** with approved-style confirmation; prefer Recently Closed safety net over destructive deletion.
-5. **Favorites / Private Favorites**: store original page URLs. Preferred private design uses Android system/device authentication rather than a custom password. Locked private entries must not leak titles/URLs/thumbnails through normal UI, Recents, or routine diagnostics.
-6. Player gear **Open in Vivaldi** using stored original URL, but user requires ALWAYS Private/Incognito. Do not implement unless a reliable supported mechanism can guarantee private mode; normal `ACTION_VIEW` is not enough.
-7. Diagnostics / operations-log noise cleanup, without altering resolver ranking, playback policy, #234 architecture, or one-player ownership.
-8. About/version/build/README/release-note consistency.
+## Current roadmap
+1. Finish player Favorites controls, conservative diagnostics cleanup, and release consistency.
+2. Build and verify final permanently signed feature APK.
+3. Focused QA on changed areas + quick protected-baseline sanity checks.
+4. Preserve signing continuity for all future updates.
 
 ## Stored backlog
 - secure browser-based `Report log on GitHub` shortcut; never embed reusable GitHub credentials
 - safe proven-dead historical code cleanup only later
 - old “Return to existing Vivaldi task/tab” idea: reconsider later, never auto-implement
 - broader hardening only when personal-use evidence justifies it
-
-## Current roadmap
-1. Verify first permanent signed release from GitHub Actions on accepted #278 app code.
-2. Then implement the agreed combined feature/cleanup build.
-3. Focused QA on changed areas + quick protected-baseline sanity checks.
-4. Preserve signing continuity for all future release APK updates.
 
 ## QA format
 Whenever explicitly asking the user to test an APK, always provide exactly:
