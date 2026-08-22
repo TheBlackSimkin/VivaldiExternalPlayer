@@ -81,7 +81,6 @@
     <string name="browser_source_performance">browser resource</string>
     <string name="browser_source_config">player config</string>
     <string name="browser_recommended_prefix">Recommended:</string>
-    <string name="browser_option_number">Option %1$d —</string>
     <string name="browser_play_detected_count">Play detected stream (%1$d)</string>
     <string name="browser_detected_status">Detected %1$d possible media request(s).</string>
     <string name="media_host_fallback">media host</string>
