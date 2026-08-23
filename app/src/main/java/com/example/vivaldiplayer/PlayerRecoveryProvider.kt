@@ -18,7 +18,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.HttpDataSource
 import androidx.media3.ui.PlayerView
 import java.net.UnknownHostException
 import java.util.WeakHashMap
@@ -26,14 +25,13 @@ import java.util.WeakHashMap
 /**
  * Registers playback recovery without changing the normal resolver/player path.
  *
- * Retry playback prepares the same already-resolved stream again. Refresh source
- * is different: it re-resolves the original webpage URL into the same persistent
+ * Refresh source re-resolves the original webpage URL into the same persistent
  * tab through [TabMaintenanceController], exactly like dashboard Revive.
  *
- * The primary recovery controls are real overlay buttons on the failed Player,
- * not only rows inside a dialog. This makes the user-visible state unambiguous
- * and avoids Android AlertDialog layout quirks hiding the actionable recovery
- * entries. The explanatory dialog remains available from Recovery options.
+ * Candidate 4 proved direct Refresh from Player works on device, while retrying
+ * the same already-failed media source did not provide reliable recovery. The
+ * user-facing failed-player recovery path therefore exposes the useful action
+ * directly and keeps explanatory options secondary.
  */
 class PlayerRecoveryProvider : ContentProvider() {
     override fun onCreate(): Boolean {
@@ -85,17 +83,9 @@ private class PlayerRecoveryController(
     private data class RecoveryAction(val label: String, val run: () -> Unit)
 
     private var player: Player? = null
-    private var automaticRetryCount = 0
-    private var retryScheduled = false
     private var lastFailureWasDnsLookup = false
     private var lastFailureWasDecoderInit = false
     private var recoveryContainer: LinearLayout? = null
-
-    private val retryButton = Button(activity).apply {
-        isAllCaps = false
-        text = activity.getString(R.string.retry_playback)
-        setOnClickListener { retrySameSource() }
-    }
 
     private val refreshButton = Button(activity).apply {
         isAllCaps = false
@@ -128,7 +118,6 @@ private class PlayerRecoveryController(
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
             visibility = View.GONE
-            addView(retryButton, buttonLayoutParams())
             addView(refreshButton, buttonLayoutParams())
             addView(recoveryButton, buttonLayoutParams())
         }
@@ -162,28 +151,11 @@ private class PlayerRecoveryController(
         } else if (lastFailureWasDnsLookup) {
             Toast.makeText(activity, R.string.media_host_dns_unavailable, Toast.LENGTH_LONG).show()
         }
-
-        if (
-            AppSettings.networkRetryEnabled(activity) &&
-            automaticRetryCount < AppSettings.MAX_TRANSIENT_RETRIES &&
-            isTransient(error) &&
-            !retryScheduled
-        ) {
-            automaticRetryCount += 1
-            retryScheduled = true
-            Toast.makeText(activity, R.string.temporary_network_retry, Toast.LENGTH_SHORT).show()
-            activity.window.decorView.postDelayed({
-                retryScheduled = false
-                retrySameSource(showToast = false)
-            }, 1_200L)
-        }
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
         if (playbackState == Player.STATE_READY) {
             recoveryContainer?.visibility = View.GONE
-            retryScheduled = false
-            automaticRetryCount = 0
             lastFailureWasDnsLookup = false
             lastFailureWasDecoderInit = false
         }
@@ -200,22 +172,12 @@ private class PlayerRecoveryController(
         recoveryContainer?.visibility = View.VISIBLE
     }
 
-    private fun retrySameSource(showToast: Boolean = true) {
-        val activePlayer = player ?: return
-        val position = activePlayer.currentPosition.coerceAtLeast(0L)
-        activePlayer.prepare()
-        if (position > 0L) activePlayer.seekTo(position)
-        activePlayer.playWhenReady = true
-        if (showToast) Toast.makeText(activity, R.string.retrying_playback, Toast.LENGTH_SHORT).show()
-    }
-
     private fun showRecoveryDialog() {
         val resolved = currentResolved()
         val webpageUrl = resolved?.webpageUrl.orEmpty()
         val persistentTab = currentPersistentTab()
 
         val actions = mutableListOf<RecoveryAction>()
-        actions += RecoveryAction(activity.getString(R.string.retry_playback)) { retrySameSource() }
 
         if (persistentTab != null && isHttpUrl(TabOriginStore.pageUrl(activity, persistentTab))) {
             actions += RecoveryAction(activity.getString(R.string.refresh_source)) {
@@ -332,22 +294,6 @@ private class PlayerRecoveryController(
     private fun isHttpUrl(value: String): Boolean =
         value.startsWith("https://", ignoreCase = true) ||
             value.startsWith("http://", ignoreCase = true)
-
-    private fun isTransient(error: PlaybackException): Boolean {
-        if (
-            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
-            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
-        ) return true
-
-        var cause: Throwable? = error
-        while (cause != null) {
-            if (cause is HttpDataSource.InvalidResponseCodeException) {
-                return cause.responseCode == 429 || cause.responseCode in 500..599
-            }
-            cause = cause.cause
-        }
-        return false
-    }
 
     private inline fun <reified T : Throwable> findCause(error: Throwable): T? {
         var current: Throwable? = error
