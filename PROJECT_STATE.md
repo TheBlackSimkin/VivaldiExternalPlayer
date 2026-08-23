@@ -24,73 +24,81 @@ CI verifies signing, package metadata and APK alignment.
 Branch `work/0.3.2-correctness-ux`, PR #2. **Do NOT merge yet.**
 
 ### Candidate 2 build
-Code head used for Candidate 2 APK: `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
-- Actions run `32595557947` / run #342
+Code head `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
+- Actions `32595557947` / run #342
 - job `97085776140`
-- signed release artifact `9481470902`
-- artifact ZIP SHA-256 `b64f8842f5412f36ce6d314331e7df9edc7d760486c479ac0bdd4528d98029de`
+- signed artifact `9481470902`
 - release APK SHA-256 `e756e65670f06e7c2be1e4aa58022fed5c71696c4df3178e051196b34a50c01c`
-- debug + signed release build PASS
-- upload/signing/package/alignment validation PASS
 
-## 0.3.2 implementation retained
-- stale/error-tab recovery centralized in `TabMaintenanceController`
-- dashboard individual Revive and global Revive All use the same controller/coordinator path
-- status/player lifecycle isolation fixed the prior Check Status -> Player blinking race
-- PlayerActivity no longer triggers dashboard thumbnail warm-up; background `FrameExtractor` work is serialized/suspended during foreground playback
-- Media3 same-ExoPlayer decoder fallback enabled; reported decoder-init case device PASS; no stream metadata forging
-- Recently Closed browser-like history cap raised 12 -> 100; Close All with 25 tabs device PASS
-- dashboard operations consolidated under gear menu; close text X replaced with proper icon
-- `SystemAuthGate` shared by Private Favorites and app privacy UI
-- app privacy is manually activated, starts unlocked, uses a neutral covered surface, `FLAG_SECURE`, biometric/device credential, in-place reveal, and deferred incoming shares
-- PR CI validation, package/alignment/signing checks
+### Candidate 3 build
+Branch head `b7e78ecff435ed1c4857ea837a0b57a516fea95b`.
+- recovery-dialog code commit `f23660479a0177b30ddeb16d030095058d79bfda`
+- Actions `32649668990` / run #351
+- job `97219184742`
+- signed artifact `9495855376`
+- build/sign/package/alignment PASS
 
-## Candidate 2 device QA — definitive state
+## 0.3.2 features already device-PASS
+- ADB in-place update; existing data retained
+- consolidated gear menu and proper close icon
+- dashboard individual Revive
+- Check status -> Player race/blinking fix
+- reported decoder-init case with same-ExoPlayer fallback
+- Recently Closed / Close All tested with 25 tabs; history cap 100
+- neutral/inconspicuous privacy screen
+- privacy authentication reveals in place; no minimize
+- share while covered stays deferred until auth
+- general player/dashboard regression spot-check
+
+Implementation/refactor retained: `TabMaintenanceController` central revival policy, `SystemAuthGate` shared auth, `AppPrivacyController`, `DashboardMenu`, thumbnail decoder contention isolation, PR CI checks.
+
+## Candidate 3 device QA — definitive result
+User installed Candidate 3 by ADB over the existing signed build.
 - ADB update: **PASS**
 - existing data retained: **PASS**
-- gear menu / close icon: **PASS**
-- dashboard individual Revive: **PASS**
-- Check status -> Player race: **PASS**
-- decoder case: **PASS**
-- Recently Closed / Close All with 25 tabs: **PASS**
-- privacy appearance: **PASS**
-- privacy authentication/reveal: **PASS**
-- share while covered: **PASS**
-- short regression check: **PASS**
-- in-player Revive/Refresh: **FAIL**
-- direct tap install: **FAIL**; Play Protect / installer-flow blocker
+- in-player recovery UI fix: **FAIL**
 
-## Candidate 3 code checkpoint — recovery dialog fix
-Current code head after the recovery-dialog fix: `f23660479a0177b30ddeb16d030095058d79bfda` (`fix: render player recovery actions`). This is a code checkpoint only; CI/device QA has not yet been recorded.
+Observed behavior is materially unchanged from Candidate 2 for the entire failed-player session:
+- Player shows `Playback failed. Tap Playback error to view or copy the technical details.`
+- tapping **Recovery options** shows title `Recovery options`
+- explanatory text remains visible
+- only `CANCEL` is visible/actionable
+- no visible Retry playback
+- no visible Refresh source / Revive
+- therefore Retry and Refresh cannot be executed from the failed Player UI
 
-### Root cause found
-Candidate 2 did **not** build an empty recovery action list. `PlayerRecoveryController.showRecoveryDialog()` always added **Retry playback** and conditionally added Refresh/alternate actions.
+This disproves the earlier diagnosis that simply replacing `.setMessage(...) + .setItems(...)` with a custom vertical body would solve the real device issue. The branch file does contain the custom-button implementation, yet the installed Candidate 3 still presents the old user-visible behavior. Treat this as evidence that the actual runtime recovery surface/path is not yet understood. Do not keep patching the dialog by assumption.
 
-The observed dialog showed the explanation text and only `CANCEL` because Android `AlertDialog` was configured with both `.setMessage(...)` and `.setItems(...)`. In this layout path the message scroll container remains active and the list rows are not inserted into the visible dialog. That exactly explains the device result without requiring a second recovery implementation or missing player attachment.
+### Required recovery investigation
+Trace the exact runtime source of the visible `Recovery options` surface on-device:
+1. prove which class creates the dialog the user sees;
+2. prove whether `PlayerRecoveryProvider`/`PlayerRecoveryController` is active in that PlayerActivity instance;
+3. prove whether the installed signed APK actually contains and executes the Candidate 3 custom-button code;
+4. search for any second/legacy recovery dialog or resource/layout path;
+5. only after runtime proof, make player-side Refresh/Revive call the already-authoritative `TabMaintenanceController -> TabRevivalCoordinator -> protected service/private-display` path.
 
-### Candidate 3 fix
-`PlayerRecoveryProvider.kt` now renders the explanation and action rows inside one explicit vertical custom dialog body. Each recovery action is a visible button. The underlying action construction and recovery behavior are unchanged:
-- Retry playback still prepares the same current ExoPlayer/source.
-- Refresh source still calls `TabMaintenanceController.reviveFromPlayer(...)`.
-- The centralized path remains `TabMaintenanceController -> TabRevivalCoordinator -> protected service/private-display`.
-- No parallel preparation implementation, second player, resolver policy change, or architecture change was introduced.
+## New Candidate 3 regression: Revive All disturbs foreground playback
+User reports a new device bug:
+**Revive All running + watching another video during revival = repeated blinking / effectively unwatchable video.**
 
-### Next required step
-Wait for CI/build metadata for `f23660479a0177b30ddeb16d030095058d79bfda`, then install the resulting signed 0.3.2 APK by ADB in-place and perform a focused player-recovery device QA. The minimum acceptance is:
-1. failed Player -> Recovery options visibly shows Retry playback;
-2. persistent-tab failure also visibly shows Refresh source;
-3. Refresh source queues the same tab through the authoritative revive path and returns to dashboard/preparation normally;
-4. player/dashboard regression remains clean.
+This matches the user-visible symptom of the previously fixed **Check Status + watching a video** race, but occurs specifically while bulk revival is running.
 
-Do not merge PR #2 until this is device PASS and both state files are refreshed with final build IDs/results.
+Important facts:
+- `TabMaintenanceController.reviveAll(...)` queues stale/error tabs through `TabRevivalCoordinator`.
+- `TabRevivalCoordinator` serializes them and calls `BackgroundPreparationKeepAliveService.acquire(...)` one at a time.
+- protected service code is intended to use only app-private virtual display + Presentation/WebView and explicitly not launch PlayerActivity/ExoPlayer.
+- `ForegroundPlaybackGuardProvider` currently pauses a PlayerActivity after pause/stop unless that same PlayerActivity has resumed within 200 ms.
 
-## Decoder case
-Reported HLS playback previously failed with `ERROR_CODE_DECODER_INIT_FAILED`, Qualcomm `c2.qti.avc.decoder`, `NO_EXCEEDS_CAPABILITIES`, and implausible ~12857 fps metadata. 0.3.2 same-ExoPlayer decoder fallback device retest is **PASS**. Do not rewrite/forge stream metadata without reproducible proof.
+Do not assume root cause yet. Compare revive-time lifecycle/display/service behavior against the already-fixed Check Status foreground-isolation behavior and capture the exact lifecycle/runtime disturbance before patching. The correct fix must preserve uninterrupted foreground playback while Revive All runs and must not weaken the protected #234 preparation architecture.
 
 ## Direct APK installation — unresolved separate blocker
-Standalone extracted APK normal tap update is **FAIL**. Device reports `La aplicación no se ha instalado`; Google Play Protect then shows `Aplicación bloqueada para proteger tu dispositivo`. Tapping visible `Instalar de todas formas` does not continue.
+Standalone extracted APK normal tap update is **FAIL** due Play Protect / installer flow. CI and successful ADB in-place update prove package/sign/alignment/signature continuity. Do not uninstall the working app merely to test.
 
-CI proves package/sign/alignment sanity and ADB in-place update proves package/signature continuity. Treat this as a Play Protect / installer-flow blocker, not a signing failure. Future investigation should capture PackageInstaller/PackageManager/Play Protect logs/reason codes during a failed tap. Do not uninstall the working app merely to test.
+## Merge/release gate
+Do not merge PR #2 until BOTH are device-PASS:
+1. failed-player Recovery options exposes working Retry and Refresh/Revive actions;
+2. Revive All can run while another video is playing without blinking/disturbing foreground playback.
+Then refresh both state files with final build IDs/results.
 
 ## Deferred
 - Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
@@ -98,4 +106,4 @@ CI proves package/sign/alignment sanity and ADB in-place update proves package/s
 - Continue disciplined cleanup/refactoring; delete historical paths only after proving unused.
 
 ## QA request format
-Whenever explicitly asking the user to test an APK, provide exactly one detailed code block with steps/EXPECTED/RESULT, then one separate compact-answer code block. No extra code blocks.
+Whenever explicitly asking the user to test an APK, provide exactly one detailed steps/EXPECTED/RESULT code block, then one separate compact-answer code block. No extra code blocks.
