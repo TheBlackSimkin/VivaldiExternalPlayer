@@ -33,7 +33,6 @@ object TabRevivalCoordinator {
     @Synchronized
     fun enqueue(context: Context, tabs: List<VideoTabStore.VideoTab>): Int {
         appContext = context.applicationContext
-
         val knownIds = buildSet {
             active?.let { add(it.request.tabId) }
             pending.forEach { add(it.tabId) }
@@ -47,7 +46,6 @@ object TabRevivalCoordinator {
                 added += 1
             }
         }
-
         startNextLocked()
         return added
     }
@@ -71,7 +69,6 @@ object TabRevivalCoordinator {
 
         val next = pending.removeFirst()
         val tab = VideoTabStore.get(next.tabId)
-
         if (tab == null) {
             startNextLocked()
             return
@@ -87,7 +84,7 @@ object TabRevivalCoordinator {
             context = context,
             token = token,
             tabId = next.tabId,
-            sourceUrl = next.originalPageUrl
+            sourceUrl = SourceLanguagePolicy.preferAppLanguage(context, next.originalPageUrl)
         )
 
         mainHandler.postDelayed(::pollActive, POLL_MS)
@@ -97,7 +94,6 @@ object TabRevivalCoordinator {
         synchronized(this) {
             val request = active?.request ?: return
             val tab = VideoTabStore.get(request.tabId)
-
             val finished = tab == null || when (tab.preparationState) {
                 VideoTabStore.PreparationState.READY,
                 VideoTabStore.PreparationState.ERROR,
