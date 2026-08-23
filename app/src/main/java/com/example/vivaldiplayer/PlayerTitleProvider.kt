@@ -12,7 +12,6 @@ import android.os.Bundle
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.TextView
 import androidx.core.content.ContextCompat
@@ -30,12 +29,21 @@ object PlayerTitleRuntime {
     }
 
     fun update(activity: PlayerActivity, title: String) {
-        activity.title = title
-        titles[activity]?.text = title
+        val clean = title.trim()
+        if (clean.isNotBlank()) activity.title = clean
+        titles[activity]?.let { applyTitle(it, clean) }
     }
 
     fun unregister(activity: PlayerActivity) {
         titles.remove(activity)
+    }
+
+    private fun applyTitle(view: TextView, title: String) {
+        view.text = title
+        val barsVisible = ViewCompat.getRootWindowInsets(view)
+            ?.isVisible(WindowInsetsCompat.Type.systemBars())
+            ?: true
+        view.visibility = if (title.isNotBlank() && barsVisible) View.VISIBLE else View.GONE
     }
 }
 
@@ -68,8 +76,14 @@ private object PlayerTitleLifecycle : Application.ActivityLifecycleCallbacks {
 
     private fun attach(activity: PlayerActivity) {
         if (activity.isFinishing || activity.isDestroyed) return
-        val decor = activity.window.decorView as? ViewGroup ?: return
-        val existing = decor.findViewWithTag<TextView>(TITLE_TAG)
+
+        /*
+         * Attach to the actual activity_player FrameLayout instead of window decor.
+         * This keeps the title in the Player overlay coordinate space and avoids
+         * device/AppCompat-specific decor placement producing an empty external bar.
+         */
+        val playerRoot = activity.findViewById<View>(R.id.player_view)?.parent as? FrameLayout ?: return
+        val existing = playerRoot.findViewWithTag<TextView>(TITLE_TAG)
         val titleView = existing ?: TextView(activity).apply {
             tag = TITLE_TAG
             maxLines = 1
@@ -78,33 +92,72 @@ private object PlayerTitleLifecycle : Application.ActivityLifecycleCallbacks {
             textSize = 14f
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             setTextColor(ContextCompat.getColor(activity, R.color.app_text_primary))
+            minWidth = dp(activity, 120)
             setPadding(dp(activity, 14), dp(activity, 8), dp(activity, 14), dp(activity, 8))
             background = GradientDrawable().apply {
                 cornerRadius = dp(activity, 14).toFloat()
-                setColor(ColorUtils.setAlphaComponent(ContextCompat.getColor(activity, R.color.app_surface), 220))
+                setColor(ColorUtils.setAlphaComponent(ContextCompat.getColor(activity, R.color.app_surface), 230))
                 setStroke(dp(activity, 1), ContextCompat.getColor(activity, R.color.app_outline))
             }
-            activity.addContentView(this, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT,
-                Gravity.TOP or Gravity.CENTER_HORIZONTAL
-            ).apply {
-                topMargin = dp(activity, 12)
-                marginStart = dp(activity, 56)
-                marginEnd = dp(activity, 56)
-            })
+            playerRoot.addView(
+                this,
+                FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.CENTER_HORIZONTAL
+                ).apply {
+                    topMargin = dp(activity, 12)
+                    marginStart = dp(activity, 56)
+                    marginEnd = dp(activity, 56)
+                }
+            )
         }
 
-        val currentTitle = activity.title?.toString().orEmpty().ifBlank { activity.getString(R.string.home_brand) }
+        val currentTitle = currentSourceTitle(activity)
         titleView.text = currentTitle
         PlayerTitleRuntime.register(activity, titleView)
 
-        ViewCompat.setOnApplyWindowInsetsListener(activity.window.decorView) { _, insets ->
-            titleView.visibility = if (insets.isVisible(WindowInsetsCompat.Type.systemBars())) View.VISIBLE else View.GONE
+        ViewCompat.setOnApplyWindowInsetsListener(playerRoot) { _, insets ->
+            titleView.visibility = if (
+                currentVisibleTitle(titleView).isNotBlank() &&
+                insets.isVisible(WindowInsetsCompat.Type.systemBars())
+            ) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
             insets
         }
-        ViewCompat.requestApplyInsets(activity.window.decorView)
+        ViewCompat.requestApplyInsets(playerRoot)
+
+        /* No legitimate source title means no decorative empty bar. */
+        if (currentTitle.isBlank()) titleView.visibility = View.GONE
     }
+
+    /**
+     * Prefer the resolved-media title actually handed to Player. Persistent-tab
+     * metadata is the fallback for reopened tabs; Activity.title is last-resort
+     * compatibility only. No translation, inference or media-content inspection.
+     */
+    private fun currentSourceTitle(activity: PlayerActivity): String {
+        val resolvedTitle = activity.intent
+            .getStringExtra(PlayerActivity.EXTRA_RESOLVED_MEDIA)
+            ?.let { raw -> runCatching { ResolvedMedia.fromJson(raw).title.trim() }.getOrNull() }
+            .orEmpty()
+
+        val tabTitle = activity.intent
+            .getStringExtra(TabbedPlayerApplication.EXTRA_TAB_ID)
+            ?.let { tabId -> VideoTabStore.get(tabId)?.title?.trim() }
+            .orEmpty()
+
+        val activityTitle = activity.title?.toString()?.trim().orEmpty()
+
+        return sequenceOf(resolvedTitle, tabTitle, activityTitle)
+            .firstOrNull { it.isNotBlank() }
+            .orEmpty()
+    }
+
+    private fun currentVisibleTitle(view: TextView): String = view.text?.toString()?.trim().orEmpty()
 
     override fun onActivityStarted(activity: Activity) = Unit
     override fun onActivityResumed(activity: Activity) = Unit
