@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
-
-    <!-- Foreground service used only for user-requested BG preparation. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
@@ -16,7 +14,6 @@
         android:theme="@style/Theme.VivaldiExternalPlayer"
         android:usesCleartextTraffic="false">
 
-        <!-- AndroidX app-language persistence for API 24-32. -->
         <service
             android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
             android:enabled="false"
@@ -30,8 +27,11 @@
         <provider android:name=".PendingBrowserTabBridgeProvider" android:authorities="${applicationId}.pendingtabbridge" android:exported="false" />
         <provider android:name=".PlayerRecoveryProvider" android:authorities="${applicationId}.playerrecovery" android:exported="false" />
         <provider android:name=".ForegroundPlaybackGuardProvider" android:authorities="${applicationId}.foregroundguard" android:exported="false" />
-
-        <!-- UI-only lifecycle hook. It moves existing player actions into compact chrome. -->
+        <provider
+            android:name=".PlayerTitleProvider"
+            android:authorities="${applicationId}.playertitle"
+            android:exported="false"
+            android:initOrder="45" />
         <provider
             android:name=".PlayerChromeProvider"
             android:authorities="${applicationId}.playerchrome"
@@ -49,18 +49,12 @@
             android:exported="false" />
         <activity android:name=".AboutActivity" android:exported="false" />
 
-        <!--
-          Current normal BG preparation owner. The foreground service owns each
-          resolver session directly on an app-private virtual display. It never
-          creates PlayerActivity or ExoPlayer.
-        -->
         <service
             android:name=".BackgroundPreparationKeepAliveService"
             android:exported="false"
             android:foregroundServiceType="dataSync"
             android:stopWithTask="false" />
 
-        <!-- Historical preparation Activity retained for compatibility/diagnostics only. -->
         <activity
             android:name=".BackgroundVirtualPreparationActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
@@ -69,7 +63,6 @@
             android:launchMode="standard"
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
-        <!-- Legacy non-exported preparer for older explicit paths only. -->
         <activity
             android:name=".BackgroundPreparationActivity"
             android:excludeFromRecents="true"
@@ -77,7 +70,6 @@
             android:taskAffinity="${applicationId}.backgroundprepare"
             android:theme="@style/Theme.VivaldiExternalPlayer.Transparent" />
 
-        <!-- Exported "BG - External Player" chooser target. -->
         <activity
             android:name=".BackgroundShareActivityV2"
             android:configChanges="keyboardHidden|orientation|screenSize"
@@ -95,7 +87,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Old #192 implementation is kept only as source history/reference. -->
         <activity
             android:name=".BackgroundShareActivity"
             android:configChanges="keyboardHidden|orientation|screenSize"
