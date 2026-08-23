@@ -31,19 +31,13 @@ object ForegroundPlaybackState {
     fun isPlayerForeground(): Boolean = foregroundPlayerActive
 }
 
-/**
- * Privacy guard for foreground-only playback.
- *
- * Home, lock, browser/app switching and dashboard/settings navigation leave the
- * player non-resumed, so playback still pauses reliably. Starting PlayerActivity
- * also pauses thumbnail extraction so FrameExtractor work does not compete with
- * the real video decoder.
- */
+/** Privacy guard and installer for process-wide Player runtimes. */
 class ForegroundPlaybackGuardProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return false
         app.registerActivityLifecycleCallbacks(ForegroundPlaybackGuard)
         AdaptiveQualityRuntime.install(app)
+        PlaybackPreferenceRuntime.install(app)
         PlayerNavigationRuntime.install(app)
         return true
     }
