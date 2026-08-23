@@ -30,9 +30,10 @@ import java.util.WeakHashMap
  * is different: it re-resolves the original webpage URL into the same persistent
  * tab through [TabMaintenanceController], exactly like dashboard Revive.
  *
- * Decoder initialization failures are identified here. PlayerActivity first lets
- * Media3 try its same-player decoder fallback; if every compatible decoder still
- * fails, manual recovery remains available. We do not forge stream metadata.
+ * The primary recovery controls are real overlay buttons on the failed Player,
+ * not only rows inside a dialog. This makes the user-visible state unambiguous
+ * and avoids Android AlertDialog layout quirks hiding the actionable recovery
+ * entries. The explanatory dialog remains available from Recovery options.
  */
 class PlayerRecoveryProvider : ContentProvider() {
     override fun onCreate(): Boolean {
@@ -88,18 +89,50 @@ private class PlayerRecoveryController(
     private var retryScheduled = false
     private var lastFailureWasDnsLookup = false
     private var lastFailureWasDecoderInit = false
+    private var recoveryContainer: LinearLayout? = null
+
+    private val retryButton = Button(activity).apply {
+        isAllCaps = false
+        text = activity.getString(R.string.retry_playback)
+        setOnClickListener { retrySameSource() }
+    }
+
+    private val refreshButton = Button(activity).apply {
+        isAllCaps = false
+        text = activity.getString(R.string.refresh_source)
+        setOnClickListener {
+            val tab = currentPersistentTab()
+            if (tab != null && isHttpUrl(TabOriginStore.pageUrl(activity, tab))) {
+                refreshSource(tab)
+            } else {
+                Toast.makeText(activity, R.string.original_webpage_unavailable, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     private val recoveryButton = Button(activity).apply {
         isAllCaps = false
         text = activity.getString(R.string.recovery_options)
-        visibility = View.GONE
         setOnClickListener { showRecoveryDialog() }
     }
 
     fun attach() {
         val activePlayer = activity.findViewById<PlayerView>(R.id.player_view)?.player ?: return
+        if (player === activePlayer && recoveryContainer?.parent != null) return
+
+        player?.removeListener(this)
         player = activePlayer
         activePlayer.addListener(this)
+
+        val container = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.END
+            visibility = View.GONE
+            addView(retryButton, buttonLayoutParams())
+            addView(refreshButton, buttonLayoutParams())
+            addView(recoveryButton, buttonLayoutParams())
+        }
+        recoveryContainer = container
 
         val params = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -109,18 +142,20 @@ private class PlayerRecoveryController(
             marginEnd = dp(12)
             bottomMargin = dp(72)
         }
-        activity.addContentView(recoveryButton, params)
+        activity.addContentView(container, params)
     }
 
     fun detach() {
         player?.removeListener(this)
         player = null
+        (recoveryContainer?.parent as? FrameLayout)?.removeView(recoveryContainer)
+        recoveryContainer = null
     }
 
     override fun onPlayerError(error: PlaybackException) {
-        recoveryButton.visibility = View.VISIBLE
         lastFailureWasDnsLookup = findCause<UnknownHostException>(error) != null
         lastFailureWasDecoderInit = error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+        showDirectRecoveryControls()
 
         if (lastFailureWasDecoderInit) {
             Toast.makeText(activity, R.string.decoder_compatibility_note, Toast.LENGTH_LONG).show()
@@ -146,12 +181,23 @@ private class PlayerRecoveryController(
 
     override fun onPlaybackStateChanged(playbackState: Int) {
         if (playbackState == Player.STATE_READY) {
-            recoveryButton.visibility = View.GONE
+            recoveryContainer?.visibility = View.GONE
             retryScheduled = false
             automaticRetryCount = 0
             lastFailureWasDnsLookup = false
             lastFailureWasDecoderInit = false
         }
+    }
+
+    private fun showDirectRecoveryControls() {
+        refreshButton.visibility = if (currentPersistentTab()
+                ?.let { isHttpUrl(TabOriginStore.pageUrl(activity, it)) } == true
+        ) {
+            View.VISIBLE
+        } else {
+            View.GONE
+        }
+        recoveryContainer?.visibility = View.VISIBLE
     }
 
     private fun retrySameSource(showToast: Boolean = true) {
@@ -311,6 +357,14 @@ private class PlayerRecoveryController(
         }
         return null
     }
+
+    private fun buttonLayoutParams(): LinearLayout.LayoutParams =
+        LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            bottomMargin = dp(4)
+        }
 
     private fun dp(value: Int): Int =
         (value * activity.resources.displayMetrics.density).toInt()
