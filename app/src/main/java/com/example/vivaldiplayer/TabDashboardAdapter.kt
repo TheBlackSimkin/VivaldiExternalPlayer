@@ -19,34 +19,45 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import java.util.Locale
 
-/**
- * Grid adapter for persistent open tabs.
- *
- * User-facing action labels derive from both preparation state and health state.
- * The actual recovery operation stays outside the adapter so there is one revival
- * policy in TabMaintenanceController/MainActivity rather than duplicated logic.
- */
+/** Grid adapter for persistent open tabs, including Candidate 6 multi-select mode. */
 class TabDashboardAdapter(
     private val context: Context,
     private val onPrimary: (VideoTabStore.VideoTab) -> Unit,
     private val onBrowser: (VideoTabStore.VideoTab) -> Unit,
     private val onClose: (VideoTabStore.VideoTab) -> Unit,
     private val onMove: (VideoTabStore.VideoTab, Int) -> Unit,
-    private val onThumbnailNeeded: (VideoTabStore.VideoTab) -> Unit
+    private val onThumbnailNeeded: (VideoTabStore.VideoTab) -> Unit,
+    private val onSelectionChanged: (List<VideoTabStore.VideoTab>) -> Unit = {}
 ) : RecyclerView.Adapter<TabDashboardAdapter.TabViewHolder>() {
 
     private val items = mutableListOf<VideoTabStore.VideoTab>()
+    private val selectedIds = linkedSetOf<String>()
     private var gestureActive = false
+    private var selectionMode = false
 
-    init {
-        setHasStableIds(true)
-    }
+    init { setHasStableIds(true) }
 
     fun submitTabs(tabs: List<VideoTabStore.VideoTab>) {
         if (gestureActive) return
         items.clear()
         items.addAll(tabs)
+        selectedIds.retainAll(tabs.map { it.id }.toSet())
+        if (selectedIds.isEmpty()) selectionMode = false
         notifyDataSetChanged()
+        notifySelectionChanged()
+    }
+
+    fun selectedTabs(): List<VideoTabStore.VideoTab> =
+        items.filter { it.id in selectedIds }
+
+    fun isSelectionMode(): Boolean = selectionMode
+
+    fun clearSelection() {
+        if (!selectionMode && selectedIds.isEmpty()) return
+        selectionMode = false
+        selectedIds.clear()
+        notifyDataSetChanged()
+        notifySelectionChanged()
     }
 
     override fun getItemId(position: Int): Long = items[position].id.hashCode().toLong()
@@ -71,15 +82,9 @@ class TabDashboardAdapter(
             }
         }
 
-        val root = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-
+        val root = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val preview = ImageView(context).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(96)
-            )
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(96))
             scaleType = ImageView.ScaleType.CENTER_CROP
             setBackgroundColor(color(R.color.app_surface_raised))
             contentDescription = context.getString(R.string.tab_thumbnail_pending)
@@ -90,7 +95,6 @@ class TabDashboardAdapter(
             orientation = LinearLayout.VERTICAL
             setPadding(dp(12), dp(11), dp(12), dp(10))
         }
-
         val title = TextView(context).apply {
             maxLines = 2
             textSize = 14f
@@ -104,32 +108,25 @@ class TabDashboardAdapter(
             setPadding(dp(8), dp(3), dp(8), dp(3))
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         }
-        body.addView(
-            status,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
-        )
+        body.addView(status, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(8) })
 
         val meta = TextView(context).apply {
             maxLines = 2
             textSize = 11f
             setTextColor(color(R.color.app_text_secondary))
         }
-        body.addView(
-            meta,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(7) }
-        )
+        body.addView(meta, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(7) })
 
         val actions = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-
         val primary = compactButton("").apply {
             backgroundTintList = ColorStateList.valueOf(color(R.color.app_accent))
             setTextColor(color(R.color.white))
@@ -142,7 +139,6 @@ class TabDashboardAdapter(
             backgroundTintList = ColorStateList.valueOf(color(R.color.app_surface_raised))
         }
 
-        /* A real icon is quieter and cleaner than the historical text "×" button. */
         val close = ImageButton(context).apply {
             setImageResource(R.drawable.ic_close_24)
             contentDescription = context.getString(R.string.dashboard_close)
@@ -150,36 +146,29 @@ class TabDashboardAdapter(
             imageTintList = ColorStateList.valueOf(color(R.color.app_text_secondary))
             setPadding(dp(10), dp(10), dp(10), dp(10))
         }
-        actions.addView(
-            close,
-            LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(6) }
-        )
+        actions.addView(close, LinearLayout.LayoutParams(dp(42), dp(42)).apply { marginStart = dp(6) })
 
-        body.addView(
-            actions,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(11) }
-        )
-        body.addView(
-            browser,
-            LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                dp(40)
-            ).apply { topMargin = dp(6) }
-        )
+        body.addView(actions, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(11) })
+        body.addView(browser, LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            dp(40)
+        ).apply { topMargin = dp(6) })
 
         root.addView(body)
         card.addView(root)
-
-        return TabViewHolder(card, preview, title, status, meta, primary, browser, close)
+        return TabViewHolder(card, preview, title, status, meta, actions, primary, browser, close)
     }
 
     override fun onBindViewHolder(holder: TabViewHolder, position: Int) {
         val tab = items[position]
         val health = TabHealthStore.get(context, tab.id)
+        val selected = tab.id in selectedIds
 
+        holder.card.strokeColor = color(if (selected) R.color.app_accent else R.color.app_outline)
+        holder.card.strokeWidth = dp(if (selected) 2 else 1)
         holder.title.text = displayTitle(tab)
         holder.status.text = stateLabel(tab, health)
         holder.status.setTextColor(stateColor(tab, health))
@@ -197,6 +186,7 @@ class TabDashboardAdapter(
             if (tab.isReady) onThumbnailNeeded(tab)
         }
 
+        holder.actions.visibility = if (selectionMode) View.GONE else View.VISIBLE
         holder.primary.text = primaryActionLabel(tab, health)
         holder.primary.isEnabled = when (tab.preparationState) {
             VideoTabStore.PreparationState.READY,
@@ -207,30 +197,54 @@ class TabDashboardAdapter(
         }
         holder.primary.alpha = if (holder.primary.isEnabled) 1f else 0.58f
         holder.primary.setOnClickListener {
-            onPrimary(items.getOrNull(holder.bindingAdapterPosition) ?: tab)
+            if (selectionMode) toggleSelection(tab.id) else onPrimary(currentTab(holder, tab))
         }
 
-        val showBrowser = tab.preparationState == VideoTabStore.PreparationState.ERROR
+        val showBrowser = !selectionMode && tab.preparationState == VideoTabStore.PreparationState.ERROR
         holder.browser.visibility = if (showBrowser) View.VISIBLE else View.GONE
         holder.browser.setOnClickListener {
-            onBrowser(items.getOrNull(holder.bindingAdapterPosition) ?: tab)
+            if (selectionMode) toggleSelection(tab.id) else onBrowser(currentTab(holder, tab))
         }
 
+        holder.close.visibility = if (selectionMode) View.GONE else View.VISIBLE
         holder.close.setOnClickListener {
             val current = holder.bindingAdapterPosition
             if (current != RecyclerView.NO_POSITION) removeAt(current)
         }
 
         holder.itemView.setOnClickListener {
-            if (holder.primary.isEnabled) {
-                onPrimary(items.getOrNull(holder.bindingAdapterPosition) ?: tab)
+            if (selectionMode) {
+                toggleSelection(currentTab(holder, tab).id)
+            } else if (holder.primary.isEnabled) {
+                onPrimary(currentTab(holder, tab))
             }
+        }
+        holder.itemView.setOnLongClickListener {
+            selectionMode = true
+            toggleSelection(currentTab(holder, tab).id)
+            true
         }
     }
 
-    /** Called from ItemTouchHelper while a long-press drag crosses another card. */
+    private fun currentTab(holder: TabViewHolder, fallback: VideoTabStore.VideoTab): VideoTabStore.VideoTab {
+        val position = holder.bindingAdapterPosition
+        return if (position != RecyclerView.NO_POSITION) items[position] else fallback
+    }
+
+    private fun toggleSelection(tabId: String) {
+        selectionMode = true
+        if (!selectedIds.add(tabId)) selectedIds.remove(tabId)
+        if (selectedIds.isEmpty()) selectionMode = false
+        notifyDataSetChanged()
+        notifySelectionChanged()
+    }
+
+    private fun notifySelectionChanged() {
+        onSelectionChanged(selectedTabs())
+    }
+
     fun moveItem(from: Int, to: Int): Boolean {
-        if (from !in items.indices || to !in items.indices || from == to) return false
+        if (selectionMode || from !in items.indices || to !in items.indices || from == to) return false
         val moved = items[from]
         val delta = to - from
         items.removeAt(from)
@@ -240,9 +254,8 @@ class TabDashboardAdapter(
         return true
     }
 
-    /** Called from both swipe-to-close and the explicit close affordance. */
     fun removeAt(position: Int) {
-        if (position !in items.indices) return
+        if (selectionMode || position !in items.indices) return
         val removed = items.removeAt(position)
         onClose(removed)
         notifyItemRemoved(position)
@@ -253,8 +266,8 @@ class TabDashboardAdapter(
             ItemTouchHelper.UP or ItemTouchHelper.DOWN or ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT,
             ItemTouchHelper.START or ItemTouchHelper.END
         ) {
-            override fun isLongPressDragEnabled(): Boolean = true
-            override fun isItemViewSwipeEnabled(): Boolean = true
+            override fun isLongPressDragEnabled(): Boolean = !selectionMode
+            override fun isItemViewSwipeEnabled(): Boolean = !selectionMode
 
             override fun onSelectedChanged(viewHolder: RecyclerView.ViewHolder?, actionState: Int) {
                 gestureActive = actionState != ItemTouchHelper.ACTION_STATE_IDLE
@@ -283,14 +296,12 @@ class TabDashboardAdapter(
                 gestureActive = false
             }
         }
-
         ItemTouchHelper(callback).attachToRecyclerView(recyclerView)
     }
 
     private fun displayTitle(tab: VideoTabStore.VideoTab): String {
         val stored = tab.title.trim()
         if (stored.isNotBlank() && !stored.equals("Video", ignoreCase = true)) return stored
-
         val host = runCatching { Uri.parse(tab.sourceUrl).host.orEmpty() }.getOrDefault("")
         return if (host.isNotBlank()) "Video • $host" else stored.ifBlank { "Video" }
     }
@@ -298,34 +309,25 @@ class TabDashboardAdapter(
     private fun dashboardMetadata(tab: VideoTabStore.VideoTab): String {
         val details = mutableListOf<String>()
         if (tab.positionMs > 0L) details += formatPosition(tab.positionMs)
-
         if (tab.isReady) {
             val actual = tab.actualQualityHeight?.takeIf { it > 0 }
             val manual = tab.manualQualityHeight?.takeIf { it > 0 }
             details += when {
-                manual != null && actual != null ->
-                    context.getString(R.string.dashboard_quality_manual_compact, manual, actual)
+                manual != null && actual != null -> context.getString(R.string.dashboard_quality_manual_compact, manual, actual)
                 manual != null -> context.getString(R.string.dashboard_manual_quality, manual)
                 actual != null -> context.getString(R.string.dashboard_quality_auto_compact, actual)
                 else -> context.getString(R.string.dashboard_auto_quality)
             }
         }
-
         return details.joinToString(" • ")
     }
 
-    private fun primaryActionLabel(
-        tab: VideoTabStore.VideoTab,
-        health: TabHealthStore.Status
-    ): String = when {
-        tab.preparationState == VideoTabStore.PreparationState.READY &&
-            health.state == TabHealthStore.State.NEEDS_REFRESH -> context.getString(R.string.dashboard_revive)
+    private fun primaryActionLabel(tab: VideoTabStore.VideoTab, health: TabHealthStore.Status): String = when {
+        tab.preparationState == VideoTabStore.PreparationState.READY && health.state == TabHealthStore.State.NEEDS_REFRESH -> context.getString(R.string.dashboard_revive)
         tab.isReady && tab.positionMs > 0L -> context.getString(R.string.dashboard_continue)
         tab.isReady -> context.getString(R.string.dashboard_play)
-        tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION ->
-            context.getString(R.string.dashboard_browser)
-        tab.preparationState == VideoTabStore.PreparationState.RESOLVING ->
-            context.getString(R.string.tab_state_resolving)
+        tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION -> context.getString(R.string.dashboard_browser)
+        tab.preparationState == VideoTabStore.PreparationState.RESOLVING -> context.getString(R.string.tab_state_resolving)
         tab.preparationState == VideoTabStore.PreparationState.ERROR -> context.getString(R.string.dashboard_revive)
         else -> context.getString(R.string.tab_state_queued)
     }
@@ -340,7 +342,6 @@ class TabDashboardAdapter(
                 VideoTabStore.PreparationState.ERROR -> context.getString(R.string.tab_state_error)
             }
         }
-
         return when (health.state) {
             TabHealthStore.State.CHECKING -> context.getString(R.string.tab_health_checking)
             TabHealthStore.State.READY -> context.getString(R.string.tab_state_ready)
@@ -353,24 +354,14 @@ class TabDashboardAdapter(
 
     private fun stateColor(tab: VideoTabStore.VideoTab, health: TabHealthStore.Status): Int = color(
         when {
-            tab.preparationState == VideoTabStore.PreparationState.READY &&
-                health.state == TabHealthStore.State.READY -> R.color.app_success
-            tab.preparationState == VideoTabStore.PreparationState.READY &&
-                health.state in setOf(
-                    TabHealthStore.State.NEEDS_REFRESH,
-                    TabHealthStore.State.UNAVAILABLE,
-                    TabHealthStore.State.NEEDS_ATTENTION
-                ) -> R.color.app_warning
-            tab.preparationState == VideoTabStore.PreparationState.ERROR ||
-                tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION -> R.color.app_warning
+            tab.preparationState == VideoTabStore.PreparationState.READY && health.state == TabHealthStore.State.READY -> R.color.app_success
+            tab.preparationState == VideoTabStore.PreparationState.READY && health.state in setOf(TabHealthStore.State.NEEDS_REFRESH, TabHealthStore.State.UNAVAILABLE, TabHealthStore.State.NEEDS_ATTENTION) -> R.color.app_warning
+            tab.preparationState == VideoTabStore.PreparationState.ERROR || tab.preparationState == VideoTabStore.PreparationState.NEEDS_ATTENTION -> R.color.app_warning
             else -> R.color.app_text_secondary
         }
     )
 
-    private fun statusBackground(
-        tab: VideoTabStore.VideoTab,
-        health: TabHealthStore.Status
-    ): GradientDrawable = GradientDrawable().apply {
+    private fun statusBackground(tab: VideoTabStore.VideoTab, health: TabHealthStore.Status): GradientDrawable = GradientDrawable().apply {
         shape = GradientDrawable.RECTANGLE
         cornerRadius = dp(50).toFloat()
         setColor(color(R.color.app_surface_raised))
@@ -382,26 +373,22 @@ class TabDashboardAdapter(
         val seconds = totalSeconds % 60
         val minutes = (totalSeconds / 60) % 60
         val hours = totalSeconds / 3600
-        return if (hours > 0) {
-            String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            String.format(Locale.US, "%02d:%02d", minutes, seconds)
-        }
+        return if (hours > 0) String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+        else String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 
-    private fun compactButton(textValue: String, description: String = textValue): Button =
-        Button(context).apply {
-            isAllCaps = false
-            text = textValue
-            contentDescription = description
-            minWidth = 0
-            minimumWidth = 0
-            minHeight = 0
-            minimumHeight = 0
-            setPadding(dp(8), 0, dp(8), 0)
-            setTextColor(color(R.color.app_text_primary))
-            textSize = 12f
-        }
+    private fun compactButton(textValue: String, description: String = textValue): Button = Button(context).apply {
+        isAllCaps = false
+        text = textValue
+        contentDescription = description
+        minWidth = 0
+        minimumWidth = 0
+        minHeight = 0
+        minimumHeight = 0
+        setPadding(dp(8), 0, dp(8), 0)
+        setTextColor(color(R.color.app_text_primary))
+        textSize = 12f
+    }
 
     private fun color(resId: Int): Int = ContextCompat.getColor(context, resId)
     private fun dp(value: Int): Int = (value * context.resources.displayMetrics.density).toInt()
@@ -412,8 +399,11 @@ class TabDashboardAdapter(
         val title: TextView,
         val status: TextView,
         val meta: TextView,
+        val actions: LinearLayout,
         val primary: Button,
         val browser: Button,
         val close: ImageButton
-    ) : RecyclerView.ViewHolder(itemView)
+    ) : RecyclerView.ViewHolder(itemView) {
+        val card: MaterialCardView get() = itemView as MaterialCardView
+    }
 }
