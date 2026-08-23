@@ -13,6 +13,25 @@ import androidx.media3.ui.PlayerView
 import java.util.WeakHashMap
 
 /**
+ * Process-local foreground playback signal used by maintenance work.
+ *
+ * It is intentionally tiny and conservative: it does not expose Player or media
+ * state, only whether a PlayerActivity is currently resumed. Background revive
+ * work can use this to defer starting another private-display resolver session
+ * while the user is actively watching a video.
+ */
+object ForegroundPlaybackState {
+    @Volatile
+    private var foregroundPlayerActive: Boolean = false
+
+    fun setPlayerForeground(active: Boolean) {
+        foregroundPlayerActive = active
+    }
+
+    fun isPlayerForeground(): Boolean = foregroundPlayerActive
+}
+
+/**
  * Privacy guard for foreground-only playback.
  *
  * Unified preload may briefly foreground BackgroundPreparationActivity before
@@ -56,8 +75,10 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
     override fun onActivityResumed(activity: Activity) {
         if (activity is PlayerActivity) {
             resumedPlayers[activity] = true
+            ForegroundPlaybackState.setPlayerForeground(true)
             TabThumbnailCapture.pauseBackgroundCapture()
         } else if (activity is MainActivity) {
+            ForegroundPlaybackState.setPlayerForeground(false)
             TabThumbnailCapture.resumeBackgroundCapture()
             TabThumbnailWarmup.warm(activity.applicationContext)
         }
@@ -66,11 +87,13 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
     override fun onActivityPaused(activity: Activity) {
         if (activity !is PlayerActivity) return
         resumedPlayers.remove(activity)
+        ForegroundPlaybackState.setPlayerForeground(false)
         schedulePrivacyPause(activity)
     }
 
     override fun onActivityStopped(activity: Activity) {
         if (activity !is PlayerActivity) return
+        ForegroundPlaybackState.setPlayerForeground(false)
         schedulePrivacyPause(activity)
     }
 
@@ -83,7 +106,10 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
     }
 
     override fun onActivityDestroyed(activity: Activity) {
-        if (activity is PlayerActivity) resumedPlayers.remove(activity)
+        if (activity is PlayerActivity) {
+            resumedPlayers.remove(activity)
+            ForegroundPlaybackState.setPlayerForeground(false)
+        }
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
