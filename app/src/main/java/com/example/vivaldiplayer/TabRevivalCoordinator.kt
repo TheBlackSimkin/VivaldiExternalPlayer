@@ -12,9 +12,15 @@ import java.util.ArrayDeque
  * This coordinator never creates an Activity, WebView, PlayerActivity or ExoPlayer. It merely
  * feeds one stored original page URL at a time to BackgroundPreparationKeepAliveService and
  * waits for that tab to reach a terminal preparation state before starting the next one.
+ *
+ * Revive All may be queued from the dashboard and then the user may open a ready video while
+ * revival is still pending. In that case we keep queued revive work queued, but defer starting
+ * the next private-display session until foreground playback is no longer resumed. That preserves
+ * the protected recovery path while avoiding repeated player blink/lifecycle disturbance.
  */
 object TabRevivalCoordinator {
     private const val POLL_MS = 750L
+    private const val FOREGROUND_PLAYER_RECHECK_MS = 1_000L
 
     private data class Request(val tabId: String, val originalPageUrl: String)
 
@@ -22,6 +28,7 @@ object TabRevivalCoordinator {
     private val pending = ArrayDeque<Request>()
     private var active: Request? = null
     private var appContext: Context? = null
+    private var foregroundRecheckScheduled = false
 
     @Synchronized
     fun enqueue(context: Context, tabs: List<VideoTabStore.VideoTab>): Int {
@@ -60,6 +67,12 @@ object TabRevivalCoordinator {
         if (active != null) return
         val context = appContext ?: return
         if (pending.isEmpty()) return
+
+        if (ForegroundPlaybackState.isPlayerForeground()) {
+            scheduleForegroundRecheckLocked()
+            return
+        }
+
         val next = pending.removeFirst()
         val tab = VideoTabStore.get(next.tabId)
 
@@ -104,6 +117,17 @@ object TabRevivalCoordinator {
                 mainHandler.postDelayed(::pollActive, POLL_MS)
             }
         }
+    }
+
+    private fun scheduleForegroundRecheckLocked() {
+        if (foregroundRecheckScheduled) return
+        foregroundRecheckScheduled = true
+        mainHandler.postDelayed({
+            synchronized(this) {
+                foregroundRecheckScheduled = false
+                startNextLocked()
+            }
+        }, FOREGROUND_PLAYER_RECHECK_MS)
     }
 
     private fun isHttpUrl(value: String): Boolean =
