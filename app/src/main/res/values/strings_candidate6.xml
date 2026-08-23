@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_filter">Search &amp; filter</string>
+    <string name="search_tabs_hint">Search titles or URLs</string>
+    <string name="filter_all">All</string>
+    <string name="filter_ready">Ready</string>
+    <string name="filter_queued">Queued</string>
+    <string name="filter_attention">Error / attention</string>
+    <string name="selection_count">%1$d selected</string>
+    <string name="selection_close">Close</string>
+    <string name="selection_revive">Revive</string>
+    <string name="selection_favorite">Favorite</string>
+    <string name="selection_private_favorite">Private</string>
+    <string name="selection_done">Done</string>
+    <string name="close_selected_confirmation">Close %1$d selected tabs?</string>
+    <string name="selected_favorites_saved">Saved %1$d favorites</string>
+    <string name="selected_private_favorites_saved">Saved %1$d private favorites</string>
+    <string name="selected_revive_started">Queued %1$d selected tabs for revival</string>
+    <string name="playback_failed_short">Playback failed</string>
+    <string name="recovery_refresh_explanation">The saved media source may be stale. Refresh the original page to update this tab.</string>
+    <string name="technical_details">Technical details</string>
+    <string name="refreshing_source_in_player">Refreshing source…</string>
+    <string name="refresh_source_waiting">Refreshing this tab from its original page. Playback will resume here when ready.</string>
+    <string name="refresh_source_failed">The source refresh did not produce a playable result.</string>
+    <string name="refresh_view_dashboard">View dashboard</string>
+    <string name="diagnostics_history">Diagnostics / history</string>
+    <string name="diagnostics_history_empty">No additional technical history is stored for this item.</string>
+</resources>
