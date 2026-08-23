@@ -23,50 +23,6 @@ CI verifies signing, package metadata and APK alignment.
 ## Active candidate: 0.3.2 / versionCode 5
 Branch `work/0.3.2-correctness-ux`, PR #2. **Do NOT merge yet.**
 
-## Candidate 3 device QA — definitive result
-User installed Candidate 3 by ADB over the existing signed build.
-- ADB update: **PASS**
-- existing data retained: **PASS**
-- in-player recovery UI fix: **FAIL**
-
-Observed behavior stayed unchanged for the entire failed-player session:
-- Player shows `Playback failed. Tap Playback error to view or copy the technical details.`
-- tapping **Recovery options** shows title `Recovery options`
-- explanatory text remains visible
-- only `CANCEL` is visible/actionable
-- no visible Retry playback
-- no visible Refresh source / Revive
-
-Candidate 3 also exposed:
-**Revive All running + watching another video during revival = repeated blinking / effectively unwatchable video.**
-
-## Candidate 4 build
-App-code head: `9fdc16f2da7191b23c8043add636c4a5a3ad6cd4`.
-- Actions `32654832188` / run #356
-- job `97231847880`
-- signed release artifact `9497197410`
-- signed artifact digest `sha256:5207ba499b909f0ae506cfc38c600c31c92d77f31450cff7f55731d6e883b7cb`
-- build/sign/package/alignment PASS
-
-Candidate 4 changes after Candidate 3:
-- direct failed-player overlay buttons for **Retry playback**, **Refresh source**, and **Recovery options**;
-- `ForegroundPlaybackState` process-local foreground-player signal;
-- queued Revive All work defers starting additional private-display revival sessions while a PlayerActivity is foreground;
-- `INSTALLER_LOG_CAPTURE.md` added for PackageInstaller / Play Protect log capture.
-
-## Candidate 4 device QA — mixed result
-User installed Candidate 4 by ADB.
-- install/data: **PASS**
-- Recovery UI visibility: **PASS**
-- Retry playback from failed-player overlay: **FAIL**
-- Refresh source / Revive from failed-player overlay: **PASS**
-- Revive All while watching another video: **FAIL**
-
-Interpretation:
-- Candidate 4 fixed the main visibility/exposure problem: recovery actions are now visible and Refresh from inside Player works.
-- Candidate 4 did **not** fully fix Retry playback.
-- Candidate 4 did **not** fix the Revive All foreground-player blinking/unwatchable regression.
-
 ## Candidate 5 build
 App-code head: `d8d3dbd86696b84f1ac1c508d22a0dbd814331da`.
 - Actions `32663782445` / run #370
@@ -75,72 +31,76 @@ App-code head: `d8d3dbd86696b84f1ac1c508d22a0dbd814331da`.
 - signed artifact digest `sha256:349ebb8dc16dc449e6c3f31cfcd7c620ed361adf9aa366745268e2031efb303f`
 - build/sign/package/alignment PASS
 
-Candidate 5 changes after Candidate 4:
-- unreliable Retry playback removed/downgraded from the failed-player recovery actions;
-- in-player **Refresh source** remains the supported recovery path;
-- Revive All foreground isolation strengthened to suspend/requeue active coordinator-created `revive-*` private-display sessions when PlayerActivity resumes.
-
-## Candidate 5 device QA — mixed result
-User installed Candidate 5 directly from APK through **Material Files**.
+Candidate 5 device QA:
 - direct APK install through Material Files: **PASS**
 - install/data: **PASS**
-- failed-player recovery UI: **PASS**
-- user notes recovery error/buttons UI should be improved later
-- in-player Refresh source / Revive: **PASS**
-- user notes they would not expect Refresh source to exit to dashboard
+- failed-player recovery UI: **PASS** functionally; UI polish requested
+- in-player Refresh source / Revive: **PASS**; user does not expect Refresh to exit immediately to dashboard
 - Revive All while watching another video: **FAIL**
 
-Additional Candidate 5 UX notes from user:
-- When leaving a video with Back or the tab button, dashboard returns to the beginning/top of the tab list. Expected: return to the same tab/list position where the watched video was.
-- When not fullscreen in Player, expected: show the video name/title at the top of the screen.
-- Video names/titles should load/display according to the language selected in the app when the resolver/source provides localized metadata; do not fabricate translations.
+### Revive All failure sequence clarified by user
+1. Tap **Revive All**.
+2. Wait while some tabs revive and others remain queued/checking.
+3. Open an already-READY/revived tab while the bulk queue still exists.
+4. Player disturbance starts immediately.
+5. Disturbance stops when returning to dashboard.
 
-Interpretation:
-- Direct APK install is now confirmed PASS via Material Files.
-- Failed-player recovery and in-player Refresh are accepted functionally.
-- Retry is no longer a blocker because it was deliberately removed/downgraded.
-- Remaining merge blocker is Revive All disturbing foreground playback.
-- UX backlog: improve failed-player error/buttons presentation; reconsider whether Refresh source should stay in-player or show a clearer transition instead of unexpectedly exiting to dashboard; preserve dashboard scroll/anchor when returning from Player; show title in non-fullscreen Player; respect app language for source-provided localized titles where technically available.
+Observed symptoms:
+- whole player/UI can blink, but different elements do not blink at exactly the same rhythm;
+- tab-count/status box can alternate between a progress-like value (example `5/23 check`) and a simple count (example `24`), sometimes with the first number increasing;
+- playback buffers/tries to start, may show a fraction of a second, then the disturbance makes startup restart;
+- only Player is visible during this; dashboard/Recents is not visibly flashed;
+- reproducible whenever a revived/READY tab is entered while Revive All still has tabs left;
+- queued/revival states appeared roughly where they were when Player was entered, but advancement while watching was not verified.
 
-## Direct APK installation — resolved as app/signing blocker
-Direct APK installation is **not an app/package/signing blocker**.
+Candidate 5 active-session suspension was insufficient. This remains the merge blocker.
 
-User discovered the failure was specific to **Files by Google**. Installing the same APK by tapping it through **Material Files** works correctly. ADB in-place install also works, and CI signing/package/alignment checks pass.
+## Direct APK installation — resolved
+Direct APK installation is **not** an app/package/signing blocker. Material Files installs/updates the APK successfully. Failure was specific to Files by Google/device installer routing. ADB install and CI signing/package/alignment also pass.
 
-Track any remaining direct-tap issue as a **Files by Google / device installer routing quirk**, not a blocker for 0.3.2 and not evidence of a bad APK. `INSTALLER_LOG_CAPTURE.md` can remain for future diagnostics only.
+## Candidate 6 — approved scope
+User explicitly wants visible progress in Candidate 6 while the remaining blocker is investigated.
 
-## Current blockers before merge
-1. Fix **Revive All + watching another video** foreground disturbance. Candidate 5 active-session suspension was insufficient.
+### Revive All foreground behavior
+First investigate whether Revive All can continue in true background while Player is foreground **without any Player/UI/display interference** and without weakening protected Build #234 architecture. If that is complicated, unreliable, or requires risky architecture changes, use the safe fallback: bulk Revive All pauses completely while PlayerActivity is foreground and resumes after returning to dashboard. Individual in-player Refresh remains a separate direct user action.
 
-## UX backlog
-- Improve failed-player error/buttons UI.
-- Make Refresh source behavior clearer; user did not expect Player to exit to dashboard after tapping Refresh.
-- Preserve dashboard scroll/anchor when returning from Player via Back or tab button; user expects to return to the watched tab, not top/start of tab list.
-- Show current video title/name at top of Player when not fullscreen.
-- Make video title/name loading respect selected app language where source/resolver metadata supports it; never fabricate translated titles.
+### Approved UX improvements from the original proposal
+- Preserve dashboard scroll/anchor so Back/tab button from Player returns to the watched tab position, not the top/start.
+- Show current video title/name at the top of Player when not fullscreen; keep fullscreen clean.
+- Language-aware source/title preference: no machine translation and no invented titles. When legitimate site/source language variants exist, prefer the variant matching the app language (for example Spanish versus English/default host/path variants) and use source-provided metadata only.
+- Redesign failed-player recovery into a cleaner panel with concise error text, **Refresh source** as the primary recovery action, and **Technical details** as secondary.
+- Keep **Refresh source** in Player where feasible: show an in-player refreshing state and continue/reload the same tab on success; only transition to dashboard when technically necessary or explicitly chosen.
+- The previously proposed Revive queue status screen/card is **not needed**; current progress information is not considered confusing.
+
+### Approved new features
+- **Multi-select mode**: long-press/select multiple active tabs and apply appropriate bulk actions such as Close, Revive, Add to Favorites, and Add to Private Favorites, while preserving confirmation/privacy rules.
+- **Per-tab playback preference memory**: remember user-chosen playback preferences for that persistent tab (especially playback speed and explicit manual quality choice; volume/mute only if safe/appropriate) and restore them when reopening the same tab. Preserve automatic quality policy when no manual override exists.
+- **Accordion search/filter UI** across Active Tabs, Recently Closed, Favorites, and Private Favorites. Keep it collapsed by default so normal screens stay compact. Search/filter should operate on technical/local metadata already stored by the app and must not inspect media imagery/content.
+- **Per-item status/history belongs in Diagnostics/Logs**, not as always-visible card clutter. Where useful, provide it through an expandable/accordion diagnostics view and include equivalent access for Recently Closed and both Favorites views when the stored record has relevant technical history.
+
+Ignored from the new-feature proposal: Pin tabs and Keep-this-tab protection.
+
+## Language/title rule
+Titles are technical/local metadata only. Do not translate, infer, rewrite, or classify title content. Prefer legitimate source-provided title metadata from the app-selected language source/site variant when available. If no matching localized source metadata exists, preserve the original title.
 
 ## 0.3.2 features already device-PASS
 - ADB in-place update; existing data retained
-- direct tap APK install works via Material Files
-- consolidated gear menu and proper close icon
+- direct tap APK install via Material Files
+- consolidated gear menu / proper close icon
 - dashboard individual Revive
-- Check status -> Player race/blinking fix
-- reported decoder-init case with same-ExoPlayer fallback
-- Recently Closed / Close All tested with 25 tabs; history cap 100
-- neutral/inconspicuous privacy screen
-- privacy authentication reveals in place; no minimize
-- share while covered stays deferred until auth
-- direct player recovery actions visible
-- in-player Refresh source / Revive works
+- Check Status -> Player race/blink fix
+- decoder fallback case
+- Recently Closed / Close All with 25 tabs; history cap 100
+- privacy appearance/auth/reveal/deferred share
+- direct failed-player recovery controls visible
+- in-player Refresh source / Revive
 - Retry recovery deliberately removed/downgraded
 - general player/dashboard regression spot-check
 
 Implementation/refactor retained: `TabMaintenanceController` central revival policy, `SystemAuthGate` shared auth, `AppPrivacyController`, `DashboardMenu`, thumbnail decoder contention isolation, PR CI checks.
 
 ## Merge/release gate
-Do not merge PR #2 until Revive All can run while another video is playing without blinking/disturbing foreground playback.
-
-Direct tap installation is no longer a release blocker because Material Files installs the APK successfully. Failed-player recovery is functionally acceptable, with UI polish deferred.
+Do not merge PR #2 until Revive All can coexist with foreground playback without blinking/disturbing/restarting Player. Candidate 6 UX/features may advance in parallel but must not weaken the protected architecture or hide the blocker.
 
 ## Deferred
 - Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
