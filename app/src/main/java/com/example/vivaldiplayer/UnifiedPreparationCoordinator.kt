@@ -13,12 +13,15 @@ import java.lang.ref.WeakReference
  * IMPORTANT: the normal `BG - External Player` share path no longer comes
  * through this coordinator. BackgroundShareActivity is already a valid Activity
  * because the user explicitly selected it, and it now owns direct + hidden
- * browser preparation itself. That removes build #187's fragile second-Activity
- * hand-off from the normal BG path.
+ * browser preparation itself.
  *
- * For the remaining paths we still distinguish requested launches from Activity
- * instances Android actually created, and a watchdog falls back to WorkManager
- * if a hidden launch never materializes.
+ * PlayerActivity is deliberately NOT a preparation host. Candidate 5 device QA
+ * proved that entering an already-ready video while Revive All still had queued
+ * tabs could repeatedly disturb/restart foreground playback. The old coordinator
+ * accepted PlayerActivity as its foreground host and immediately launched
+ * BackgroundPreparationActivity for queued work. That default-display Activity
+ * path must never compete with the visible player. Revive All has its own
+ * protected service/private-display coordinator and can continue independently.
  */
 object UnifiedPreparationCoordinator {
     private const val PREPARATION_LAUNCH_WATCHDOG_MS = 2_000L
@@ -35,7 +38,13 @@ object UnifiedPreparationCoordinator {
 
     @Synchronized
     fun onHostResumed(activity: Activity) {
-        if (activity is BackgroundPreparationActivity || activity is BrowserResolverActivity) return
+        if (
+            activity is BackgroundPreparationActivity ||
+            activity is BrowserResolverActivity ||
+            activity is PlayerActivity
+        ) {
+            return
+        }
         foregroundHost = WeakReference(activity)
         hostIsResumed = true
         launchFirstQueuedIfPossible()
@@ -67,7 +76,7 @@ object UnifiedPreparationCoordinator {
             launchingTabIds.remove(id)
         }
 
-        /* Foreground preload/retry may continue serially when a visible host exists. */
+        /* Foreground preload/retry may continue serially when a safe visible host exists. */
         mainHandler.post { launchFirstQueuedIfPossible() }
     }
 
@@ -77,8 +86,9 @@ object UnifiedPreparationCoordinator {
         return startNow(activity, tabId)
     }
 
-    /** Feature 29: automatic next-tab preload stays serialized. */
+    /** Automatic next-tab preload stays serialized and never starts from PlayerActivity. */
     fun preloadNext(activity: Activity, currentTabId: String): Boolean {
+        if (activity is PlayerActivity) return false
         if (!AppSettings.preloadNextTab(activity)) return false
         val next = VideoTabStore.nextAfter(currentTabId) ?: return false
         if (TabOriginStore.pageUrl(activity, next).isBlank()) return false
@@ -88,10 +98,7 @@ object UnifiedPreparationCoordinator {
 
     /**
      * A WorkManager direct-resolution miss should continue through the same
-     * browser-capable stage whenever a usable foreground host exists.
-     *
-     * Normal BG shares do not need this fallback because their share Activity
-     * already owns a WebView. This method is for process-recovery/retry paths.
+     * browser-capable stage whenever a usable non-player foreground host exists.
      */
     @Synchronized
     fun browserStageNeeded(tabId: String, technicalMessage: String = "") {
@@ -101,14 +108,17 @@ object UnifiedPreparationCoordinator {
         mainHandler.post { launchFirstQueuedIfPossible(preferredTabId = tabId) }
     }
 
-    fun prepareNow(activity: Activity, tabId: String): Boolean = startNow(activity, tabId)
+    fun prepareNow(activity: Activity, tabId: String): Boolean {
+        if (activity is PlayerActivity) return false
+        return startNow(activity, tabId)
+    }
 
     /** Foreground-driven retry/preload preparation is intentionally one-at-a-time. */
     @Synchronized
     private fun launchFirstQueuedIfPossible(preferredTabId: String? = null) {
         if (!hostIsResumed || activeTabIds.isNotEmpty() || launchingTabIds.isNotEmpty()) return
         val host = foregroundHost.get() ?: return
-        if (host.isFinishing || host.isDestroyed) return
+        if (host is PlayerActivity || host.isFinishing || host.isDestroyed) return
 
         val candidate = preferredTabId
             ?.let(VideoTabStore::get)
@@ -130,16 +140,15 @@ object UnifiedPreparationCoordinator {
         activity: Activity,
         tabId: String
     ): Boolean {
+        /* Never put a hidden/default-display preparation Activity behind Player. */
+        if (activity is PlayerActivity) return false
+
         val tab = VideoTabStore.get(tabId) ?: return false
         val originalPageUrl = TabOriginStore.pageUrl(activity, tab)
         if (tab.isReady || originalPageUrl.isBlank()) return false
         if (tabId in activeTabIds || tabId in launchingTabIds) return true
 
         if (activeTabIds.isNotEmpty() || launchingTabIds.isNotEmpty()) {
-            /*
-             * Keep retry/preload serialized. Once the current hidden Activity
-             * finishes, onPreparationDestroyed() may launch the next queued tab.
-             */
             VideoTabStore.markQueued(tabId)
             return true
         }
@@ -175,11 +184,6 @@ object UnifiedPreparationCoordinator {
             return false
         }
 
-        /*
-         * startActivity returning does not prove Android created the Activity.
-         * Confirmation comes through Application.onActivityCreated. If it never
-         * arrives, clear only this reservation and use WorkManager direct recovery.
-         */
         val appContext = activity.applicationContext
         mainHandler.postDelayed({
             val needsFallback = synchronized(this) {
