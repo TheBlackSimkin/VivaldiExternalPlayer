@@ -32,22 +32,16 @@ App-code head: `9a7f1efe8ba46e9696222b0a191a3383a32802ab`.
 - debug artifact `9501043203`
 - build/sign/package/alignment: **PASS**
 
-### Candidate 6 Revive All investigation/fix
-Root cause identified: `TabbedPlayerApplication`/`UnifiedPreparationCoordinator` previously treated `PlayerActivity` as a foreground preparation host and could launch the legacy/default-display `BackgroundPreparationActivity` or preload queued work when Player resumed. That matched the user's exact trigger and explained why Candidate 4/5 private-display suspension did not solve the issue.
+### Candidate 6 Revive All fix — device PASS
+Root cause identified: `TabbedPlayerApplication`/`UnifiedPreparationCoordinator` previously treated `PlayerActivity` as a foreground preparation host and could launch the legacy/default-display `BackgroundPreparationActivity` or preload queued work when Player resumed. Candidate 6 bars Player from that hidden/default-display path and leaves only the protected service/private-display `TabRevivalCoordinator` running in true background.
 
-Candidate 6:
-- bars `PlayerActivity` from `UnifiedPreparationCoordinator` hidden/default-display preparation;
-- bars Player-triggered `preloadNext`/`prepareNow` through that legacy path;
-- removes Candidate 5 foreground cancellation/requeue churn from Revive All;
-- lets the protected service/private-display `TabRevivalCoordinator` continue in true background while Player is foreground.
-
-**Device QA result: PASS.** The exact Revive All + foreground playback scenario passed, including the requested true-background behavior. The previous blinking/restarts/interference blocker is considered resolved unless later regression evidence contradicts this.
+The exact Revive All + foreground playback scenario passed on device, including continued background revival while watching. The previous blinking/restarts/interference blocker is considered resolved unless later regression evidence contradicts this.
 
 ### Candidate 6 device QA matrix
 User reported:
 1. Revive All + watching another READY/revived video while queue continues: **PASS**.
 2. Return to watched dashboard tab/list position: **PASS**.
-3. Non-fullscreen Player title: **FAIL**. A bar appears only outside fullscreen, but the title text is not visible.
+3. Non-fullscreen Player title: **FAIL**. A bar appears only outside fullscreen, but title text is not visible.
 4. Language-aware title/source behavior: **PASS**.
 5. Failed-player recovery UI polish: **NOT TESTED**.
 6. Refresh source staying in Player: **NOT TESTED**.
@@ -59,30 +53,48 @@ User reported:
 
 Candidate 6 is therefore a near-pass. Remaining acceptance work is the title overlay bug plus focused verification of recovery tests 5 and 6.
 
-### Candidate 6 approved UX/features implemented
-- dashboard return anchor: leaving Player remembers persistent tab ID and returns toward the watched tab position rather than top/start — device PASS;
-- non-fullscreen Player title overlay — device FAIL because container/bar appears without visible title text;
-- language-aware source preference without translation/invention: exact original URL remains persistent identity, while known legitimate language-host variants are preferred for resolution; current narrow PH mapping is Spanish -> `es.pornhub.com`, English -> `www.pornhub.com` — device PASS;
-- language policy applied to manual resolution, background shares, Revive, browser fallback, and Favorite launches;
-- redesigned failed-player recovery panel with concise message, **Refresh source** primary, **Technical details** secondary, and additional recovery options — Candidate 6 not yet device-tested;
-- Refresh source stays in Player: same persistent tab is revived, Player polls its state, then reloads the refreshed source into the same ExoPlayer at preserved position/play state when READY; dashboard is offered only if refresh cannot finish there — Candidate 6 not yet device-tested;
-- active-tab multi-select via long-press, with bulk Close / Revive / Favorite / Private Favorite; normal drag/swipe remains outside selection mode — device PASS;
-- per-tab playback preference memory: manual quality was already persisted/restored by `AdaptiveQualityRuntime`; Candidate 6 adds persistent playback speed per tab without changing auto-quality policy — device PASS;
-- collapsed search/filter accordion on Active Tabs; collapsed search accordion on Recently Closed, Favorites, and authenticated Private Favorites — device PASS;
-- sanitized per-tab Diagnostics/History reader from the existing OperationLog; Recently Closed and both Favorites views expose expandable Diagnostics/History where matching technical history exists — device PASS;
-- Private Favorites search/history remains unavailable until system authentication succeeds; FLAG_SECURE/relock behavior retained — device PASS.
+### Candidate 6 approved UX/features status
+- dashboard return anchor — device PASS;
+- language-aware source/title behavior — device PASS;
+- active-tab multi-select — device PASS;
+- per-tab speed/manual-quality preference memory — device PASS;
+- search/filter accordions — device PASS;
+- Diagnostics/History across relevant collections — device PASS;
+- general regression check — device PASS;
+- non-fullscreen title overlay — device FAIL;
+- cleaner failed-player recovery UI — not tested in Candidate 6;
+- in-player Refresh/reload — not tested in Candidate 6.
 
-### Known Candidate 6 recovery note
-`PlayerActivity` still contains its historical automatic full diagnostics dialog on playback error. The new recovery panel is implemented, but Candidate 6 recovery tests 5 and 6 were not performed, so whether the historical popup materially obstructs the new panel remains unverified.
+## Candidate 7 — focused title-fix build ready
+App-code head: `a1a0ed1dd53c6ec44ed76dd9307f100a6a9fae1b`.
+- Actions run `32670860768` / run #407
+- job `97271395006`
+- signed release artifact `9501360981`
+- signed artifact digest `sha256:3291fa608b5d93577dba557ac3f84a8e5c74f490a34e27b9d2930ea4386cc53d`
+- debug artifact `9501361426`
+- build/sign/package/alignment: **PASS**
+
+Candidate 7 is intentionally narrow and does **not** change the Candidate 6 Revive All architecture or other device-PASS features.
+
+### Candidate 7 title fix
+`PlayerTitleProvider` no longer depends primarily on generic Activity/window title placement.
+- title text is sourced first from the exact `ResolvedMedia` JSON passed to Player;
+- persistent tab title is the fallback;
+- generic `Activity.title` is last-resort compatibility only;
+- the title view is attached directly to the actual `activity_player` `FrameLayout`, not window decor;
+- if no legitimate title exists, the overlay is hidden instead of showing an empty decorative bar;
+- fullscreen/system-bars-hidden behavior remains: title visible only in non-fullscreen UI.
+
+No machine translation, title inference, media-content inspection, resolver-order changes, background-playback changes, or extra ExoPlayer were introduced.
+
+### Known recovery note
+`PlayerActivity` still contains its historical automatic full diagnostics dialog on playback error. Candidate 6 recovery tests 5 and 6 were not performed, so whether that historical popup materially obstructs the new recovery panel remains unverified. Candidate 7 QA should test these two paths.
 
 ### Language/title rule
 Never machine-translate, infer, rewrite, or invent titles. Prefer legitimate source-provided metadata from the app-selected language source/site variant where available; otherwise preserve original metadata/title.
 
-## Current next work
-Create a focused follow-up candidate that fixes the non-fullscreen title overlay by sourcing text directly from the actual resolved-media/persistent-tab metadata and attaching it to the Player content overlay rather than relying on generic Activity/window title behavior. Do not change the now-device-PASS Revive All background architecture.
-
 ## Merge gate
-**Do not merge PR #2 yet.** The original Revive All merge blocker is device-PASS in Candidate 6. Before merge/release, fix and device-verify the non-fullscreen title regression and perform focused Candidate 6/next-candidate recovery checks for failed-player recovery UI and in-player Refresh source.
+**Do not merge PR #2 yet.** The original Revive All merge blocker is device-PASS in Candidate 6. Before merge/release, Candidate 7 must device-verify the non-fullscreen title fix and the previously skipped failed-player recovery UI + in-player Refresh source. Also do a short Revive All foreground sanity check to guard against regression.
 
 ## QA format
 When asking user to test an APK: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
