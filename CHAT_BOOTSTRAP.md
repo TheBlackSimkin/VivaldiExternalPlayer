@@ -44,13 +44,15 @@ Additional Candidate 5 UX notes:
 - Back/tab button from Player returns dashboard to beginning/top of tab list; expected return to same tab/list position.
 - When Player is not fullscreen, user expects current video title/name visible at top.
 - Video names/titles should load/display according to selected app language when source/resolver metadata supports localization; never fabricate translations.
+- User wants all three UX items attempted in Candidate 6 because 0.3.2 has been stuck and needs visible progress.
+- For localized title loading, do not machine-translate or invent. Prefer legitimate source/site language variants matching the app setting when technically available, e.g. Spanish versus English host/path variants, while staying within protected resolver rules.
 
 Important interpretation:
 - Direct APK install is now confirmed PASS via Material Files.
 - Failed-player recovery and in-player Refresh are functionally accepted.
 - Retry is no longer a blocker because it was deliberately removed/downgraded.
 - Remaining merge blocker is Revive All disturbing foreground playback.
-- UX backlog: improve failed-player error/buttons presentation, make Refresh source transition clearer, preserve dashboard scroll/anchor after Player, show title in non-fullscreen Player, and respect app language for source-provided localized titles where technically available.
+- Candidate 6 should target Revive All foreground safety plus the three UX improvements: return-to-same-tab dashboard anchor, non-fullscreen Player title, and app-language-aware source title/domain handling without translation.
 
 ## Direct APK install status
 Direct APK installation is no longer an app/signing blocker. User discovered the failure was specific to **Files by Google**. Installing the same APK through **Material Files** works correctly. ADB in-place update works and CI package/sign/alignment checks pass.
@@ -80,12 +82,12 @@ Candidate 3 installed/data PASS but recovery UI stayed fully failed: failed Play
 ## Current blocker
 Revive All + watching another video still causes repeated blinking/unwatchable playback. Candidate 5 active-session suspension was insufficient. This is the only remaining release/merge blocker.
 
-## UX backlog
-- Improve failed-player error/buttons UI.
-- Make Refresh source behavior clearer; user did not expect Player to exit to dashboard after tapping Refresh.
-- Preserve dashboard scroll/anchor when returning from Player via Back or tab button; user expects to return to the watched tab, not top/start of tab list.
+## Candidate 6 targets
+- Stronger Revive All foreground isolation, likely by never running/starting revive browser/private-display work while PlayerActivity is foreground and by making queued work visibly paused until returning to dashboard.
+- Preserve dashboard scroll/anchor when returning from Player via Back or tab button.
 - Show current video title/name at top of Player when not fullscreen.
-- Make video title/name loading respect selected app language where source/resolver metadata supports it; never fabricate translated titles.
+- Make video title/name loading respect selected app language where source/resolver metadata or legitimate site-language variants support it; never fabricate translated titles.
+- Improve failed-player error/buttons UI and make Refresh source behavior clearer if time/risk allows.
 
 ## Merge gate
 Do not merge PR #2 until Revive All can run while another video plays with no blink/disturbance.
