@@ -61,20 +61,26 @@ User installed Candidate 4 by ADB.
 - Retry playback from failed-player overlay: **FAIL**
 - Refresh source / Revive from failed-player overlay: **PASS**
 - Revive All while watching another video: **FAIL**
-- installer-log MD was not provided to the user during QA, so direct tap logging was not performed.
 
 Interpretation:
 - Candidate 4 fixed the main visibility/exposure problem: recovery actions are now visible and Refresh from inside Player works.
 - Candidate 4 did **not** fully fix Retry playback.
 - Candidate 4 did **not** fix the Revive All foreground-player blinking/unwatchable regression.
 
+## Direct APK installation — resolved as app/signing blocker
+Direct APK installation is **not an app/package/signing blocker**.
+
+User discovered the failure was specific to **Files by Google**. Installing the same APK by tapping it through **Material Files** works correctly. ADB in-place install also works, and CI signing/package/alignment checks pass.
+
+Track any remaining direct-tap issue as a **Files by Google / device installer routing quirk**, not a blocker for 0.3.2 and not evidence of a bad APK. `INSTALLER_LOG_CAPTURE.md` can remain for future diagnostics only.
+
 ## Current blockers before merge
 1. Fix or intentionally downgrade **Retry playback** behavior. Refresh source is now the working recovery path, but Retry must either work correctly or be removed/renamed/disabled when it cannot help.
 2. Fix **Revive All + watching another video** foreground disturbance. Candidate 4 deferral was insufficient.
-3. Optional/separate: collect direct-tap installer logs via `INSTALLER_LOG_CAPTURE.md` to diagnose the Play Protect / installer-flow block.
 
 ## 0.3.2 features already device-PASS
 - ADB in-place update; existing data retained
+- direct tap APK install works via Material Files
 - consolidated gear menu and proper close icon
 - dashboard individual Revive
 - Check status -> Player race/blinking fix
@@ -89,17 +95,12 @@ Interpretation:
 
 Implementation/refactor retained: `TabMaintenanceController` central revival policy, `SystemAuthGate` shared auth, `AppPrivacyController`, `DashboardMenu`, thumbnail decoder contention isolation, PR CI checks.
 
-## Direct APK installation — unresolved separate blocker
-Standalone extracted APK normal tap update is **FAIL** due Play Protect / installer flow. CI and successful ADB in-place update prove package/sign/alignment/signature continuity. Do not uninstall the working app merely to test.
-
-`INSTALLER_LOG_CAPTURE.md` contains the logcat capture steps needed to gather PackageInstaller / Play Protect reason codes during the failed tap flow.
-
 ## Merge/release gate
 Do not merge PR #2 until:
 1. failed-player recovery has acceptable final behavior: Refresh/Revive stays PASS and Retry is either PASS or deliberately removed/disabled; and
 2. Revive All can run while another video is playing without blinking/disturbing foreground playback.
 
-Direct tap installation remains a separate known blocker unless logs identify an app-side package issue.
+Direct tap installation is no longer a release blocker because Material Files installs the APK successfully.
 
 ## Deferred
 - Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
