@@ -66,9 +66,7 @@ object FavoriteStore {
 
 /**
  * Private Favorites encrypted at rest with an app-only Android Keystore AES key.
- *
- * Callers must gate every read/write behind Android system authentication. The encrypted
- * preference contains no plaintext title or URL, and the private UI never uses thumbnails.
+ * Callers must gate every read/write behind Android system authentication.
  */
 object PrivateFavoriteStore {
     private const val PREFS_NAME = "private_favorite_store"
@@ -79,11 +77,7 @@ object PrivateFavoriteStore {
     fun allAfterAuthentication(context: Context): List<FavoriteEntry> =
         decrypt(context)?.let(::parseEntries).orEmpty()
 
-    fun addAfterAuthentication(
-        context: Context,
-        pageUrl: String,
-        title: String
-    ): FavoriteEntry? {
+    fun addAfterAuthentication(context: Context, pageUrl: String, title: String): FavoriteEntry? {
         val cleanUrl = pageUrl.trim()
         if (!isHttpUrl(cleanUrl)) return null
         val current = allAfterAuthentication(context).toMutableList()
@@ -170,7 +164,7 @@ object FavoriteLauncher {
             context = context.applicationContext,
             token = token,
             tabId = tab.id,
-            sourceUrl = favorite.pageUrl
+            sourceUrl = SourceLanguagePolicy.preferAppLanguage(context, favorite.pageUrl)
         )
         return tab
     }
