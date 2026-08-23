@@ -14,19 +14,20 @@ import java.util.ArrayDeque
  * waits for that tab to reach a terminal preparation state before starting the next one.
  *
  * Revive All may be queued from the dashboard and then the user may open a ready video while
- * revival is still pending. In that case we keep queued revive work queued, but defer starting
- * the next private-display session until foreground playback is no longer resumed. That preserves
- * the protected recovery path while avoiding repeated player blink/lifecycle disturbance.
+ * revival is active. We keep queued work queued and suspend any active revive-* session as soon
+ * as foreground playback resumes. This preserves the protected recovery path while preventing an
+ * already-running private-display session from disturbing the visible player.
  */
 object TabRevivalCoordinator {
     private const val POLL_MS = 750L
     private const val FOREGROUND_PLAYER_RECHECK_MS = 1_000L
 
     private data class Request(val tabId: String, val originalPageUrl: String)
+    private data class ActiveRequest(val request: Request, val token: String)
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private val pending = ArrayDeque<Request>()
-    private var active: Request? = null
+    private var active: ActiveRequest? = null
     private var appContext: Context? = null
     private var foregroundRecheckScheduled = false
 
@@ -35,7 +36,7 @@ object TabRevivalCoordinator {
         appContext = context.applicationContext
 
         val knownIds = buildSet {
-            active?.let { add(it.tabId) }
+            active?.let { add(it.request.tabId) }
             pending.forEach { add(it.tabId) }
         }
 
@@ -55,11 +56,25 @@ object TabRevivalCoordinator {
     @Synchronized
     fun cancel(tabId: String) {
         pending.removeAll { it.tabId == tabId }
-        /*
-         * An already-running private-display session owns its own safe cleanup lifecycle.
-         * We intentionally do not tear it down from outside the service. Closing a tab only
-         * prevents queued revival work from starting later.
-         */
+        val running = active
+        if (running?.request?.tabId == tabId) {
+            active = null
+            BackgroundPreparationKeepAliveService.suspendRevivalSession(running.token)
+        }
+    }
+
+    @Synchronized
+    fun suspendForForegroundPlayback() {
+        val running = active ?: return
+        active = null
+        pending.addFirst(running.request)
+        VideoTabStore.markQueued(running.request.tabId, "Revival paused while player is open")
+        VideoTabStore.markTechnicalStage(
+            running.request.tabId,
+            "REVIVAL_SUSPENDED_FOR_FOREGROUND_PLAYER"
+        )
+        BackgroundPreparationKeepAliveService.suspendRevivalSession(running.token)
+        scheduleForegroundRecheckLocked()
     }
 
     @Synchronized
@@ -81,8 +96,8 @@ object TabRevivalCoordinator {
             return
         }
 
-        active = next
         val token = "revive-${next.tabId}-${System.currentTimeMillis()}"
+        active = ActiveRequest(next, token)
         VideoTabStore.markPreparationRequested(next.tabId)
         VideoTabStore.markQueued(next.tabId, "Revival requested")
         VideoTabStore.markTechnicalStage(next.tabId, "REVIVAL_PRIVATE_SERVICE_REQUESTED")
@@ -99,7 +114,7 @@ object TabRevivalCoordinator {
 
     private fun pollActive() {
         synchronized(this) {
-            val request = active ?: return
+            val request = active?.request ?: return
             val tab = VideoTabStore.get(request.tabId)
 
             val finished = tab == null || when (tab.preparationState) {
