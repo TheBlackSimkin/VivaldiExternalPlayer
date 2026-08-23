@@ -195,7 +195,7 @@ class MainActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.WRAP_CONTENT
         ).apply {
             marginStart = dp(5)
-            marginTop = dp(10)
+            topMargin = dp(10)
             marginEnd = dp(5)
         })
 
