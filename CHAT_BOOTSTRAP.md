@@ -40,34 +40,32 @@ Candidate 2 APK code head `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`:
 
 Implementation/refactor retained: `TabMaintenanceController` central revival policy, `SystemAuthGate` shared auth, `AppPrivacyController`, `DashboardMenu`, thumbnail decoder contention isolation, PR CI checks.
 
-## ONE REMAINING FUNCTIONAL BUG: player-side recovery
-Candidate 2 in-player Revive/Refresh is **FAIL**.
+## Candidate 3 code checkpoint — START HERE
+Candidate 2 in-player Revive/Refresh failed because **Recovery options** showed the explanation and only `CANCEL`.
 
-Observed failed Player text:
-`Playback failed. Tap Playback error to view or copy the technical details.`
+Root cause is now identified: `PlayerRecoveryController.showRecoveryDialog()` did construct actions (Retry was unconditional), but Android `AlertDialog` was configured with both `.setMessage(...)` and `.setItems(...)`. In that layout path the message content remains visible while the item list is not inserted, producing exactly the observed dialog.
 
-Tapping **Recovery options** opens a dialog with title `Recovery options`, explanatory text about normal recovery paths, and only `CANCEL`. There are **no recovery actions at all** — no Retry playback, Refresh source/Revive, alternate detected video, or browser method.
+Fix commit: `f23660479a0177b30ddeb16d030095058d79bfda` (`fix: render player recovery actions`).
 
-This means the centralized `TabMaintenanceController.reviveFromPlayer(...)` path is still not being reached from the actual failed-player recovery UI.
+The fix changes only dialog presentation:
+- explanation + action rows now share one explicit custom vertical dialog body;
+- actions are visible buttons;
+- Retry playback behavior is unchanged;
+- Refresh source still calls `TabMaintenanceController.reviveFromPlayer(...)` and therefore the same `TabMaintenanceController -> TabRevivalCoordinator -> protected service/private-display` path that dashboard Revive already passes;
+- no second player, resolver-policy change, parallel preparation path, or architecture change.
 
-### NEXT SESSION: START HERE
-Trace the actual runtime recovery dialog before changing architecture.
-- Find the exact class/string producing the observed dialog.
-- Verify whether `PlayerRecoveryController.showRecoveryDialog()` is really the dialog being shown.
-- Verify attachment to active `PlayerView.player` after error.
-- Verify `TabbedPlayerApplication.EXTRA_TAB_ID` exists for this failed Player launch and `currentPersistentTab()` resolves the tab.
-- Search for any second/legacy `Recovery options` implementation.
-- Explain why a dialog that should add Retry unconditionally is rendering with zero action rows.
-- Then make player-side Refresh/Revive call the SAME `TabMaintenanceController -> TabRevivalCoordinator -> protected service/private-display` path that dashboard Revive already passes.
-- Do not create another preparation implementation.
+`PROJECT_STATE.md` was refreshed after this finding. Current documentation commit after that refresh: `9a7919577d18dc144a4a7e615d125c28a73eac7b`.
+
+## Next required work
+1. Record CI/build metadata for the latest branch head containing the Candidate 3 recovery-dialog fix.
+2. Install the resulting signed 0.3.2 APK by ADB in-place.
+3. Focused device QA: failed Player -> Recovery options must visibly show Retry; a persistent tab must also show Refresh source; Refresh source must queue the same tab through the protected centralized revival path; short regression check.
+4. If PASS, refresh both state files and only then consider merging PR #2.
 
 ## Direct installer — separate unresolved issue
 Normal standalone APK tap update FAILS. Android reports `La aplicación no se ha instalado`, then Google Play Protect shows `Aplicación bloqueada para proteger tu dispositivo`; tapping `Instalar de todas formas` does not continue.
 
 CI and successful ADB in-place update prove package/sign/alignment/signature continuity. Treat as Play Protect / installer-flow blocker, NOT a signing failure. Future investigation: capture PackageInstaller/PackageManager/Play Protect logs/reason codes during failed tap. Do not uninstall the working app merely to test.
-
-## Merge gate
-Do not merge PR #2 until player-side recovery is fixed and device-PASS. Then refresh both state files.
 
 Report log on GitHub remains postponed. Return-to-Vivaldi unchanged. Continue disciplined cleanup only; remove old paths only when proven unused.
 
