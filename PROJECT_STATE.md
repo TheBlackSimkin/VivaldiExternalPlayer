@@ -1,111 +1,70 @@
 # Vivaldi External Player — Project State
 
-Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. Read this file and `CHAT_BOOTSTRAP.md` before substantive work.
+Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. **Do not merge yet.** Read this file and `CHAT_BOOTSTRAP.md` before substantive work.
 
-## Safety / protected architecture
-- Android UI bilingual English/Spanish; source comments English.
-- PH/HH are technical playback targets only: URLs, manifests, codecs, resolutions, request metadata, resolver/candidate ranking, playback state/errors, local titles. Never inspect/describe media content or thumbnail imagery.
+## Protected architecture / safety
+- Android UI bilingual English/Spanish; comments English.
+- PH/HH are technical playback targets only: URLs, manifests, codecs, resolutions, request metadata, resolver/candidate ranking, playback states/errors, local titles. Never inspect/describe media content or thumbnail imagery.
 - Never bypass DRM/paywalls/auth/geo/CAPTCHA, import browser credentials, add background playback, or add a second ExoPlayer.
+- Protected Build #234 preparation path:
+  `short share Activity -> persistent pending tab -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct yt-dlp -> serialized browser fallback -> READY / ERROR / NEEDS_ATTENTION`.
+- Preserve one ExoPlayer and current resolver/quality policy. Build #278 is accepted player/UI baseline; Build #249 palette protected.
 
-Protected Build #234 preparation path:
-`short share Activity -> persistent pending tab -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct yt-dlp -> serialized browser fallback -> READY / ERROR / NEEDS_ATTENTION`.
-
-Preserve one ExoPlayer and existing resolver/quality policy. Build #278 is accepted player/UI baseline; Build #249 palette remains protected.
-
-## Permanent signing
 Permanent signer certificate SHA-256:
 `8C:87:E1:F6:A7:A4:87:3F:12:CB:25:BA:34:8B:EF:66:50:57:15:9F:16:A6:5B:90:59:E5:E1:D7:C0:B9:5E:7C`.
-CI verifies signing, package metadata and APK alignment.
 
-## Released baseline: 0.3.1 / versionCode 4
-0.3.1 **Vivaldi Private + Copy URL** device QA is PASS. ADB in-place update works. APK SHA-256 `6e02fb3df1ea831a42d4d4c582a37c46f4b68772f9cd8f438ae821fc9fa0db51`.
+## Released baseline
+0.3.1 / versionCode 4. Direct APK update is not an app/signing blocker: Material Files installs successfully; Files by Google was the failing installer path.
 
-## Active candidate: 0.3.2 / versionCode 5
-Branch `work/0.3.2-correctness-ux`, PR #2. **Do NOT merge yet.**
+## Candidate 5 — tested baseline
+App-code head `d8d3dbd86696b84f1ac1c508d22a0dbd814331da`; Actions #370 / `32663782445`; job `97253871521`; signed artifact `9499473114`; digest `sha256:349ebb8dc16dc449e6c3f31cfcd7c620ed361adf9aa366745268e2031efb303f`.
 
-## Candidate 5 build
-App-code head: `d8d3dbd86696b84f1ac1c508d22a0dbd814331da`.
-- Actions `32663782445` / run #370
-- job `97253871521`
-- signed release artifact `9499473114`
-- signed artifact digest `sha256:349ebb8dc16dc449e6c3f31cfcd7c620ed361adf9aa366745268e2031efb303f`
-- build/sign/package/alignment PASS
+Device QA: Material Files install/data PASS; recovery functionally PASS; in-player Refresh PASS but user expected it to remain in Player; Revive All + watching another READY/revived video FAIL.
 
-Candidate 5 device QA:
-- direct APK install through Material Files: **PASS**
-- install/data: **PASS**
-- failed-player recovery UI: **PASS** functionally; UI polish requested
-- in-player Refresh source / Revive: **PASS**; user does not expect Refresh to exit immediately to dashboard
-- Revive All while watching another video: **FAIL**
+Exact Revive All repro: start Revive All, wait until some tabs are READY and others still queued/checking, enter an already READY tab, then Player immediately blinks/restarts/buffers until returning to dashboard. Player/tab-count UI can alternate between progress-style and plain-count values. Candidate 5 active-session suspension was insufficient.
 
-### Revive All failure sequence clarified by user
-1. Tap **Revive All**.
-2. Wait while some tabs revive and others remain queued/checking.
-3. Open an already-READY/revived tab while the bulk queue still exists.
-4. Player disturbance starts immediately.
-5. Disturbance stops when returning to dashboard.
+## Candidate 6 — build ready for device QA
+App-code head: `9a7f1efe8ba46e9696222b0a191a3383a32802ab`.
+- Actions run `32669641573` / run #402
+- job `97268348395`
+- signed release artifact `9501042542`
+- signed artifact digest `sha256:3ccf681f36d61f1e85f43ef769cd5aefa901fc8cc479ff6299c15118cee0f624`
+- debug artifact `9501043203`
+- build/sign/package/alignment: **PASS**
 
-Observed symptoms:
-- whole player/UI can blink, but different elements do not blink at exactly the same rhythm;
-- tab-count/status box can alternate between a progress-like value (example `5/23 check`) and a simple count (example `24`), sometimes with the first number increasing;
-- playback buffers/tries to start, may show a fraction of a second, then the disturbance makes startup restart;
-- only Player is visible during this; dashboard/Recents is not visibly flashed;
-- reproducible whenever a revived/READY tab is entered while Revive All still has tabs left;
-- queued/revival states appeared roughly where they were when Player was entered, but advancement while watching was not verified.
+### Candidate 6 Revive All investigation/fix
+Root-cause lead: `TabbedPlayerApplication`/`UnifiedPreparationCoordinator` previously treated `PlayerActivity` as a foreground preparation host and could launch the legacy/default-display `BackgroundPreparationActivity` or preload queued work when Player resumed. That matched the user's exact trigger and explained why Candidate 4/5 private-display suspension did not solve the issue.
 
-Candidate 5 active-session suspension was insufficient. This remains the merge blocker.
+Candidate 6 now:
+- bars `PlayerActivity` from `UnifiedPreparationCoordinator` hidden/default-display preparation;
+- bars Player-triggered `preloadNext`/`prepareNow` through that legacy path;
+- removes Candidate 5 foreground cancellation/requeue churn from Revive All;
+- lets the protected service/private-display `TabRevivalCoordinator` continue in true background while Player is foreground.
 
-## Direct APK installation — resolved
-Direct APK installation is **not** an app/package/signing blocker. Material Files installs/updates the APK successfully. Failure was specific to Files by Google/device installer routing. ADB install and CI signing/package/alignment also pass.
+Device QA must verify BOTH: foreground Player is stable, and pending Revive All tabs actually continue advancing while watching. If private-display revival itself still disturbs Player, fallback is to pause bulk Revive All completely while Player is foreground and resume on dashboard.
 
-## Candidate 6 — approved scope
-User explicitly wants visible progress in Candidate 6 while the remaining blocker is investigated.
+### Candidate 6 approved UX/features implemented
+- dashboard return anchor: leaving Player remembers persistent tab ID and attempts to return to the watched tab position rather than top/start;
+- non-fullscreen Player title overlay; hidden when system bars/fullscreen are hidden;
+- language-aware source preference without translation/invention: exact original URL remains persistent identity, while known legitimate language-host variants are preferred for resolution; current narrow PH mapping is Spanish -> `es.pornhub.com`, English -> `www.pornhub.com`;
+- language policy applied to manual resolution, background shares, Revive, browser fallback, and Favorite launches;
+- redesigned failed-player recovery panel with concise message, **Refresh source** primary, **Technical details** secondary, and additional recovery options;
+- Refresh source stays in Player: same persistent tab is revived, Player polls its state, then reloads the refreshed source into the same ExoPlayer at preserved position/play state when READY; dashboard is offered only if refresh cannot finish there;
+- active-tab multi-select via long-press, with bulk Close / Revive / Favorite / Private Favorite; normal drag/swipe remains outside selection mode;
+- per-tab playback preference memory: manual quality was already persisted/restored by `AdaptiveQualityRuntime`; Candidate 6 adds persistent playback speed per tab without changing auto-quality policy;
+- collapsed search/filter accordion on Active Tabs; collapsed search accordion on Recently Closed, Favorites, and authenticated Private Favorites;
+- sanitized per-tab Diagnostics/History reader from the existing OperationLog;
+- Recently Closed and both Favorites views expose expandable Diagnostics/History where matching technical history exists;
+- Private Favorites search/history remains unavailable until system authentication succeeds; FLAG_SECURE/relock behavior retained.
 
-### Revive All foreground behavior
-First investigate whether Revive All can continue in true background while Player is foreground **without any Player/UI/display interference** and without weakening protected Build #234 architecture. If that is complicated, unreliable, or requires risky architecture changes, use the safe fallback: bulk Revive All pauses completely while PlayerActivity is foreground and resumes after returning to dashboard. Individual in-player Refresh remains a separate direct user action.
+### Known Candidate 6 test note
+`PlayerActivity` still contains its historical automatic full diagnostics dialog on playback error. The new recovery panel is implemented, but device QA should report whether that old automatic popup still appears first or materially obstructs the new panel. It was intentionally not removed in this build because doing so would require a broad replacement of the large protected PlayerActivity file after the full Candidate 6 branch had already passed CI.
 
-### Approved UX improvements from the original proposal
-- Preserve dashboard scroll/anchor so Back/tab button from Player returns to the watched tab position, not the top/start.
-- Show current video title/name at the top of Player when not fullscreen; keep fullscreen clean.
-- Language-aware source/title preference: no machine translation and no invented titles. When legitimate site/source language variants exist, prefer the variant matching the app language (for example Spanish versus English/default host/path variants) and use source-provided metadata only.
-- Redesign failed-player recovery into a cleaner panel with concise error text, **Refresh source** as the primary recovery action, and **Technical details** as secondary.
-- Keep **Refresh source** in Player where feasible: show an in-player refreshing state and continue/reload the same tab on success; only transition to dashboard when technically necessary or explicitly chosen.
-- The previously proposed Revive queue status screen/card is **not needed**; current progress information is not considered confusing.
+### Language/title rule
+Never machine-translate, infer, rewrite, or invent titles. Prefer legitimate source-provided metadata from the app-selected language source/site variant where available; otherwise preserve original metadata/title.
 
-### Approved new features
-- **Multi-select mode**: long-press/select multiple active tabs and apply appropriate bulk actions such as Close, Revive, Add to Favorites, and Add to Private Favorites, while preserving confirmation/privacy rules.
-- **Per-tab playback preference memory**: remember user-chosen playback preferences for that persistent tab (especially playback speed and explicit manual quality choice; volume/mute only if safe/appropriate) and restore them when reopening the same tab. Preserve automatic quality policy when no manual override exists.
-- **Accordion search/filter UI** across Active Tabs, Recently Closed, Favorites, and Private Favorites. Keep it collapsed by default so normal screens stay compact. Search/filter should operate on technical/local metadata already stored by the app and must not inspect media imagery/content.
-- **Per-item status/history belongs in Diagnostics/Logs**, not as always-visible card clutter. Where useful, provide it through an expandable/accordion diagnostics view and include equivalent access for Recently Closed and both Favorites views when the stored record has relevant technical history.
+## Merge gate
+**Do not merge PR #2.** Candidate 6 must pass focused device QA, especially the exact Revive All foreground-playback repro. If the true-background attempt fails, implement pause-while-watching fallback before merge.
 
-Ignored from the new-feature proposal: Pin tabs and Keep-this-tab protection.
-
-## Language/title rule
-Titles are technical/local metadata only. Do not translate, infer, rewrite, or classify title content. Prefer legitimate source-provided title metadata from the app-selected language source/site variant when available. If no matching localized source metadata exists, preserve the original title.
-
-## 0.3.2 features already device-PASS
-- ADB in-place update; existing data retained
-- direct tap APK install via Material Files
-- consolidated gear menu / proper close icon
-- dashboard individual Revive
-- Check Status -> Player race/blink fix
-- decoder fallback case
-- Recently Closed / Close All with 25 tabs; history cap 100
-- privacy appearance/auth/reveal/deferred share
-- direct failed-player recovery controls visible
-- in-player Refresh source / Revive
-- Retry recovery deliberately removed/downgraded
-- general player/dashboard regression spot-check
-
-Implementation/refactor retained: `TabMaintenanceController` central revival policy, `SystemAuthGate` shared auth, `AppPrivacyController`, `DashboardMenu`, thumbnail decoder contention isolation, PR CI checks.
-
-## Merge/release gate
-Do not merge PR #2 until Revive All can coexist with foreground playback without blinking/disturbing/restarting Player. Candidate 6 UX/features may advance in parallel but must not weaken the protected architecture or hide the blocker.
-
-## Deferred
-- Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
-- Return-to-Vivaldi stays unchanged.
-- Continue disciplined cleanup/refactoring; delete historical paths only after proving unused.
-
-## QA request format
-Whenever explicitly asking the user to test an APK, provide exactly one detailed steps/EXPECTED/RESULT code block, then one separate compact-answer code block. No extra code blocks.
+## QA format
+When asking user to test an APK: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
