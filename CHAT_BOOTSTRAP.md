@@ -18,31 +18,42 @@ Preserve one ExoPlayer and current resolver/quality policy. Build #278 is accept
 ## Active candidate: 0.3.2 / versionCode 5
 Branch `work/0.3.2-correctness-ux`, PR #2. **DO NOT MERGE YET.**
 
-## Candidate 4 — START HERE
-Build/app-code head: `9fdc16f2da7191b23c8043add636c4a5a3ad6cd4`.
-- Actions `32654832188` / run #356
-- job `97231847880`
-- signed release artifact `9497197410`
-- signed artifact digest `sha256:5207ba499b909f0ae506cfc38c600c31c92d77f31450cff7f55731d6e883b7cb`
+## Candidate 5 — START HERE
+Build/app-code head: `d8d3dbd86696b84f1ac1c508d22a0dbd814331da`.
+- Actions `32663782445` / run #370
+- job `97253871521`
+- signed release artifact `9499473114`
+- signed artifact digest `sha256:349ebb8dc16dc449e6c3f31cfcd7c620ed361adf9aa366745268e2031efb303f`
 - build/sign/package/alignment PASS
 
-Candidate 4 device QA result:
+Candidate 5 changes after Candidate 4:
+- unreliable Retry playback removed/downgraded from failed-player recovery actions;
+- in-player **Refresh source** remains the supported recovery path;
+- Revive All foreground isolation strengthened to suspend/requeue active coordinator-created `revive-*` private-display sessions when PlayerActivity resumes.
+
+Candidate 5 device QA result:
+- direct APK install through Material Files: **PASS**
 - install/data: **PASS**
-- Recovery UI visibility: **PASS**
-- Retry playback from failed-player overlay: **FAIL**
-- Refresh source / Revive from failed-player overlay: **PASS**
+- failed-player recovery UI: **PASS**
+- user says recovery error/buttons UI should be improved later
+- in-player Refresh source / Revive: **PASS**
+- user notes they would not expect Refresh source to exit to dashboard
 - Revive All while watching another video: **FAIL**
 
 Important interpretation:
-- Candidate 4 fixed the main visibility/exposure problem: recovery actions are visible.
-- In-player Refresh/Revive now works and is device-PASS.
-- Retry playback still fails; decide whether to fix it or remove/disable/rename it if it is not a reliable recovery action.
-- Revive All still disturbs foreground playback; Candidate 4 deferral was insufficient.
+- Direct APK install is now confirmed PASS via Material Files.
+- Failed-player recovery and in-player Refresh are functionally accepted.
+- Retry is no longer a blocker because it was deliberately removed/downgraded.
+- Remaining merge blocker is Revive All disturbing foreground playback.
+- UX backlog: improve failed-player error/buttons presentation and make Refresh source transition clearer.
 
 ## Direct APK install status
 Direct APK installation is no longer an app/signing blocker. User discovered the failure was specific to **Files by Google**. Installing the same APK through **Material Files** works correctly. ADB in-place update works and CI package/sign/alignment checks pass.
 
 Treat any remaining failure through Files by Google as a Files/device installer-routing quirk, not as evidence of an APK/signing problem and not as a 0.3.2 release blocker.
+
+## Prior Candidate 4 result
+Candidate 4 installed/data PASS, recovery UI visibility PASS, in-player Refresh PASS, Retry FAIL, and Revive All + watching another video FAIL. Candidate 4 deferral only delayed future revive sessions and was insufficient.
 
 ## Prior Candidate 3 result
 Candidate 3 installed/data PASS but recovery UI stayed fully failed: failed Player showed only the old Recovery options dialog with explanation + `CANCEL`, no Retry and no Refresh. Candidate 3 also exposed the Revive All + watching another video blinking/unwatchable bug.
@@ -58,18 +69,20 @@ Candidate 3 installed/data PASS but recovery UI stayed fully failed: failed Play
 - privacy appearance/auth/reveal/deferred share
 - direct failed-player recovery buttons visible
 - in-player Refresh source / Revive
+- Retry recovery deliberately removed/downgraded
 - general regression spot-check
 
-## Current blockers
-1. Retry playback from failed-player overlay is FAIL. Refresh works; Retry must become PASS or be intentionally removed/disabled/renamed.
-2. Revive All + watching another video still causes repeated blinking/unwatchable playback. Need stronger foreground-player isolation than Candidate 4.
+## Current blocker
+Revive All + watching another video still causes repeated blinking/unwatchable playback. Candidate 5 active-session suspension was insufficient. This is the only remaining release/merge blocker.
+
+## UX backlog
+- Improve failed-player error/buttons UI.
+- Make Refresh source behavior clearer; user did not expect Player to exit to dashboard after tapping Refresh.
 
 ## Merge gate
-Do not merge PR #2 until:
-1. failed-player recovery has acceptable final behavior: Refresh/Revive remains PASS and Retry is either PASS or deliberately removed/disabled; and
-2. Revive All can run while another video plays with no blink/disturbance.
+Do not merge PR #2 until Revive All can run while another video plays with no blink/disturbance.
 
-Report-log-on-GitHub remains postponed. Return-to-Vivaldi unchanged.
+Direct tap APK install and failed-player recovery are no longer release blockers. Report-log-on-GitHub remains postponed. Return-to-Vivaldi unchanged.
 
 ## QA format
 When explicitly asking for APK QA: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
