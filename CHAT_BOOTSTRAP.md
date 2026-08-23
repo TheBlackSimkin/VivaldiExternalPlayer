@@ -32,7 +32,6 @@ Candidate 4 device QA result:
 - Retry playback from failed-player overlay: **FAIL**
 - Refresh source / Revive from failed-player overlay: **PASS**
 - Revive All while watching another video: **FAIL**
-- installer-log MD was not provided to the user during QA, so direct tap logging was not performed.
 
 Important interpretation:
 - Candidate 4 fixed the main visibility/exposure problem: recovery actions are visible.
@@ -40,11 +39,17 @@ Important interpretation:
 - Retry playback still fails; decide whether to fix it or remove/disable/rename it if it is not a reliable recovery action.
 - Revive All still disturbs foreground playback; Candidate 4 deferral was insufficient.
 
+## Direct APK install status
+Direct APK installation is no longer an app/signing blocker. User discovered the failure was specific to **Files by Google**. Installing the same APK through **Material Files** works correctly. ADB in-place update works and CI package/sign/alignment checks pass.
+
+Treat any remaining failure through Files by Google as a Files/device installer-routing quirk, not as evidence of an APK/signing problem and not as a 0.3.2 release blocker.
+
 ## Prior Candidate 3 result
 Candidate 3 installed/data PASS but recovery UI stayed fully failed: failed Player showed only the old Recovery options dialog with explanation + `CANCEL`, no Retry and no Refresh. Candidate 3 also exposed the Revive All + watching another video blinking/unwatchable bug.
 
 ## Already device-PASS in 0.3.2
 - ADB update/data retention
+- direct tap install via Material Files
 - consolidated gear menu / proper close icon
 - dashboard individual Revive
 - Check Status -> Player race/blink fix
@@ -58,7 +63,6 @@ Candidate 3 installed/data PASS but recovery UI stayed fully failed: failed Play
 ## Current blockers
 1. Retry playback from failed-player overlay is FAIL. Refresh works; Retry must become PASS or be intentionally removed/disabled/renamed.
 2. Revive All + watching another video still causes repeated blinking/unwatchable playback. Need stronger foreground-player isolation than Candidate 4.
-3. Direct tap APK update remains a separate Play Protect / installer-flow blocker. Use `INSTALLER_LOG_CAPTURE.md` to collect PackageInstaller / Play Protect reason codes. Do not uninstall the working app merely to test.
 
 ## Merge gate
 Do not merge PR #2 until:
