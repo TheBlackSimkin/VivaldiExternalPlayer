@@ -21,6 +21,24 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import java.util.WeakHashMap
 
+/** Runtime bridge so an in-player source refresh can update the visible title. */
+object PlayerTitleRuntime {
+    private val titles = WeakHashMap<PlayerActivity, TextView>()
+
+    fun register(activity: PlayerActivity, view: TextView) {
+        titles[activity] = view
+    }
+
+    fun update(activity: PlayerActivity, title: String) {
+        activity.title = title
+        titles[activity]?.text = title
+    }
+
+    fun unregister(activity: PlayerActivity) {
+        titles.remove(activity)
+    }
+}
+
 /** Adds the current source-provided video title to non-fullscreen Player UI. */
 class PlayerTitleProvider : ContentProvider() {
     override fun onCreate(): Boolean {
@@ -38,7 +56,6 @@ class PlayerTitleProvider : ContentProvider() {
 
 private object PlayerTitleLifecycle : Application.ActivityLifecycleCallbacks {
     private const val TITLE_TAG = "external_player_video_title"
-    private val titles = WeakHashMap<PlayerActivity, TextView>()
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         if (activity !is PlayerActivity) return
@@ -46,7 +63,7 @@ private object PlayerTitleLifecycle : Application.ActivityLifecycleCallbacks {
     }
 
     override fun onActivityDestroyed(activity: Activity) {
-        if (activity is PlayerActivity) titles.remove(activity)
+        if (activity is PlayerActivity) PlayerTitleRuntime.unregister(activity)
     }
 
     private fun attach(activity: PlayerActivity) {
@@ -78,8 +95,9 @@ private object PlayerTitleLifecycle : Application.ActivityLifecycleCallbacks {
             })
         }
 
-        titleView.text = activity.title?.toString().orEmpty().ifBlank { activity.getString(R.string.home_brand) }
-        titles[activity] = titleView
+        val currentTitle = activity.title?.toString().orEmpty().ifBlank { activity.getString(R.string.home_brand) }
+        titleView.text = currentTitle
+        PlayerTitleRuntime.register(activity, titleView)
 
         ViewCompat.setOnApplyWindowInsetsListener(activity.window.decorView) { _, insets ->
             titleView.visibility = if (insets.isVisible(WindowInsetsCompat.Type.systemBars())) View.VISIBLE else View.GONE
