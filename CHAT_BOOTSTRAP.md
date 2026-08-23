@@ -40,12 +40,17 @@ Candidate 5 device QA result:
 - user notes they would not expect Refresh source to exit to dashboard
 - Revive All while watching another video: **FAIL**
 
+Additional Candidate 5 UX notes:
+- Back/tab button from Player returns dashboard to beginning/top of tab list; expected return to same tab/list position.
+- When Player is not fullscreen, user expects current video title/name visible at top.
+- Video names/titles should load/display according to selected app language when source/resolver metadata supports localization; never fabricate translations.
+
 Important interpretation:
 - Direct APK install is now confirmed PASS via Material Files.
 - Failed-player recovery and in-player Refresh are functionally accepted.
 - Retry is no longer a blocker because it was deliberately removed/downgraded.
 - Remaining merge blocker is Revive All disturbing foreground playback.
-- UX backlog: improve failed-player error/buttons presentation and make Refresh source transition clearer.
+- UX backlog: improve failed-player error/buttons presentation, make Refresh source transition clearer, preserve dashboard scroll/anchor after Player, show title in non-fullscreen Player, and respect app language for source-provided localized titles where technically available.
 
 ## Direct APK install status
 Direct APK installation is no longer an app/signing blocker. User discovered the failure was specific to **Files by Google**. Installing the same APK through **Material Files** works correctly. ADB in-place update works and CI package/sign/alignment checks pass.
@@ -78,6 +83,9 @@ Revive All + watching another video still causes repeated blinking/unwatchable p
 ## UX backlog
 - Improve failed-player error/buttons UI.
 - Make Refresh source behavior clearer; user did not expect Player to exit to dashboard after tapping Refresh.
+- Preserve dashboard scroll/anchor when returning from Player via Back or tab button; user expects to return to the watched tab, not top/start of tab list.
+- Show current video title/name at top of Player when not fullscreen.
+- Make video title/name loading respect selected app language where source/resolver metadata supports it; never fabricate translated titles.
 
 ## Merge gate
 Do not merge PR #2 until Revive All can run while another video plays with no blink/disturbance.
