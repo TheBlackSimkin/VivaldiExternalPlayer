@@ -67,6 +67,36 @@ Interpretation:
 - Candidate 4 did **not** fully fix Retry playback.
 - Candidate 4 did **not** fix the Revive All foreground-player blinking/unwatchable regression.
 
+## Candidate 5 build
+App-code head: `d8d3dbd86696b84f1ac1c508d22a0dbd814331da`.
+- Actions `32663782445` / run #370
+- job `97253871521`
+- signed release artifact `9499473114`
+- signed artifact digest `sha256:349ebb8dc16dc449e6c3f31cfcd7c620ed361adf9aa366745268e2031efb303f`
+- build/sign/package/alignment PASS
+
+Candidate 5 changes after Candidate 4:
+- unreliable Retry playback removed/downgraded from the failed-player recovery actions;
+- in-player **Refresh source** remains the supported recovery path;
+- Revive All foreground isolation strengthened to suspend/requeue active coordinator-created `revive-*` private-display sessions when PlayerActivity resumes.
+
+## Candidate 5 device QA — mixed result
+User installed Candidate 5 directly from APK through **Material Files**.
+- direct APK install through Material Files: **PASS**
+- install/data: **PASS**
+- failed-player recovery UI: **PASS**
+- user notes recovery error/buttons UI should be improved later
+- in-player Refresh source / Revive: **PASS**
+- user notes they would not expect Refresh source to exit to dashboard
+- Revive All while watching another video: **FAIL**
+
+Interpretation:
+- Direct APK install is now confirmed PASS via Material Files.
+- Failed-player recovery and in-player Refresh are accepted functionally.
+- Retry is no longer a blocker because it was deliberately removed/downgraded.
+- Remaining merge blocker is Revive All disturbing foreground playback.
+- UX backlog: improve failed-player error/buttons presentation and reconsider whether Refresh source should stay in-player or show a clearer transition instead of unexpectedly exiting to dashboard.
+
 ## Direct APK installation — resolved as app/signing blocker
 Direct APK installation is **not an app/package/signing blocker**.
 
@@ -75,8 +105,11 @@ User discovered the failure was specific to **Files by Google**. Installing the 
 Track any remaining direct-tap issue as a **Files by Google / device installer routing quirk**, not a blocker for 0.3.2 and not evidence of a bad APK. `INSTALLER_LOG_CAPTURE.md` can remain for future diagnostics only.
 
 ## Current blockers before merge
-1. Fix or intentionally downgrade **Retry playback** behavior. Refresh source is now the working recovery path, but Retry must either work correctly or be removed/renamed/disabled when it cannot help.
-2. Fix **Revive All + watching another video** foreground disturbance. Candidate 4 deferral was insufficient.
+1. Fix **Revive All + watching another video** foreground disturbance. Candidate 5 active-session suspension was insufficient.
+
+## UX backlog
+- Improve failed-player error/buttons UI.
+- Make Refresh source behavior clearer; user did not expect Player to exit to dashboard after tapping Refresh.
 
 ## 0.3.2 features already device-PASS
 - ADB in-place update; existing data retained
@@ -91,16 +124,15 @@ Track any remaining direct-tap issue as a **Files by Google / device installer r
 - share while covered stays deferred until auth
 - direct player recovery actions visible
 - in-player Refresh source / Revive works
+- Retry recovery deliberately removed/downgraded
 - general player/dashboard regression spot-check
 
 Implementation/refactor retained: `TabMaintenanceController` central revival policy, `SystemAuthGate` shared auth, `AppPrivacyController`, `DashboardMenu`, thumbnail decoder contention isolation, PR CI checks.
 
 ## Merge/release gate
-Do not merge PR #2 until:
-1. failed-player recovery has acceptable final behavior: Refresh/Revive stays PASS and Retry is either PASS or deliberately removed/disabled; and
-2. Revive All can run while another video is playing without blinking/disturbing foreground playback.
+Do not merge PR #2 until Revive All can run while another video is playing without blinking/disturbing foreground playback.
 
-Direct tap installation is no longer a release blocker because Material Files installs the APK successfully.
+Direct tap installation is no longer a release blocker because Material Files installs the APK successfully. Failed-player recovery is functionally acceptable, with UI polish deferred.
 
 ## Deferred
 - Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
