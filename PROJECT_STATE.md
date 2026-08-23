@@ -21,7 +21,7 @@ CI verifies signing, package metadata and APK alignment.
 0.3.1 **Vivaldi Private + Copy URL** device QA is PASS. ADB in-place update works. APK SHA-256 `6e02fb3df1ea831a42d4d4c582a37c46f4b68772f9cd8f438ae821fc9fa0db51`.
 
 ## Active candidate: 0.3.2 / versionCode 5
-Branch `work/0.3.2-correctness-ux`, PR #2. **Do NOT merge yet.** One functional bug remains in player-side recovery and direct tap installation is still unresolved.
+Branch `work/0.3.2-correctness-ux`, PR #2. **Do NOT merge yet.**
 
 ### Candidate 2 build
 Code head used for Candidate 2 APK: `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
@@ -38,72 +38,59 @@ Code head used for Candidate 2 APK: `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
 - dashboard individual Revive and global Revive All use the same controller/coordinator path
 - status/player lifecycle isolation fixed the prior Check Status -> Player blinking race
 - PlayerActivity no longer triggers dashboard thumbnail warm-up; background `FrameExtractor` work is serialized/suspended during foreground playback
-- Media3 same-ExoPlayer decoder fallback enabled; reported decoder-init case now device PASS; no stream metadata forging
+- Media3 same-ExoPlayer decoder fallback enabled; reported decoder-init case device PASS; no stream metadata forging
 - Recently Closed browser-like history cap raised 12 -> 100; Close All with 25 tabs device PASS
 - dashboard operations consolidated under gear menu; close text X replaced with proper icon
 - `SystemAuthGate` shared by Private Favorites and app privacy UI
 - app privacy is manually activated, starts unlocked, uses a neutral covered surface, `FLAG_SECURE`, biometric/device credential, in-place reveal, and deferred incoming shares
 - PR CI validation, package/alignment/signing checks
 
-## Candidate 1 device QA summary
-- ADB update over 0.3.1: PASS; existing data retained
-- gear menu / close icon: PASS
-- dashboard individual Revive: PASS
-- in-player Revive/Refresh: FAIL
-- Check status -> Player: PASS
-- decoder case: PASS
-- Recently Closed / Close All with 25 tabs: PASS
-- privacy: SEMI-PASS; function worked but old curtain advertised locking and reveal minimized app
-- protected player regression: PASS
-- direct tap install: FAIL; Play Protect block
-
 ## Candidate 2 device QA — definitive state
-User installed Candidate 2 by ADB and reported:
 - ADB update: **PASS**
-- privacy appearance: **PASS**; neutral/inconspicuous presentation accepted
-- privacy authentication/reveal: **PASS**; no minimize problem
-- share while covered: **PASS**; deferred correctly until reveal
+- existing data retained: **PASS**
+- gear menu / close icon: **PASS**
+- dashboard individual Revive: **PASS**
+- Check status -> Player race: **PASS**
+- decoder case: **PASS**
+- Recently Closed / Close All with 25 tabs: **PASS**
+- privacy appearance: **PASS**
+- privacy authentication/reveal: **PASS**
+- share while covered: **PASS**
 - short regression check: **PASS**
 - in-player Revive/Refresh: **FAIL**
+- direct tap install: **FAIL**; Play Protect / installer-flow blocker
 
-### Exact remaining in-player recovery failure
-When playback is failed, the Player shows:
-`Playback failed. Tap Playback error to view or copy the technical details.`
+## Candidate 3 code checkpoint — recovery dialog fix
+Current code head after the recovery-dialog fix: `f23660479a0177b30ddeb16d030095058d79bfda` (`fix: render player recovery actions`). This is a code checkpoint only; CI/device QA has not yet been recorded.
 
-Tapping **Recovery options** opens an unattractive dialog containing only:
-- title: `Recovery options`
-- text: `Playback failed. These recovery actions retry normal playback paths only; they do not bypass protected access.`
-- `CANCEL`
+### Root cause found
+Candidate 2 did **not** build an empty recovery action list. `PlayerRecoveryController.showRecoveryDialog()` always added **Retry playback** and conditionally added Refresh/alternate actions.
 
-There are **no actionable recovery entries** such as Retry playback, Refresh source/Revive, alternate detected video, or browser method. Therefore `TabMaintenanceController.reviveFromPlayer(...)` is not being reached from this failed-player state despite the underlying centralized revival path existing and dashboard Revive already passing.
+The observed dialog showed the explanation text and only `CANCEL` because Android `AlertDialog` was configured with both `.setMessage(...)` and `.setItems(...)`. In this layout path the message scroll container remains active and the list rows are not inserted into the visible dialog. That exactly explains the device result without requiring a second recovery implementation or missing player attachment.
 
-### Next-session first task
-Inspect why `PlayerRecoveryController.showRecoveryDialog()` builds an empty `actions` list in the actual failed Player context. The code currently always intends to add Retry first, then conditionally Refresh/alternate actions, so an empty dialog suggests the recovery controller is attaching to a state/player instance where expected action construction or player/tab association is not valid, or the displayed dialog is coming from another/older recovery surface. Trace the actual runtime path before adding more logic.
+### Candidate 3 fix
+`PlayerRecoveryProvider.kt` now renders the explanation and action rows inside one explicit vertical custom dialog body. Each recovery action is a visible button. The underlying action construction and recovery behavior are unchanged:
+- Retry playback still prepares the same current ExoPlayer/source.
+- Refresh source still calls `TabMaintenanceController.reviveFromPlayer(...)`.
+- The centralized path remains `TabMaintenanceController -> TabRevivalCoordinator -> protected service/private-display`.
+- No parallel preparation implementation, second player, resolver policy change, or architecture change was introduced.
 
-Specifically verify:
-1. which class/dialog instance produces the observed exact text;
-2. whether `PlayerRecoveryController.attach()` is attached to the active `PlayerView.player` after failure;
-3. whether `currentPersistentTab()` sees `TabbedPlayerApplication.EXTRA_TAB_ID` in this launch path;
-4. whether the failed player was opened from a persistent dashboard tab or another launch path lacking tab ID;
-5. whether another recovery dialog implementation exists and is being shown instead;
-6. once identified, make player-side **Refresh source / Revive** call the same authoritative `TabMaintenanceController` path that already passes from the dashboard.
+### Next required step
+Wait for CI/build metadata for `f23660479a0177b30ddeb16d030095058d79bfda`, then install the resulting signed 0.3.2 APK by ADB in-place and perform a focused player-recovery device QA. The minimum acceptance is:
+1. failed Player -> Recovery options visibly shows Retry playback;
+2. persistent-tab failure also visibly shows Refresh source;
+3. Refresh source queues the same tab through the authoritative revive path and returns to dashboard/preparation normally;
+4. player/dashboard regression remains clean.
 
-Do not reintroduce a parallel service/preparation implementation.
+Do not merge PR #2 until this is device PASS and both state files are refreshed with final build IDs/results.
 
 ## Decoder case
 Reported HLS playback previously failed with `ERROR_CODE_DECODER_INIT_FAILED`, Qualcomm `c2.qti.avc.decoder`, `NO_EXCEEDS_CAPABILITIES`, and implausible ~12857 fps metadata. 0.3.2 same-ExoPlayer decoder fallback device retest is **PASS**. Do not rewrite/forge stream metadata without reproducible proof.
 
-## Direct APK installation — confirmed unresolved blocker
-Standalone extracted APK normal tap update is **FAIL**. Device reports `La aplicación no se ha instalado`; Google Play Protect then shows `Aplicación bloqueada para proteger tu dispositivo`, saying it does not know another app from this developer / it may be unsafe. Tapping visible `Instalar de todas formas` does not continue.
+## Direct APK installation — unresolved separate blocker
+Standalone extracted APK normal tap update is **FAIL**. Device reports `La aplicación no se ha instalado`; Google Play Protect then shows `Aplicación bloqueada para proteger tu dispositivo`. Tapping visible `Instalar de todas formas` does not continue.
 
 CI proves package/sign/alignment sanity and ADB in-place update proves package/signature continuity. Treat this as a Play Protect / installer-flow blocker, not a signing failure. Future investigation should capture PackageInstaller/PackageManager/Play Protect logs/reason codes during a failed tap. Do not uninstall the working app merely to test.
-
-## Merge/release gate
-Do not merge PR #2 until:
-1. in-player recovery exposes a working Refresh/Revive action and device QA passes;
-2. state files are refreshed with that final result.
-
-Direct tap installation remains a separate known blocker; ADB in-place functional QA is valid meanwhile.
 
 ## Deferred
 - Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
