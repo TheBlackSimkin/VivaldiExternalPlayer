@@ -90,12 +90,17 @@ User installed Candidate 5 directly from APK through **Material Files**.
 - user notes they would not expect Refresh source to exit to dashboard
 - Revive All while watching another video: **FAIL**
 
+Additional Candidate 5 UX notes from user:
+- When leaving a video with Back or the tab button, dashboard returns to the beginning/top of the tab list. Expected: return to the same tab/list position where the watched video was.
+- When not fullscreen in Player, expected: show the video name/title at the top of the screen.
+- Video names/titles should load/display according to the language selected in the app when the resolver/source provides localized metadata; do not fabricate translations.
+
 Interpretation:
 - Direct APK install is now confirmed PASS via Material Files.
 - Failed-player recovery and in-player Refresh are accepted functionally.
 - Retry is no longer a blocker because it was deliberately removed/downgraded.
 - Remaining merge blocker is Revive All disturbing foreground playback.
-- UX backlog: improve failed-player error/buttons presentation and reconsider whether Refresh source should stay in-player or show a clearer transition instead of unexpectedly exiting to dashboard.
+- UX backlog: improve failed-player error/buttons presentation; reconsider whether Refresh source should stay in-player or show a clearer transition instead of unexpectedly exiting to dashboard; preserve dashboard scroll/anchor when returning from Player; show title in non-fullscreen Player; respect app language for source-provided localized titles where technically available.
 
 ## Direct APK installation — resolved as app/signing blocker
 Direct APK installation is **not an app/package/signing blocker**.
@@ -110,6 +115,9 @@ Track any remaining direct-tap issue as a **Files by Google / device installer r
 ## UX backlog
 - Improve failed-player error/buttons UI.
 - Make Refresh source behavior clearer; user did not expect Player to exit to dashboard after tapping Refresh.
+- Preserve dashboard scroll/anchor when returning from Player via Back or tab button; user expects to return to the watched tab, not top/start of tab list.
+- Show current video title/name at top of Player when not fullscreen.
+- Make video title/name loading respect selected app language where source/resolver metadata supports it; never fabricate translated titles.
 
 ## 0.3.2 features already device-PASS
 - ADB in-place update; existing data retained
