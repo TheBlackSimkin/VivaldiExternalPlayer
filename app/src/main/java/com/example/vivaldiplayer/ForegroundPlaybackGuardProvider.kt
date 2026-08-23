@@ -13,12 +13,12 @@ import androidx.media3.ui.PlayerView
 import java.util.WeakHashMap
 
 /**
- * Process-local foreground playback signal used by maintenance work.
+ * Process-local foreground playback signal used by UI/privacy work.
  *
- * It is intentionally tiny and conservative: it does not expose Player or media
- * state, only whether a PlayerActivity is currently resumed. Background revive
- * work can use this to defer starting another private-display resolver session
- * while the user is actively watching a video.
+ * Candidate 6 no longer uses this signal to cancel the protected Revive All
+ * private-display queue. Instead, PlayerActivity is barred from the legacy
+ * default-display preparation host path, allowing device QA to verify whether
+ * true isolated background revival can coexist with foreground playback.
  */
 object ForegroundPlaybackState {
     @Volatile
@@ -34,15 +34,9 @@ object ForegroundPlaybackState {
 /**
  * Privacy guard for foreground-only playback.
  *
- * Unified preload may briefly foreground BackgroundPreparationActivity before
- * that excluded task moves behind the player. A small delayed check prevents
- * that internal hand-off from pausing playback if the SAME PlayerActivity has
- * already resumed. Home, lock, browser/app switching and dashboard/settings
- * navigation leave the player non-resumed, so they still pause reliably.
- *
- * 0.3.2 also makes codec ownership calmer: dashboard thumbnail warm-up belongs
- * to MainActivity only. Starting PlayerActivity must not launch background
- * FrameExtractors for every missing tab thumbnail while ExoPlayer is acquiring
+ * Home, lock, browser/app switching and dashboard/settings navigation leave the
+ * player non-resumed, so playback still pauses reliably. Starting PlayerActivity
+ * also pauses thumbnail extraction so FrameExtractor work does not compete with
  * the real video decoder.
  */
 class ForegroundPlaybackGuardProvider : ContentProvider() {
@@ -76,7 +70,6 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
         if (activity is PlayerActivity) {
             resumedPlayers[activity] = true
             ForegroundPlaybackState.setPlayerForeground(true)
-            TabRevivalCoordinator.suspendForForegroundPlayback()
             TabThumbnailCapture.pauseBackgroundCapture()
         } else if (activity is MainActivity) {
             ForegroundPlaybackState.setPlayerForeground(false)
@@ -89,6 +82,7 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
         if (activity !is PlayerActivity) return
         resumedPlayers.remove(activity)
         ForegroundPlaybackState.setPlayerForeground(false)
+        DashboardReturnState.remember(activity.intent.getStringExtra(TabbedPlayerApplication.EXTRA_TAB_ID))
         schedulePrivacyPause(activity)
     }
 
