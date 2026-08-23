@@ -12,6 +12,8 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.media3.common.PlaybackException
@@ -189,20 +191,40 @@ private class PlayerRecoveryController(
             }
         }
 
-        AlertDialog.Builder(activity)
-            .setTitle(R.string.recovery_options)
-            .setMessage(
-                when {
-                    lastFailureWasDecoderInit -> R.string.decoder_compatibility_note
-                    lastFailureWasDnsLookup -> R.string.recovery_dns_explanation
-                    else -> R.string.recovery_explanation
+        val explanationRes = when {
+            lastFailureWasDecoderInit -> R.string.decoder_compatibility_note
+            lastFailureWasDnsLookup -> R.string.recovery_dns_explanation
+            else -> R.string.recovery_explanation
+        }
+
+        val content = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(4), dp(24), dp(4))
+            addView(TextView(activity).apply {
+                text = activity.getString(explanationRes)
+                setPadding(0, dp(8), 0, dp(12))
+            })
+        }
+
+        lateinit var dialog: AlertDialog
+        actions.forEach { action ->
+            content.addView(Button(activity).apply {
+                isAllCaps = false
+                text = action.label
+                gravity = Gravity.START or Gravity.CENTER_VERTICAL
+                setOnClickListener {
+                    dialog.dismiss()
+                    action.run()
                 }
-            )
-            .setItems(actions.map { it.label }.toTypedArray()) { _, which ->
-                actions.getOrNull(which)?.run?.invoke()
-            }
+            })
+        }
+
+        dialog = AlertDialog.Builder(activity)
+            .setTitle(R.string.recovery_options)
+            .setView(content)
             .setNegativeButton(R.string.cancel, null)
-            .show()
+            .create()
+        dialog.show()
     }
 
     /**
