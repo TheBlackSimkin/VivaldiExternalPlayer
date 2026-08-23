@@ -23,20 +23,42 @@ CI verifies signing, package metadata and APK alignment.
 ## Active candidate: 0.3.2 / versionCode 5
 Branch `work/0.3.2-correctness-ux`, PR #2. **Do NOT merge yet.**
 
-### Candidate 2 build
-Code head `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`.
-- Actions `32595557947` / run #342
-- job `97085776140`
-- signed artifact `9481470902`
-- release APK SHA-256 `e756e65670f06e7c2be1e4aa58022fed5c71696c4df3178e051196b34a50c01c`
+### Candidate 3 device QA — definitive result
+User installed Candidate 3 by ADB over the existing signed build.
+- ADB update: **PASS**
+- existing data retained: **PASS**
+- in-player recovery UI fix: **FAIL**
 
-### Candidate 3 build
-Branch head `b7e78ecff435ed1c4857ea837a0b57a516fea95b`.
-- recovery-dialog code commit `f23660479a0177b30ddeb16d030095058d79bfda`
-- Actions `32649668990` / run #351
-- job `97219184742`
-- signed artifact `9495855376`
-- build/sign/package/alignment PASS
+Observed behavior stayed unchanged for the entire failed-player session:
+- Player shows `Playback failed. Tap Playback error to view or copy the technical details.`
+- tapping **Recovery options** shows title `Recovery options`
+- explanatory text remains visible
+- only `CANCEL` is visible/actionable
+- no visible Retry playback
+- no visible Refresh source / Revive
+- therefore Retry and Refresh cannot be executed from the failed Player UI
+
+Candidate 3 also exposed a second blocker:
+**Revive All running + watching another video during revival = repeated blinking / effectively unwatchable video.**
+
+## Candidate 4 code checkpoint — CI pending
+Latest app-code head: `9fdc16f2da7191b23c8043add636c4a5a3ad6cd4`.
+
+Changes after Candidate 3 failure:
+- `e2bbcd7ae95aa817a18a0238329aeb20d29c34e2` — `fix: expose direct player recovery buttons`
+  - failed Player now gets direct overlay buttons for **Retry playback**, **Refresh source**, and **Recovery options**;
+  - this avoids depending on AlertDialog row rendering for the critical actions;
+  - Refresh source still calls `TabMaintenanceController.reviveFromPlayer(...)` and therefore the protected centralized revival path.
+- `03f859f068ec38d097e88a211ea7425e3ed14414` — `fix: expose foreground playback state`
+  - adds a minimal process-local `ForegroundPlaybackState` signal without exposing media/player details.
+- `9fdc16f2da7191b23c8043add636c4a5a3ad6cd4` — `fix: defer revive sessions during playback`
+  - queued Revive All work remains queued while a PlayerActivity is foreground;
+  - new private-display revival sessions are not started during active playback;
+  - protected service/private-display architecture remains unchanged.
+- `7b19a251c60f6ea4a0b3f657e6ba8d97e09c569e` — `docs: add direct installer log capture steps`
+  - adds `INSTALLER_LOG_CAPTURE.md` to gather PackageInstaller / Play Protect reason codes for the standalone tap-install blocker.
+
+Build status at this handoff: Actions run `32654832188` / run #356 was in progress for code head `9fdc16f2da7191b23c8043add636c4a5a3ad6cd4`. Do not issue QA until this run finishes successfully and the signed release artifact is known.
 
 ## 0.3.2 features already device-PASS
 - ADB in-place update; existing data retained
@@ -52,53 +74,17 @@ Branch head `b7e78ecff435ed1c4857ea837a0b57a516fea95b`.
 
 Implementation/refactor retained: `TabMaintenanceController` central revival policy, `SystemAuthGate` shared auth, `AppPrivacyController`, `DashboardMenu`, thumbnail decoder contention isolation, PR CI checks.
 
-## Candidate 3 device QA — definitive result
-User installed Candidate 3 by ADB over the existing signed build.
-- ADB update: **PASS**
-- existing data retained: **PASS**
-- in-player recovery UI fix: **FAIL**
-
-Observed behavior is materially unchanged from Candidate 2 for the entire failed-player session:
-- Player shows `Playback failed. Tap Playback error to view or copy the technical details.`
-- tapping **Recovery options** shows title `Recovery options`
-- explanatory text remains visible
-- only `CANCEL` is visible/actionable
-- no visible Retry playback
-- no visible Refresh source / Revive
-- therefore Retry and Refresh cannot be executed from the failed Player UI
-
-This disproves the earlier diagnosis that simply replacing `.setMessage(...) + .setItems(...)` with a custom vertical body would solve the real device issue. The branch file does contain the custom-button implementation, yet the installed Candidate 3 still presents the old user-visible behavior. Treat this as evidence that the actual runtime recovery surface/path is not yet understood. Do not keep patching the dialog by assumption.
-
-### Required recovery investigation
-Trace the exact runtime source of the visible `Recovery options` surface on-device:
-1. prove which class creates the dialog the user sees;
-2. prove whether `PlayerRecoveryProvider`/`PlayerRecoveryController` is active in that PlayerActivity instance;
-3. prove whether the installed signed APK actually contains and executes the Candidate 3 custom-button code;
-4. search for any second/legacy recovery dialog or resource/layout path;
-5. only after runtime proof, make player-side Refresh/Revive call the already-authoritative `TabMaintenanceController -> TabRevivalCoordinator -> protected service/private-display` path.
-
-## New Candidate 3 regression: Revive All disturbs foreground playback
-User reports a new device bug:
-**Revive All running + watching another video during revival = repeated blinking / effectively unwatchable video.**
-
-This matches the user-visible symptom of the previously fixed **Check Status + watching a video** race, but occurs specifically while bulk revival is running.
-
-Important facts:
-- `TabMaintenanceController.reviveAll(...)` queues stale/error tabs through `TabRevivalCoordinator`.
-- `TabRevivalCoordinator` serializes them and calls `BackgroundPreparationKeepAliveService.acquire(...)` one at a time.
-- protected service code is intended to use only app-private virtual display + Presentation/WebView and explicitly not launch PlayerActivity/ExoPlayer.
-- `ForegroundPlaybackGuardProvider` currently pauses a PlayerActivity after pause/stop unless that same PlayerActivity has resumed within 200 ms.
-
-Do not assume root cause yet. Compare revive-time lifecycle/display/service behavior against the already-fixed Check Status foreground-isolation behavior and capture the exact lifecycle/runtime disturbance before patching. The correct fix must preserve uninterrupted foreground playback while Revive All runs and must not weaken the protected #234 preparation architecture.
-
 ## Direct APK installation — unresolved separate blocker
 Standalone extracted APK normal tap update is **FAIL** due Play Protect / installer flow. CI and successful ADB in-place update prove package/sign/alignment/signature continuity. Do not uninstall the working app merely to test.
 
+`INSTALLER_LOG_CAPTURE.md` now contains the logcat capture steps needed to gather PackageInstaller / Play Protect reason codes during the failed tap flow.
+
 ## Merge/release gate
 Do not merge PR #2 until BOTH are device-PASS:
-1. failed-player Recovery options exposes working Retry and Refresh/Revive actions;
+1. failed-player Recovery options / direct overlay exposes working Retry and Refresh/Revive actions;
 2. Revive All can run while another video is playing without blinking/disturbing foreground playback.
-Then refresh both state files with final build IDs/results.
+
+Direct tap installation remains a separate known blocker unless logs identify an app-side package issue.
 
 ## Deferred
 - Report log on GitHub shortcut postponed; never embed reusable GitHub credentials.
