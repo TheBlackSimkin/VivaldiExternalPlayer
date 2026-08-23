@@ -18,56 +18,61 @@ Preserve one ExoPlayer and current resolver/quality policy. Build #278 is accept
 ## Active candidate: 0.3.2 / versionCode 5
 Branch `work/0.3.2-correctness-ux`, PR #2. **DO NOT MERGE YET.**
 
-Candidate 2 APK code head `ac44109d97fe115310c7c31ed2c7d6418d77b1a1`:
-- Actions `32595557947` / run #342
-- job `97085776140`
-- signed artifact `9481470902`
-- artifact ZIP SHA-256 `b64f8842f5412f36ce6d314331e7df9edc7d760486c479ac0bdd4528d98029de`
-- release APK SHA-256 `e756e65670f06e7c2be1e4aa58022fed5c71696c4df3178e051196b34a50c01c`
-- build/package/alignment/signing PASS
+Candidate 3:
+- recovery code commit `f23660479a0177b30ddeb16d030095058d79bfda`
+- branch/build head `b7e78ecff435ed1c4857ea837a0b57a516fea95b`
+- Actions `32649668990` / run #351
+- job `97219184742`
+- signed artifact `9495855376`
+- build/sign/package/alignment PASS
 
-## 0.3.2 features already device-PASS
-- ADB in-place update; existing data retained
-- consolidated gear menu and proper close icon
+## Candidate 3 device result — START HERE
+ADB in-place update PASS; existing data retained.
+
+### Failure 1: player recovery UI still fully failed
+Candidate 3 did NOT change the user-visible failed-player recovery behavior. For the entire failed-player session the user still sees:
+- `Playback failed. Tap Playback error to view or copy the technical details.`
+- tapping **Recovery options** shows the same `Recovery options` title + explanatory text
+- only `CANCEL` is visible/actionable
+- no Retry playback
+- no Refresh source / Revive
+
+Therefore Candidate 3 recovery is a full user-visible FAIL. The custom-button code is present in the branch file, so the earlier `setMessage + setItems` diagnosis is insufficient/wrong for the real device path. Do not keep changing dialog layout by assumption. First prove which runtime class/surface actually creates the visible dialog and whether the signed APK executes `PlayerRecoveryProvider`/`PlayerRecoveryController` at all.
+
+### Failure 2: new Revive All + foreground playback blink
+New device regression:
+**Revive All running + watching another video during revival = repeated blinking / effectively unwatchable video.**
+
+This resembles the old Check Status + foreground Player blink symptom, which was previously fixed, but now occurs while bulk revival is active.
+
+Relevant code facts:
+- `TabMaintenanceController.reviveAll()` -> `TabRevivalCoordinator`
+- coordinator serializes revival and calls `BackgroundPreparationKeepAliveService.acquire()`
+- protected path should remain service -> app-private virtual display -> Presentation/WebView; no visible prep Activity, no PlayerActivity, no second ExoPlayer
+- `ForegroundPlaybackGuardProvider` currently schedules a pause 200 ms after PlayerActivity pause/stop unless the same player resumed
+
+Do not assume the cause. Trace actual lifecycle/display/service events during Revive All while PlayerActivity is foreground, compare with the already-fixed Check Status isolation, and fix the disturbance without weakening protected #234 architecture.
+
+## Already device-PASS in 0.3.2
+- ADB update/data retention
+- consolidated gear menu / proper close icon
 - dashboard individual Revive
-- Check status -> Player race/blinking fix
-- reported decoder-init case with same-ExoPlayer fallback
-- Recently Closed / Close All tested with 25 tabs; history cap 100
-- neutral/inconspicuous privacy screen
-- privacy authentication reveals in place; no minimize
-- share while covered stays deferred until auth
-- general player/dashboard regression spot-check
+- Check Status -> Player race/blink fix
+- decoder fallback case
+- Recently Closed / Close All with 25 tabs; cap 100
+- privacy appearance/auth/reveal/deferred share
+- general regression spot-check
 
-Implementation/refactor retained: `TabMaintenanceController` central revival policy, `SystemAuthGate` shared auth, `AppPrivacyController`, `DashboardMenu`, thumbnail decoder contention isolation, PR CI checks.
+## Merge gate
+Do not merge PR #2 until BOTH are device-PASS:
+1. failed-player Recovery options shows working Retry and Refresh/Revive;
+2. Revive All can run while another video plays with no blink/disturbance.
+Then refresh both state files with final build metadata/results.
 
-## Candidate 3 code checkpoint — START HERE
-Candidate 2 in-player Revive/Refresh failed because **Recovery options** showed the explanation and only `CANCEL`.
+## Direct installer
+Normal tap APK update remains blocked by Play Protect / installer flow. ADB in-place update is valid for QA. Do not uninstall the working app merely to test.
 
-Root cause is now identified: `PlayerRecoveryController.showRecoveryDialog()` did construct actions (Retry was unconditional), but Android `AlertDialog` was configured with both `.setMessage(...)` and `.setItems(...)`. In that layout path the message content remains visible while the item list is not inserted, producing exactly the observed dialog.
-
-Fix commit: `f23660479a0177b30ddeb16d030095058d79bfda` (`fix: render player recovery actions`).
-
-The fix changes only dialog presentation:
-- explanation + action rows now share one explicit custom vertical dialog body;
-- actions are visible buttons;
-- Retry playback behavior is unchanged;
-- Refresh source still calls `TabMaintenanceController.reviveFromPlayer(...)` and therefore the same `TabMaintenanceController -> TabRevivalCoordinator -> protected service/private-display` path that dashboard Revive already passes;
-- no second player, resolver-policy change, parallel preparation path, or architecture change.
-
-`PROJECT_STATE.md` was refreshed after this finding. Current documentation commit after that refresh: `9a7919577d18dc144a4a7e615d125c28a73eac7b`.
-
-## Next required work
-1. Record CI/build metadata for the latest branch head containing the Candidate 3 recovery-dialog fix.
-2. Install the resulting signed 0.3.2 APK by ADB in-place.
-3. Focused device QA: failed Player -> Recovery options must visibly show Retry; a persistent tab must also show Refresh source; Refresh source must queue the same tab through the protected centralized revival path; short regression check.
-4. If PASS, refresh both state files and only then consider merging PR #2.
-
-## Direct installer — separate unresolved issue
-Normal standalone APK tap update FAILS. Android reports `La aplicación no se ha instalado`, then Google Play Protect shows `Aplicación bloqueada para proteger tu dispositivo`; tapping `Instalar de todas formas` does not continue.
-
-CI and successful ADB in-place update prove package/sign/alignment/signature continuity. Treat as Play Protect / installer-flow blocker, NOT a signing failure. Future investigation: capture PackageInstaller/PackageManager/Play Protect logs/reason codes during failed tap. Do not uninstall the working app merely to test.
-
-Report log on GitHub remains postponed. Return-to-Vivaldi unchanged. Continue disciplined cleanup only; remove old paths only when proven unused.
+Report-log-on-GitHub remains postponed. Return-to-Vivaldi unchanged.
 
 ## QA format
 When explicitly asking for APK QA: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
