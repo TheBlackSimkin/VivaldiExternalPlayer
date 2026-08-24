@@ -1,7 +1,7 @@
 # Temporary Chat Bootstrap — Vivaldi External Player
 
 Repository: `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
-Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. **CANDIDATE 7 DEVICE QA PASSED; PR #2 IS READY TO MERGE.** Read `PROJECT_STATE.md` and this file first.
+`main` is authoritative. PR #2 (`0.3.2 correctness, privacy and dashboard cleanup`) is merged. Candidate 7 device QA and latest PR-head CI both passed. Read `PROJECT_STATE.md` and this file first.
 
 ## Protected rules
 Android UI bilingual English/Spanish; comments English. PH/HH are technical playback targets only; never inspect/describe media content or thumbnails. Never bypass DRM/paywalls/auth/geo/CAPTCHA, import credentials, add background playback, or add a second ExoPlayer.
@@ -10,10 +10,11 @@ Protected Build #234 prep:
 `short share Activity -> persistent pending tab -> foreground service -> app-private virtual display -> non-Activity Presentation/WebView -> direct yt-dlp -> serialized browser fallback -> READY / ERROR / NEEDS_ATTENTION`.
 Preserve one ExoPlayer, current resolver order and protected quality policy. Build #278 player/UI baseline; Build #249 palette protected.
 
-## Released baseline
-0.3.1 / versionCode 4. Permanent signer SHA-256:
+Permanent signer SHA-256:
 `8C:87:E1:F6:A7:A4:87:3F:12:CB:25:BA:34:8B:EF:66:50:57:15:9F:16:A6:5B:90:59:E5:E1:D7:C0:B9:5E:7C`.
-Material Files direct APK update works; Files by Google was the installer-specific failure.
+
+## Previous released baseline
+0.3.1 / versionCode 4. Material Files direct APK update works; Files by Google was the installer-specific failure.
 
 ## Candidate 6 — device QA baseline
 App-code head `9a7f1efe8ba46e9696222b0a191a3383a32802ab`; Actions `32669641573` / #402; job `97268348395`; signed artifact `9501042542`.
@@ -34,7 +35,7 @@ Device QA:
 ## Revive All blocker — resolved in Candidate 6
 Root cause: `UnifiedPreparationCoordinator` accepted `PlayerActivity` as a hidden/default-display preparation host, so Player resume/preload could launch `BackgroundPreparationActivity` for queued work. Candidate 6 bars Player from that legacy path and allows only the protected service/private-display revival coordinator to continue in true background.
 
-The exact previously failing device sequence now PASSes, including continued revival while watching. Do not alter this path without regression evidence.
+The exact previously failing device sequence PASSes, including continued revival while watching. Do not alter this path without regression evidence.
 
 ## Candidate 7 — ACCEPTED
 Focused title-fix app-code head `a1a0ed1dd53c6ec44ed76dd9307f100a6a9fae1b`.
@@ -65,8 +66,22 @@ User reported all four final checks PASS:
 
 The historical diagnostics-dialog concern did not prevent acceptance of the recovery flow.
 
-## Merge gate
-**PR #2 IS READY TO MERGE.** After merge, verify the final `main` CI/build/sign/package/alignment result and record the final release run/artifact IDs before declaring 0.3.2 released.
+## Final PR-head CI and merge
+Latest PR-head commit `aa81c55c1d7bd1b60283f9721c029cd62bf17d4f`.
+- Actions `32679562829` / run #411
+- job `97293721788`
+- signed artifact `9503753613`
+- signed digest `sha256:de9cdf59d5e2572b5ce925294d3e51da538942b630ba95a321ddf3e18fb62225`
+- debug artifact `9503754068`
+- build/sign/package/alignment PASS
+
+PR #2 merged into `main` at `601d32e11355dc9452d01b2f9d4877b1355e1082`.
+
+## START HERE
+0.3.2 / versionCode 5 is merged and device-accepted. Before declaring release provenance fully closed, identify the push-triggered `main` Actions run/artifacts and record its build/sign/package/alignment result. `.github/workflows/build-apk.yml` is configured for pushes to `main`.
+
+Explicitly postponed: `Report log on GitHub` shortcut.
+Return-to-Vivaldi behavior remains unchanged.
 
 ## QA format
 When asking for APK QA: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
