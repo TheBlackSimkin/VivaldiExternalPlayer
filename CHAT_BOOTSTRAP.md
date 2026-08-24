@@ -1,7 +1,7 @@
 # Temporary Chat Bootstrap — Vivaldi External Player
 
 Repository: `https://github.com/TheBlackSimkin/VivaldiExternalPlayer`
-Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. **DO NOT MERGE YET.** Read `PROJECT_STATE.md` and this file first.
+Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. **CANDIDATE 7 DEVICE QA PASSED; PR #2 IS READY TO MERGE.** Read `PROJECT_STATE.md` and this file first.
 
 ## Protected rules
 Android UI bilingual English/Spanish; comments English. PH/HH are technical playback targets only; never inspect/describe media content or thumbnails. Never bypass DRM/paywalls/auth/geo/CAPTCHA, import credentials, add background playback, or add a second ExoPlayer.
@@ -36,7 +36,7 @@ Root cause: `UnifiedPreparationCoordinator` accepted `PlayerActivity` as a hidde
 
 The exact previously failing device sequence now PASSes, including continued revival while watching. Do not alter this path without regression evidence.
 
-## Candidate 7 — START HERE
+## Candidate 7 — ACCEPTED
 Focused title-fix app-code head `a1a0ed1dd53c6ec44ed76dd9307f100a6a9fae1b`.
 - Actions `32670860768` / run #407
 - job `97271395006`
@@ -56,17 +56,17 @@ Candidate 7 only changes `PlayerTitleProvider`; Candidate 6 Revive All architect
 - non-fullscreen/system-bars-visible only; fullscreen stays clean;
 - no translation/inference/content inspection.
 
-## Remaining focused QA
-Only these are needed before merge consideration:
-1. Candidate 7 non-fullscreen title fix.
-2. Candidate 6/7 failed-player recovery UI (previous test 5).
-3. Candidate 6/7 Refresh source stays in Player and reloads same persistent tab/ExoPlayer (previous test 6).
-4. One short Revive All + foreground playback sanity check to ensure the Candidate 6 fix did not regress.
+## Final Candidate 7 device QA
+User reported all four final checks PASS:
+1. Non-fullscreen Player title fix — **PASS**.
+2. Failed-player recovery UI — **PASS**.
+3. Refresh source remains in Player and reloads through the same persistent-tab/single-ExoPlayer path — **PASS**.
+4. Revive All + foreground playback sanity check — **PASS**.
 
-Historical `PlayerActivity` automatic diagnostics dialog still exists. Recovery QA must report whether it appears first/obstructs the new recovery panel.
+The historical diagnostics-dialog concern did not prevent acceptance of the recovery flow.
 
 ## Merge gate
-**DO NOT MERGE PR #2 YET.** Revive All blocker is device-PASS. Merge/release requires the four focused Candidate 7 checks above to pass or have explicitly accepted final behavior.
+**PR #2 IS READY TO MERGE.** After merge, verify the final `main` CI/build/sign/package/alignment result and record the final release run/artifact IDs before declaring 0.3.2 released.
 
 ## QA format
 When asking for APK QA: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
