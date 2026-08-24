@@ -1,6 +1,6 @@
 # Vivaldi External Player — Project State
 
-Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. **Do not merge yet.** Read this file and `CHAT_BOOTSTRAP.md` before substantive work.
+Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. **Candidate 7 device QA is complete and PR #2 is ready to merge.** Read this file and `CHAT_BOOTSTRAP.md` before substantive work.
 
 ## Protected architecture / safety
 - Android UI bilingual English/Spanish; comments English.
@@ -51,8 +51,6 @@ User reported:
 10. Diagnostics/History access: **PASS**.
 11. Short regression suite: **PASS**.
 
-Candidate 6 is therefore a near-pass. Remaining acceptance work is the title overlay bug plus focused verification of recovery tests 5 and 6.
-
 ### Candidate 6 approved UX/features status
 - dashboard return anchor — device PASS;
 - language-aware source/title behavior — device PASS;
@@ -60,12 +58,9 @@ Candidate 6 is therefore a near-pass. Remaining acceptance work is the title ove
 - per-tab speed/manual-quality preference memory — device PASS;
 - search/filter accordions — device PASS;
 - Diagnostics/History across relevant collections — device PASS;
-- general regression check — device PASS;
-- non-fullscreen title overlay — device FAIL;
-- cleaner failed-player recovery UI — not tested in Candidate 6;
-- in-player Refresh/reload — not tested in Candidate 6.
+- general regression check — device PASS.
 
-## Candidate 7 — focused title-fix build ready
+## Candidate 7 — accepted release candidate
 App-code head: `a1a0ed1dd53c6ec44ed76dd9307f100a6a9fae1b`.
 - Actions run `32670860768` / run #407
 - job `97271395006`
@@ -87,14 +82,20 @@ Candidate 7 is intentionally narrow and does **not** change the Candidate 6 Revi
 
 No machine translation, title inference, media-content inspection, resolver-order changes, background-playback changes, or extra ExoPlayer were introduced.
 
-### Known recovery note
-`PlayerActivity` still contains its historical automatic full diagnostics dialog on playback error. Candidate 6 recovery tests 5 and 6 were not performed, so whether that historical popup materially obstructs the new recovery panel remains unverified. Candidate 7 QA should test these two paths.
+### Candidate 7 final device QA — PASS
+User reported all four merge-gate checks PASS on Candidate 7:
+1. Non-fullscreen Player title fix: **PASS**.
+2. Failed-player recovery UI: **PASS**.
+3. In-player Refresh source remains in Player and reloads the same persistent tab/ExoPlayer path: **PASS**.
+4. Revive All + foreground playback sanity/regression check: **PASS**.
+
+The historical automatic diagnostics-dialog concern did not block acceptance in the reported recovery test.
 
 ### Language/title rule
 Never machine-translate, infer, rewrite, or invent titles. Prefer legitimate source-provided metadata from the app-selected language source/site variant where available; otherwise preserve original metadata/title.
 
 ## Merge gate
-**Do not merge PR #2 yet.** The original Revive All merge blocker is device-PASS in Candidate 6. Before merge/release, Candidate 7 must device-verify the non-fullscreen title fix and the previously skipped failed-player recovery UI + in-player Refresh source. Also do a short Revive All foreground sanity check to guard against regression.
+**PR #2 is READY TO MERGE.** Candidate 7 passed all remaining device checks. After merge, verify the final `main` build/sign/package/alignment results and record the final release artifact/run IDs before declaring 0.3.2 released.
 
 ## QA format
 When asking user to test an APK: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
