@@ -85,6 +85,15 @@ class BackgroundPreparationKeepAliveService : Service(),
         fun release(token: String) {
             liveInstance.get()?.releaseLease(token)
         }
+
+        /**
+         * Close an already-running revival session when the user starts foreground
+         * playback. Normal BG-share sessions are not targeted; the coordinator
+         * only supplies tokens it created with the revive-* prefix.
+         */
+        fun suspendRevivalSession(token: String) {
+            liveInstance.get()?.suspendActiveRevivalSession(token)
+        }
     }
 
     private data class TabSnapshot(
@@ -239,6 +248,21 @@ class BackgroundPreparationKeepAliveService : Service(),
             }
             releaseLease(token)
         }
+    }
+
+    private fun suspendActiveRevivalSession(token: String) {
+        if (!token.startsWith("revive-")) return
+        val session = sessions[token] ?: return
+
+        OperationLog.record(
+            this,
+            event = "PRIVATE_PRESENTATION_REVIVAL_SUSPENDED_FOR_PLAYER",
+            detail = "token=$token activeSessions=${sessions.size}"
+        )
+
+        runCatching { session.closeFromServiceDestroy() }
+        sessions.remove(token)
+        releaseLease(token)
     }
 
     override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {

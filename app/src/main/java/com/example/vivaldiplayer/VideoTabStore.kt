@@ -15,10 +15,11 @@ import java.util.UUID
  *    automatically after an app/process restart. There is no manual "reload"
  *    step because MainActivity always reads this persisted list directly.
  *
- * 2. [recentlyClosed] is a small recovery history. Swiping/closing one tab moves
- *    a snapshot here so the user can restore it from Settings. "Clear all tabs"
- *    is different: it intentionally clears the current open list without filling
- *    Recently closed with every tab at once.
+ * 2. [recentlyClosed] is a browser-like bounded recovery history. Closing one
+ *    tab, or closing many tabs through the UI, archives snapshots here in close
+ *    order so the user can restore them later. The history is deliberately much
+ *    larger than the old 12-entry cap, while still bounded to avoid unbounded
+ *    SharedPreferences growth.
  *
  * In addition to the resolved source and playback position, each tab keeps:
  * - the user's requested manual quality and Media3's actually observed height;
@@ -70,7 +71,9 @@ object VideoTabStore {
     private const val PREFS_NAME = "video_tab_store"
     private const val KEY_TABS = "tabs_json_v2"
     private const val KEY_RECENTLY_CLOSED = "recently_closed_tabs_json_v1"
-    private const val MAX_RECENTLY_CLOSED = 12
+
+    /** Browser-like history: large enough for real multi-tab cleanup, still deliberately bounded. */
+    private const val MAX_RECENTLY_CLOSED = 100
 
     private val tabs = mutableListOf<VideoTab>()
     private val recentlyClosed = mutableListOf<VideoTab>()
@@ -389,8 +392,8 @@ object VideoTabStore {
     }
 
     /**
-     * "Clear all tabs" is deliberate bulk cleanup, not twelve separate closes.
-     * Do not flood Recently closed with every item the user explicitly cleared.
+     * Low-level hard clear. The normal UI Close All intentionally calls [close]
+     * per tab so its items enter the same browser-like Recently Closed history.
      */
     @Synchronized
     fun clearAll() {

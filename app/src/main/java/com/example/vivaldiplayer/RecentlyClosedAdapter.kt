@@ -23,9 +23,7 @@ class RecentlyClosedAdapter(
 
     private val items = mutableListOf<VideoTabStore.VideoTab>()
 
-    init {
-        setHasStableIds(true)
-    }
+    init { setHasStableIds(true) }
 
     fun submit(tabs: List<VideoTabStore.VideoTab>) {
         items.clear()
@@ -45,10 +43,7 @@ class RecentlyClosedAdapter(
             strokeWidth = dp(1)
             isClickable = true
             isFocusable = true
-            layoutParams = RecyclerView.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ).apply {
+            layoutParams = RecyclerView.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
                 marginStart = dp(5)
                 marginEnd = dp(5)
                 bottomMargin = dp(10)
@@ -84,6 +79,26 @@ class RecentlyClosedAdapter(
         }
         body.addView(meta)
 
+        val diagnosticsButton = Button(context).apply {
+            isAllCaps = false
+            text = context.getString(R.string.diagnostics_history)
+            textSize = 11f
+            minHeight = 0
+            minimumHeight = 0
+            backgroundTintList = ColorStateList.valueOf(color(R.color.app_surface_raised))
+            setTextColor(color(R.color.app_text_secondary))
+        }
+        body.addView(diagnosticsButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(38)).apply { topMargin = dp(8) })
+
+        val diagnostics = TextView(context).apply {
+            visibility = View.GONE
+            textSize = 10f
+            setTextColor(color(R.color.app_text_secondary))
+            setPadding(dp(6), dp(5), dp(6), dp(5))
+            setTextIsSelectable(true)
+        }
+        body.addView(diagnostics)
+
         val restore = Button(context).apply {
             isAllCaps = false
             text = context.getString(R.string.restore)
@@ -94,22 +109,28 @@ class RecentlyClosedAdapter(
             backgroundTintList = ColorStateList.valueOf(color(R.color.app_accent))
             setTextColor(color(R.color.white))
         }
-        body.addView(
-            restore,
-            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply {
-                topMargin = dp(11)
-            }
-        )
+        body.addView(restore, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(42)).apply { topMargin = dp(8) })
 
         root.addView(body)
         card.addView(root)
-        return Holder(card, preview, title, meta, restore)
+        return Holder(card, preview, title, meta, diagnosticsButton, diagnostics, restore)
     }
 
     override fun onBindViewHolder(holder: Holder, position: Int) {
         val tab = items[position]
         holder.title.text = displayTitle(tab)
         holder.meta.text = metadata(tab)
+        holder.diagnostics.visibility = View.GONE
+        holder.diagnosticsButton.text = context.getString(R.string.diagnostics_history)
+        holder.diagnosticsButton.setOnClickListener {
+            val opening = holder.diagnostics.visibility != View.VISIBLE
+            if (opening) {
+                val lines = OperationLog.recentForTab(context, tab.id)
+                holder.diagnostics.text = if (lines.isEmpty()) context.getString(R.string.diagnostics_history_empty) else lines.joinToString("\n")
+            }
+            holder.diagnostics.visibility = if (opening) View.VISIBLE else View.GONE
+            holder.diagnosticsButton.text = (if (opening) "⌃ " else "") + context.getString(R.string.diagnostics_history)
+        }
 
         val bitmap = TabThumbnailCache.load(context, tab.id)
         if (bitmap != null) {
@@ -137,12 +158,8 @@ class RecentlyClosedAdapter(
 
     private fun metadata(tab: VideoTabStore.VideoTab): String {
         val parts = mutableListOf<String>()
-        if (tab.positionMs > 0L) {
-            parts += context.getString(R.string.recently_closed_resume_at, formatPosition(tab.positionMs))
-        }
-        tab.actualQualityHeight?.takeIf { it > 0 }?.let {
-            parts += context.getString(R.string.recently_closed_quality, it)
-        }
+        if (tab.positionMs > 0L) parts += context.getString(R.string.recently_closed_resume_at, formatPosition(tab.positionMs))
+        tab.actualQualityHeight?.takeIf { it > 0 }?.let { parts += context.getString(R.string.recently_closed_quality, it) }
         if (parts.isEmpty()) parts += context.getString(R.string.recently_closed_ready_to_restore)
         return parts.joinToString(" • ")
     }
@@ -152,11 +169,8 @@ class RecentlyClosedAdapter(
         val seconds = totalSeconds % 60
         val minutes = (totalSeconds / 60) % 60
         val hours = totalSeconds / 3600
-        return if (hours > 0) {
-            String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
-        } else {
-            String.format(Locale.US, "%02d:%02d", minutes, seconds)
-        }
+        return if (hours > 0) String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+        else String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 
     private fun color(resId: Int): Int = ContextCompat.getColor(context, resId)
@@ -167,6 +181,8 @@ class RecentlyClosedAdapter(
         val preview: ImageView,
         val title: TextView,
         val meta: TextView,
+        val diagnosticsButton: Button,
+        val diagnostics: TextView,
         val restore: Button
     ) : RecyclerView.ViewHolder(itemView)
 }

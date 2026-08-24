@@ -11,12 +11,6 @@ import java.util.Locale
 /**
  * Small persistent development log for preparation/playback lifecycle events.
  *
- * WHY THIS EXISTS
- * ---------------
- * Real-device BG testing showed that the dashboard's single `tech ...` marker
- * changes too quickly to reconstruct what happened while Vivaldi was in front.
- * This journal keeps the sequence instead of only the newest marker.
- *
  * PRIVACY / SAFETY BOUNDARIES
  * ---------------------------
  * - No thumbnails, media frames or page/body text are written here.
@@ -43,12 +37,7 @@ object OperationLog {
                 Locale.US
             ).format(Date())
 
-            val shortTab = tabId
-                ?.trim()
-                ?.takeIf { it.isNotBlank() }
-                ?.take(8)
-                ?: "-"
-
+            val shortTab = shortTabId(tabId)
             val safeEvent = sanitize(event, 100)
             val safeDetail = sanitize(detail, 900)
 
@@ -66,9 +55,26 @@ object OperationLog {
                     append('\n')
                 }
             )
-
             trimIfNeeded(file)
         }
+    }
+
+    /** Return recent already-sanitized journal lines for one persistent tab. */
+    @Synchronized
+    fun recentForTab(context: Context, tabId: String, maxLines: Int = 12): List<String> {
+        val shortId = shortTabId(tabId)
+        if (shortId == "-") return emptyList()
+        val marker = "| tab=$shortId |"
+        val file = File(context.applicationContext.filesDir, FILE_NAME)
+        return runCatching {
+            file.readLines()
+                .asReversed()
+                .asSequence()
+                .filter { it.contains(marker) }
+                .take(maxLines.coerceIn(1, 40))
+                .toList()
+                .asReversed()
+        }.getOrDefault(emptyList())
     }
 
     /**
@@ -88,11 +94,7 @@ object OperationLog {
             appendLine("This log contains technical lifecycle/state diagnostics only.")
             appendLine("It intentionally does not contain thumbnails, media frames, cookies, request headers or credentials.")
             appendLine()
-            if (body.isBlank()) {
-                appendLine("No operation events have been recorded yet.")
-            } else {
-                append(body)
-            }
+            if (body.isBlank()) appendLine("No operation events have been recorded yet.") else append(body)
         }
 
         val shareIntent = Intent(Intent.ACTION_SEND)
@@ -108,6 +110,9 @@ object OperationLog {
         )
     }
 
+    private fun shortTabId(tabId: String?): String =
+        tabId?.trim()?.takeIf { it.isNotBlank() }?.take(8) ?: "-"
+
     /** Keep accidental error text from leaking common credential-shaped values. */
     private fun sanitize(value: String, maxLength: Int): String {
         var text = value
@@ -122,24 +127,15 @@ object OperationLog {
             Regex("(?i)(bearer\\s+)([A-Za-z0-9._~+\\-/=]+)") to "\$1<redacted>",
             Regex("(?i)(password\\s*[:=]\\s*)([^ ]+)") to "\$1<redacted>"
         )
-
-        redactions.forEach { (pattern, replacement) ->
-            text = text.replace(pattern, replacement)
-        }
-
+        redactions.forEach { (pattern, replacement) -> text = text.replace(pattern, replacement) }
         return text.take(maxLength)
     }
 
     private fun trimIfNeeded(file: File) {
         if (!file.exists() || file.length() <= MAX_FILE_CHARS) return
-
         val text = file.readText()
-        val kept = text
-            .takeLast(KEEP_FILE_CHARS)
+        val kept = text.takeLast(KEEP_FILE_CHARS)
             .substringAfter('\n', missingDelimiterValue = text.takeLast(KEEP_FILE_CHARS))
-
-        file.writeText(
-            "--- older operation-log entries trimmed ---\n$kept"
-        )
+        file.writeText("--- older operation-log entries trimmed ---\n$kept")
     }
 }

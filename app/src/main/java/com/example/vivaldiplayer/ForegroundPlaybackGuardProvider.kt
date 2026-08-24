@@ -13,19 +13,31 @@ import androidx.media3.ui.PlayerView
 import java.util.WeakHashMap
 
 /**
- * Privacy guard for foreground-only playback.
+ * Process-local foreground playback signal used by UI/privacy work.
  *
- * Unified preload may briefly foreground BackgroundPreparationActivity before
- * that excluded task moves behind the player. A small delayed check prevents
- * that internal hand-off from pausing playback if the SAME PlayerActivity has
- * already resumed. Home, lock, browser/app switching and dashboard/settings
- * navigation leave the player non-resumed, so they still pause reliably.
+ * Candidate 6 no longer uses this signal to cancel the protected Revive All
+ * private-display queue. Instead, PlayerActivity is barred from the legacy
+ * default-display preparation host path, allowing device QA to verify whether
+ * true isolated background revival can coexist with foreground playback.
  */
+object ForegroundPlaybackState {
+    @Volatile
+    private var foregroundPlayerActive: Boolean = false
+
+    fun setPlayerForeground(active: Boolean) {
+        foregroundPlayerActive = active
+    }
+
+    fun isPlayerForeground(): Boolean = foregroundPlayerActive
+}
+
+/** Privacy guard and installer for process-wide Player runtimes. */
 class ForegroundPlaybackGuardProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return false
         app.registerActivityLifecycleCallbacks(ForegroundPlaybackGuard)
         AdaptiveQualityRuntime.install(app)
+        PlaybackPreferenceRuntime.install(app)
         PlayerNavigationRuntime.install(app)
         return true
     }
@@ -49,9 +61,13 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
     private val resumedPlayers = WeakHashMap<PlayerActivity, Boolean>()
 
     override fun onActivityResumed(activity: Activity) {
-        if (activity is PlayerActivity) resumedPlayers[activity] = true
-
-        if (activity is MainActivity || activity is PlayerActivity) {
+        if (activity is PlayerActivity) {
+            resumedPlayers[activity] = true
+            ForegroundPlaybackState.setPlayerForeground(true)
+            TabThumbnailCapture.pauseBackgroundCapture()
+        } else if (activity is MainActivity) {
+            ForegroundPlaybackState.setPlayerForeground(false)
+            TabThumbnailCapture.resumeBackgroundCapture()
             TabThumbnailWarmup.warm(activity.applicationContext)
         }
     }
@@ -59,11 +75,14 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
     override fun onActivityPaused(activity: Activity) {
         if (activity !is PlayerActivity) return
         resumedPlayers.remove(activity)
+        ForegroundPlaybackState.setPlayerForeground(false)
+        DashboardReturnState.remember(activity.intent.getStringExtra(TabbedPlayerApplication.EXTRA_TAB_ID))
         schedulePrivacyPause(activity)
     }
 
     override fun onActivityStopped(activity: Activity) {
         if (activity !is PlayerActivity) return
+        ForegroundPlaybackState.setPlayerForeground(false)
         schedulePrivacyPause(activity)
     }
 
@@ -76,7 +95,10 @@ private object ForegroundPlaybackGuard : Application.ActivityLifecycleCallbacks 
     }
 
     override fun onActivityDestroyed(activity: Activity) {
-        if (activity is PlayerActivity) resumedPlayers.remove(activity)
+        if (activity is PlayerActivity) {
+            resumedPlayers.remove(activity)
+            ForegroundPlaybackState.setPlayerForeground(false)
+        }
     }
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit

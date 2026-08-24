@@ -5,42 +5,29 @@ import android.app.Application
 import android.content.ContentProvider
 import android.content.ContentValues
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.database.Cursor
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.HttpDataSource
 import androidx.media3.ui.PlayerView
 import java.net.UnknownHostException
 import java.util.WeakHashMap
 
-/**
- * Registers playback recovery without changing the normal resolver/player path.
- *
- * There are deliberately two different recovery concepts:
- *
- * 1. Retry playback prepares the SAME already-resolved stream again. This is
- *    appropriate for a short network interruption.
- * 2. Refresh source re-resolves the ORIGINAL webpage URL into the SAME persistent
- *    tab. This is appropriate when a signed/temporary media URL has expired or a
- *    page may now advertise a different working manifest.
- *
- * Refresh source uses the protected service-owned private-display preparation
- * architecture established by Build #234. It does not create a new tab, does not
- * use the historical display-0 preparation Activity, and does not create a second
- * ExoPlayer.
- *
- * A rare HLS case can fail because a child playlist/segment host has no DNS
- * address. We recognize UnknownHostException only to explain that situation more
- * clearly. We never guess a replacement host, rewrite DNS, or bypass access rules.
- */
+/** Failed-player recovery UI and same-tab source refresh coordinator. */
 class PlayerRecoveryProvider : ContentProvider() {
     override fun onCreate(): Boolean {
         val app = context?.applicationContext as? Application ?: return false
@@ -52,13 +39,7 @@ class PlayerRecoveryProvider : ContentProvider() {
     override fun insert(uri: Uri, values: ContentValues?): Uri? = null
     override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
     override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
-    override fun query(
-        uri: Uri,
-        projection: Array<out String>?,
-        selection: String?,
-        selectionArgs: Array<out String>?,
-        sortOrder: String?
-    ): Cursor? = null
+    override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
 }
 
 private object PlayerRecoveryLifecycle : Application.ActivityLifecycleCallbacks {
@@ -84,215 +65,263 @@ private object PlayerRecoveryLifecycle : Application.ActivityLifecycleCallbacks 
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 }
 
-/** Limited automatic retry plus explicit safe manual recovery choices. */
-private class PlayerRecoveryController(
-    private val activity: PlayerActivity
-) : Player.Listener {
-
-    private data class RecoveryAction(
-        val label: String,
-        val run: () -> Unit
-    )
+private class PlayerRecoveryController(private val activity: PlayerActivity) : Player.Listener {
+    private data class RecoveryAction(val label: String, val run: () -> Unit)
 
     private var player: Player? = null
-    private var automaticRetryCount = 0
-    private var retryScheduled = false
     private var lastFailureWasDnsLookup = false
+    private var lastFailureWasDecoderInit = false
+    private var recoveryContainer: LinearLayout? = null
+    private lateinit var messageText: TextView
+    private lateinit var refreshButton: Button
+    private lateinit var dashboardButton: Button
 
-    private val recoveryButton = Button(activity).apply {
-        isAllCaps = false
-        text = activity.getString(R.string.recovery_options)
-        visibility = View.GONE
-        setOnClickListener { showRecoveryDialog() }
-    }
+    private var refreshingTabId: String? = null
+    private var refreshPositionMs: Long = 0L
+    private var refreshPlayWhenReady: Boolean = true
+
+    private val refreshPollRunnable = Runnable { pollRefreshedTab() }
 
     fun attach() {
         val activePlayer = activity.findViewById<PlayerView>(R.id.player_view)?.player ?: return
+        if (player === activePlayer && recoveryContainer?.parent != null) return
+        player?.removeListener(this)
         player = activePlayer
         activePlayer.addListener(this)
 
-        val params = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.BOTTOM or Gravity.END
-        ).apply {
-            marginEnd = dp(12)
-            bottomMargin = dp(72)
+        messageText = TextView(activity).apply {
+            textSize = 13f
+            setTextColor(color(R.color.app_text_secondary))
+            setPadding(0, dp(5), 0, dp(10))
         }
-        activity.addContentView(recoveryButton, params)
+
+        refreshButton = Button(activity).apply {
+            isAllCaps = false
+            text = activity.getString(R.string.refresh_source)
+            backgroundTintList = ColorStateList.valueOf(color(R.color.app_accent))
+            setTextColor(color(R.color.white))
+            setOnClickListener {
+                val tab = currentPersistentTab()
+                if (tab != null && isHttpUrl(TabOriginStore.pageUrl(activity, tab))) {
+                    refreshSourceInPlayer(tab)
+                } else {
+                    Toast.makeText(activity, R.string.original_webpage_unavailable, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+
+        val technicalButton = Button(activity).apply {
+            isAllCaps = false
+            text = activity.getString(R.string.technical_details)
+            backgroundTintList = ColorStateList.valueOf(color(R.color.app_surface_raised))
+            setTextColor(color(R.color.app_text_primary))
+            setOnClickListener {
+                activity.findViewById<Button>(R.id.diagnostics_button)?.performClick()
+            }
+        }
+
+        val moreButton = Button(activity).apply {
+            isAllCaps = false
+            text = activity.getString(R.string.recovery_options)
+            backgroundTintList = ColorStateList.valueOf(color(R.color.app_surface_raised))
+            setTextColor(color(R.color.app_text_secondary))
+            setOnClickListener { showRecoveryDialog() }
+        }
+
+        dashboardButton = Button(activity).apply {
+            isAllCaps = false
+            text = activity.getString(R.string.refresh_view_dashboard)
+            visibility = View.GONE
+            backgroundTintList = ColorStateList.valueOf(color(R.color.app_surface_raised))
+            setTextColor(color(R.color.app_text_primary))
+            setOnClickListener { openDashboard() }
+        }
+
+        val container = LinearLayout(activity).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply {
+                cornerRadius = dp(18).toFloat()
+                setColor(color(R.color.app_surface))
+                setStroke(dp(1), color(R.color.app_outline))
+            }
+            addView(TextView(activity).apply {
+                text = activity.getString(R.string.playback_failed_short)
+                textSize = 17f
+                typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+                setTextColor(color(R.color.app_text_primary))
+            })
+            addView(messageText)
+            addView(refreshButton, fullButtonParams())
+            addView(technicalButton, fullButtonParams())
+            addView(moreButton, fullButtonParams())
+            addView(dashboardButton, fullButtonParams())
+        }
+        recoveryContainer = container
+
+        activity.addContentView(container, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.BOTTOM
+        ).apply {
+            marginStart = dp(16)
+            marginEnd = dp(16)
+            bottomMargin = dp(72)
+        })
     }
 
     fun detach() {
+        activity.window.decorView.removeCallbacks(refreshPollRunnable)
         player?.removeListener(this)
         player = null
+        (recoveryContainer?.parent as? ViewGroup)?.removeView(recoveryContainer)
+        recoveryContainer = null
     }
 
     override fun onPlayerError(error: PlaybackException) {
-        recoveryButton.visibility = View.VISIBLE
+        if (refreshingTabId != null) return
         lastFailureWasDnsLookup = findCause<UnknownHostException>(error) != null
-
-        if (lastFailureWasDnsLookup) {
-            /*
-             * This is informational only. Retry remains useful for a temporary
-             * DNS problem, and Refresh source may obtain a different legitimate
-             * manifest. We intentionally do not manufacture a replacement host.
-             */
-            Toast.makeText(
-                activity,
-                R.string.media_host_dns_unavailable,
-                Toast.LENGTH_LONG
-            ).show()
+        lastFailureWasDecoderInit = error.errorCode == PlaybackException.ERROR_CODE_DECODER_INIT_FAILED
+        messageText.text = when {
+            lastFailureWasDecoderInit -> activity.getString(R.string.decoder_compatibility_note)
+            lastFailureWasDnsLookup -> activity.getString(R.string.recovery_dns_explanation)
+            else -> activity.getString(R.string.recovery_refresh_explanation)
         }
-
-        if (
-            AppSettings.networkRetryEnabled(activity) &&
-            automaticRetryCount < AppSettings.MAX_TRANSIENT_RETRIES &&
-            isTransient(error) &&
-            !retryScheduled
-        ) {
-            automaticRetryCount += 1
-            retryScheduled = true
-            Toast.makeText(activity, R.string.temporary_network_retry, Toast.LENGTH_SHORT).show()
-
-            activity.window.decorView.postDelayed({
-                retryScheduled = false
-                retrySameSource(showToast = false)
-            }, 1_200L)
-        }
+        showPanel()
     }
 
     override fun onPlaybackStateChanged(playbackState: Int) {
-        if (playbackState == Player.STATE_READY) {
-            recoveryButton.visibility = View.GONE
-            retryScheduled = false
-            automaticRetryCount = 0
+        if (playbackState == Player.STATE_READY && refreshingTabId == null) {
+            recoveryContainer?.visibility = View.GONE
             lastFailureWasDnsLookup = false
+            lastFailureWasDecoderInit = false
         }
     }
 
-    /** Retry the existing resolved URL only; do not perform a new webpage resolution. */
-    private fun retrySameSource(showToast: Boolean = true) {
-        val activePlayer = player ?: return
-        val position = activePlayer.currentPosition.coerceAtLeast(0L)
-        activePlayer.prepare()
-        if (position > 0L) activePlayer.seekTo(position)
-        activePlayer.playWhenReady = true
-        if (showToast) Toast.makeText(activity, R.string.retrying_playback, Toast.LENGTH_SHORT).show()
+    private fun showPanel() {
+        val canRefresh = currentPersistentTab()?.let { isHttpUrl(TabOriginStore.pageUrl(activity, it)) } == true
+        refreshButton.visibility = if (canRefresh) View.VISIBLE else View.GONE
+        refreshButton.isEnabled = canRefresh
+        dashboardButton.visibility = View.GONE
+        recoveryContainer?.visibility = View.VISIBLE
     }
+
+    private fun refreshSourceInPlayer(tab: VideoTabStore.VideoTab) {
+        if (refreshingTabId != null) return
+        val activePlayer = player
+        refreshPositionMs = activePlayer?.currentPosition?.coerceAtLeast(0L) ?: tab.positionMs
+        refreshPlayWhenReady = activePlayer?.playWhenReady ?: tab.playWhenReady
+        activePlayer?.pause()
+
+        val queued = TabMaintenanceController.reviveFromPlayer(
+            context = activity,
+            tab = tab,
+            positionMs = refreshPositionMs,
+            playWhenReady = refreshPlayWhenReady
+        )
+        if (!queued) {
+            Toast.makeText(activity, R.string.original_webpage_unavailable, Toast.LENGTH_LONG).show()
+            return
+        }
+
+        clearActivityResolvedPayloadForRefresh()
+        refreshingTabId = tab.id
+        refreshButton.isEnabled = false
+        refreshButton.text = activity.getString(R.string.refreshing_source_in_player)
+        messageText.text = activity.getString(R.string.refresh_source_waiting)
+        dashboardButton.visibility = View.GONE
+        recoveryContainer?.visibility = View.VISIBLE
+        activity.findViewById<TextView>(R.id.playback_status)?.apply {
+            text = activity.getString(R.string.refreshing_source_in_player)
+            visibility = View.VISIBLE
+        }
+        activity.window.decorView.removeCallbacks(refreshPollRunnable)
+        activity.window.decorView.postDelayed(refreshPollRunnable, 500L)
+    }
+
+    private fun pollRefreshedTab() {
+        val tabId = refreshingTabId ?: return
+        if (activity.isFinishing || activity.isDestroyed) return
+        val tab = VideoTabStore.get(tabId)
+
+        when (tab?.preparationState) {
+            VideoTabStore.PreparationState.READY -> {
+                val resolved = runCatching { ResolvedMedia.fromJson(tab.resolvedMediaJson) }.getOrNull()
+                if (resolved != null && loadRefreshedSource(resolved)) {
+                    refreshingTabId = null
+                    refreshButton.text = activity.getString(R.string.refresh_source)
+                    refreshButton.isEnabled = true
+                    dashboardButton.visibility = View.GONE
+                    PlayerTitleRuntime.update(activity, resolved.title)
+                    activity.findViewById<TextView>(R.id.playback_status)?.visibility = View.GONE
+                    return
+                }
+                finishRefreshFailure()
+            }
+
+            VideoTabStore.PreparationState.ERROR,
+            VideoTabStore.PreparationState.NEEDS_ATTENTION,
+            null -> finishRefreshFailure()
+
+            VideoTabStore.PreparationState.QUEUED,
+            VideoTabStore.PreparationState.RESOLVING ->
+                activity.window.decorView.postDelayed(refreshPollRunnable, 750L)
+        }
+    }
+
+    private fun finishRefreshFailure() {
+        refreshingTabId = null
+        refreshButton.text = activity.getString(R.string.refresh_source)
+        refreshButton.isEnabled = true
+        messageText.text = activity.getString(R.string.refresh_source_failed)
+        dashboardButton.visibility = View.VISIBLE
+        recoveryContainer?.visibility = View.VISIBLE
+    }
+
+    private fun loadRefreshedSource(resolved: ResolvedMedia): Boolean = runCatching {
+        val method = PlayerActivity::class.java.declaredMethods.firstOrNull {
+            it.name == "loadResolvedMedia" && it.parameterTypes.size == 3
+        } ?: return@runCatching false
+        method.isAccessible = true
+        method.invoke(activity, resolved, refreshPositionMs, refreshPlayWhenReady)
+        true
+    }.getOrDefault(false)
 
     private fun showRecoveryDialog() {
         val resolved = currentResolved()
         val webpageUrl = resolved?.webpageUrl.orEmpty()
         val persistentTab = currentPersistentTab()
-
         val actions = mutableListOf<RecoveryAction>()
-        actions += RecoveryAction(activity.getString(R.string.retry_playback)) {
-            retrySameSource()
-        }
 
-        /*
-         * A persistent tab has the original page URL independently from the
-         * temporary resolved stream URL. That is the key prerequisite for a true
-         * refresh instead of repeatedly retrying an expired or dead media URL.
-         */
-        if (persistentTab != null && isHttpUrl(persistentTab.sourceUrl)) {
-            actions += RecoveryAction(activity.getString(R.string.refresh_source)) {
-                refreshSource(persistentTab)
-            }
+        if (persistentTab != null && isHttpUrl(TabOriginStore.pageUrl(activity, persistentTab))) {
+            actions += RecoveryAction(activity.getString(R.string.refresh_source)) { refreshSourceInPlayer(persistentTab) }
         }
-
         if (resolved?.resolverMode == "browser") {
-            /* Existing explicit fallback: return to the candidate/resolver screen underneath. */
-            actions += RecoveryAction(activity.getString(R.string.try_another_detected_video)) {
-                activity.finish()
-            }
+            actions += RecoveryAction(activity.getString(R.string.try_another_detected_video)) { openDashboard() }
         } else if (isHttpUrl(webpageUrl)) {
             actions += RecoveryAction(activity.getString(R.string.try_browser_method)) {
-                activity.startActivity(
-                    Intent(activity, BrowserResolverActivity::class.java)
-                        .putExtra(BrowserResolverActivity.EXTRA_URL, webpageUrl)
-                )
+                activity.startActivity(Intent(activity, BrowserResolverActivity::class.java)
+                    .putExtra(BrowserResolverActivity.EXTRA_URL, SourceLanguagePolicy.preferAppLanguage(activity, webpageUrl)))
                 activity.finish()
             }
         }
 
         AlertDialog.Builder(activity)
             .setTitle(R.string.recovery_options)
-            .setMessage(
-                if (lastFailureWasDnsLookup) {
-                    R.string.recovery_dns_explanation
-                } else {
-                    R.string.recovery_explanation
-                }
-            )
-            .setItems(actions.map { it.label }.toTypedArray()) { _, which ->
-                actions.getOrNull(which)?.run?.invoke()
-            }
+            .setItems(actions.map { it.label }.toTypedArray()) { _, which -> actions.getOrNull(which)?.run?.invoke() }
             .setNegativeButton(R.string.cancel, null)
             .show()
     }
 
-    /**
-     * Re-resolve the original page URL into the SAME tab using the protected
-     * #234 private-display service path.
-     *
-     * One subtle but important detail: TabbedPlayerApplication normally saves
-     * PlayerActivity.currentResolved during onPause. If we left the stale object
-     * there, that lifecycle save could mark this tab READY again with the expired
-     * payload immediately after we mark it QUEUED. Clear only the Activity's
-     * in-memory currentResolved reference before navigation; the persistent tab
-     * still retains its sourceUrl and playback position while the fresh resolver
-     * works.
-     */
-    private fun refreshSource(tab: VideoTabStore.VideoTab) {
-        val sourceUrl = tab.sourceUrl.trim()
-        if (!isHttpUrl(sourceUrl)) return
-
-        val activePlayer = player
-        val position = activePlayer?.currentPosition?.coerceAtLeast(0L) ?: tab.positionMs
-        val desiredPlayState = activePlayer?.playWhenReady ?: tab.playWhenReady
-
-        VideoTabStore.updatePlayback(
-            id = tab.id,
-            positionMs = position,
-            playWhenReady = desiredPlayState
-        )
-        clearActivityResolvedPayloadForRefresh()
-
-        TabPreparationManager.cancelScheduled(activity.applicationContext, tab.id)
-        VideoTabStore.markQueued(tab.id)
-        VideoTabStore.markTechnicalStage(tab.id, "SOURCE_REFRESH_PRIVATE_REQUESTED")
-
-        val token = "refresh-${tab.id}-${System.currentTimeMillis()}"
-        OperationLog.record(
-            activity,
-            event = "SOURCE_REFRESH_PRIVATE_SERVICE_REQUESTED",
-            tabId = tab.id,
-            detail = "token=$token"
-        )
-
-        BackgroundPreparationKeepAliveService.acquire(
-            context = activity.applicationContext,
-            token = token,
-            tabId = tab.id,
-            sourceUrl = sourceUrl
-        )
-
-        Toast.makeText(activity, R.string.refreshing_source, Toast.LENGTH_SHORT).show()
-
-        /* Return to the dashboard while the same tab is refreshed privately. */
-        activity.startActivity(
-            Intent(activity, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        )
+    private fun openDashboard() {
+        activity.startActivity(Intent(activity, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
         activity.finish()
     }
 
     private fun currentPersistentTab(): VideoTabStore.VideoTab? {
-        val tabId = activity.intent
-            .getStringExtra(TabbedPlayerApplication.EXTRA_TAB_ID)
-            ?.takeIf { it.isNotBlank() }
-            ?: return null
+        val tabId = activity.intent.getStringExtra(TabbedPlayerApplication.EXTRA_TAB_ID)?.takeIf { it.isNotBlank() } ?: return null
         return VideoTabStore.get(tabId)
     }
 
@@ -310,27 +339,7 @@ private class PlayerRecoveryController(
         }
     }
 
-    private fun isHttpUrl(value: String): Boolean =
-        value.startsWith("https://", ignoreCase = true) ||
-            value.startsWith("http://", ignoreCase = true)
-
-    private fun isTransient(error: PlaybackException): Boolean {
-        if (
-            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED ||
-            error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
-        ) {
-            return true
-        }
-
-        var cause: Throwable? = error
-        while (cause != null) {
-            if (cause is HttpDataSource.InvalidResponseCodeException) {
-                return cause.responseCode == 429 || cause.responseCode in 500..599
-            }
-            cause = cause.cause
-        }
-        return false
-    }
+    private fun isHttpUrl(value: String): Boolean = value.startsWith("https://", true) || value.startsWith("http://", true)
 
     private inline fun <reified T : Throwable> findCause(error: Throwable): T? {
         var current: Throwable? = error
@@ -341,6 +350,11 @@ private class PlayerRecoveryController(
         return null
     }
 
-    private fun dp(value: Int): Int =
-        (value * activity.resources.displayMetrics.density).toInt()
+    private fun fullButtonParams(): LinearLayout.LayoutParams = LinearLayout.LayoutParams(
+        LinearLayout.LayoutParams.MATCH_PARENT,
+        dp(44)
+    ).apply { topMargin = dp(5) }
+
+    private fun color(resId: Int): Int = ContextCompat.getColor(activity, resId)
+    private fun dp(value: Int): Int = (value * activity.resources.displayMetrics.density).toInt()
 }

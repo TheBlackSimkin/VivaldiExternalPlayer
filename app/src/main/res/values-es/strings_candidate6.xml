@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="search_filter">Buscar y filtrar</string>
+    <string name="search_tabs_hint">Buscar títulos o URLs</string>
+    <string name="filter_all">Todos</string>
+    <string name="filter_ready">Listos</string>
+    <string name="filter_queued">En cola</string>
+    <string name="filter_attention">Error / atención</string>
+    <string name="selection_count">%1$d seleccionados</string>
+    <string name="selection_close">Cerrar</string>
+    <string name="selection_revive">Revivir</string>
+    <string name="selection_favorite">Favorito</string>
+    <string name="selection_private_favorite">Privado</string>
+    <string name="selection_done">Listo</string>
+    <string name="close_selected_confirmation">¿Cerrar %1$d pestañas seleccionadas?</string>
+    <string name="selected_favorites_saved">Se guardaron %1$d favoritos</string>
+    <string name="selected_private_favorites_saved">Se guardaron %1$d favoritos privados</string>
+    <string name="selected_revive_started">Se pusieron %1$d pestañas seleccionadas en cola para revivir</string>
+    <string name="playback_failed_short">Falló la reproducción</string>
+    <string name="recovery_refresh_explanation">La fuente multimedia guardada puede estar caducada. Actualiza la página original para renovar esta pestaña.</string>
+    <string name="technical_details">Detalles técnicos</string>
+    <string name="refreshing_source_in_player">Actualizando fuente…</string>
+    <string name="refresh_source_waiting">Actualizando esta pestaña desde su página original. La reproducción continuará aquí cuando esté lista.</string>
+    <string name="refresh_source_failed">La actualización de la fuente no produjo un resultado reproducible.</string>
+    <string name="refresh_view_dashboard">Ver panel</string>
+    <string name="diagnostics_history">Diagnóstico / historial</string>
+    <string name="diagnostics_history_empty">No hay historial técnico adicional guardado para este elemento.</string>
+</resources>

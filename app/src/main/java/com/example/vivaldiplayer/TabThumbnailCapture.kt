@@ -11,6 +11,7 @@ import androidx.media3.exoplayer.SeekParameters
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.inspector.frame.FrameExtractor
 import androidx.media3.ui.PlayerView
+import com.google.common.util.concurrent.ListenableFuture
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -23,11 +24,21 @@ import java.util.concurrent.ConcurrentHashMap
  * content is classified or sent anywhere.
  *
  * No ExoPlayer is created here. Active tabs reuse PlayerActivity's existing
- * FrameExtractor; READY background tabs can use a short-lived FrameExtractor
- * against their already-resolved source so a preview can exist before playback.
+ * FrameExtractor. READY dashboard tabs can use a short-lived FrameExtractor, but
+ * 0.3.2 deliberately serializes that background work and suspends/cancels it as
+ * soon as PlayerActivity resumes. This avoids competing for hardware decoder
+ * resources while the real single ExoPlayer is starting.
  */
 object TabThumbnailCapture {
     private val inFlight = ConcurrentHashMap.newKeySet<String>()
+    private val backgroundLock = Any()
+
+    @Volatile
+    private var backgroundAllowed = true
+
+    private var backgroundTabId: String? = null
+    private var backgroundExtractor: FrameExtractor? = null
+    private var backgroundFuture: ListenableFuture<FrameExtractor.Frame>? = null
 
     /** Fast path for the currently playing tab. */
     fun captureIfMissing(activity: PlayerActivity, tabId: String) {
@@ -54,22 +65,46 @@ object TabThumbnailCapture {
             extractor = extractor,
             position = choosePosition(duration, current),
             closeExtractor = false,
-            onSaved = null
+            onSaved = null,
+            background = false
         )
     }
 
+    /** Called when PlayerActivity takes foreground decoder ownership. */
+    fun pauseBackgroundCapture() {
+        backgroundAllowed = false
+        synchronized(backgroundLock) {
+            backgroundFuture?.cancel(true)
+            backgroundFuture = null
+            backgroundExtractor?.close()
+            backgroundExtractor = null
+            backgroundTabId?.let(inFlight::remove)
+            backgroundTabId = null
+        }
+    }
+
+    /** Re-enable best-effort background previews when the dashboard is foreground. */
+    fun resumeBackgroundCapture() {
+        backgroundAllowed = true
+    }
+
     /**
-     * Generate a thumbnail for any READY tab without starting playback.
-     * This is best-effort because temporary media URLs can expire independently
-     * of the saved tab; a later active-tab capture can try again if necessary.
+     * Generate a thumbnail for one READY dashboard tab without starting playback.
+     * Only one background FrameExtractor is allowed at a time. A later dashboard
+     * refresh naturally tries the next missing tab after the current request ends.
      */
     fun captureResolved(
         context: Context,
         tab: VideoTabStore.VideoTab,
         onSaved: (() -> Unit)? = null
     ) {
-        if (!tab.isReady || tab.resolvedMediaJson.isBlank()) return
-        if (TabThumbnailCache.load(context, tab.id) != null || !inFlight.add(tab.id)) return
+        if (!backgroundAllowed || !tab.isReady || tab.resolvedMediaJson.isBlank()) return
+        if (TabThumbnailCache.load(context, tab.id) != null) return
+
+        synchronized(backgroundLock) {
+            if (!backgroundAllowed || backgroundExtractor != null || backgroundFuture != null) return
+            if (!inFlight.add(tab.id)) return
+        }
 
         val resolved = runCatching { ResolvedMedia.fromJson(tab.resolvedMediaJson) }.getOrNull()
         val source = resolved?.primarySource
@@ -98,13 +133,24 @@ object TabThumbnailCapture {
             return
         }
 
+        synchronized(backgroundLock) {
+            if (!backgroundAllowed) {
+                extractor.close()
+                inFlight.remove(tab.id)
+                return
+            }
+            backgroundTabId = tab.id
+            backgroundExtractor = extractor
+        }
+
         requestFrame(
             context = context,
             tabId = tab.id,
             extractor = extractor,
             position = choosePosition(C.TIME_UNSET, tab.positionMs),
             closeExtractor = true,
-            onSaved = onSaved
+            onSaved = onSaved,
+            background = true
         )
     }
 
@@ -114,19 +160,34 @@ object TabThumbnailCapture {
         extractor: FrameExtractor,
         position: Long,
         closeExtractor: Boolean,
-        onSaved: (() -> Unit)?
+        onSaved: (() -> Unit)?,
+        background: Boolean
     ) {
         val request = runCatching { extractor.getFrame(position) }.getOrElse {
-            if (closeExtractor) extractor.close()
-            inFlight.remove(tabId)
+            finishRequest(tabId, extractor, closeExtractor, background)
             return
         }
 
+        if (background) {
+            synchronized(backgroundLock) {
+                if (!backgroundAllowed || backgroundExtractor !== extractor) {
+                    request.cancel(true)
+                    finishRequest(tabId, extractor, closeExtractor, background)
+                    return
+                }
+                backgroundFuture = request
+            }
+        }
+
         request.addListener({
+            if (request.isCancelled) {
+                finishRequest(tabId, extractor, closeExtractor, background)
+                return@addListener
+            }
+
             val bitmap = runCatching { request.get().bitmap }.getOrNull()
             if (bitmap == null) {
-                if (closeExtractor) extractor.close()
-                inFlight.remove(tabId)
+                finishRequest(tabId, extractor, closeExtractor, background)
                 return@addListener
             }
 
@@ -134,15 +195,36 @@ object TabThumbnailCapture {
             val thumbnail = scaledCopy(bitmap)
             Thread {
                 try {
-                    TabThumbnailCache.save(context.applicationContext, tabId, thumbnail)
-                    ContextCompat.getMainExecutor(context).execute { onSaved?.invoke() }
+                    if (!background || backgroundAllowed) {
+                        TabThumbnailCache.save(context.applicationContext, tabId, thumbnail)
+                        ContextCompat.getMainExecutor(context).execute { onSaved?.invoke() }
+                    }
                 } finally {
                     thumbnail.recycle()
-                    if (closeExtractor) extractor.close()
-                    inFlight.remove(tabId)
+                    finishRequest(tabId, extractor, closeExtractor, background)
                 }
             }.start()
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    private fun finishRequest(
+        tabId: String,
+        extractor: FrameExtractor,
+        closeExtractor: Boolean,
+        background: Boolean
+    ) {
+        if (closeExtractor) runCatching { extractor.close() }
+        inFlight.remove(tabId)
+
+        if (background) {
+            synchronized(backgroundLock) {
+                if (backgroundTabId == tabId) {
+                    backgroundFuture = null
+                    backgroundExtractor = null
+                    backgroundTabId = null
+                }
+            }
+        }
     }
 
     /**
