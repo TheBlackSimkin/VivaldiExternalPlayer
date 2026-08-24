@@ -1,6 +1,6 @@
 # Vivaldi External Player — Project State
 
-Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-correctness-ux`, PR #2. **Candidate 7 device QA is complete and PR #2 is ready to merge.** Read this file and `CHAT_BOOTSTRAP.md` before substantive work.
+`main` is authoritative. PR #2 (`0.3.2 correctness, privacy and dashboard cleanup`) merged successfully at `601d32e11355dc9452d01b2f9d4877b1355e1082` after Candidate 7 device QA and the latest PR-head CI both passed. Read this file and `CHAT_BOOTSTRAP.md` before substantive work.
 
 ## Protected architecture / safety
 - Android UI bilingual English/Spanish; comments English.
@@ -13,7 +13,7 @@ Released `main` remains authoritative. Active 0.3.2 work is on `work/0.3.2-corre
 Permanent signer certificate SHA-256:
 `8C:87:E1:F6:A7:A4:87:3F:12:CB:25:BA:34:8B:EF:66:50:57:15:9F:16:A6:5B:90:59:E5:E1:D7:C0:B9:5E:7C`.
 
-## Released baseline
+## Previous released baseline
 0.3.1 / versionCode 4. Direct APK update is not an app/signing blocker: Material Files installs successfully; Files by Google was the failing installer path.
 
 ## Candidate 5 — tested baseline
@@ -42,7 +42,7 @@ User reported:
 1. Revive All + watching another READY/revived video while queue continues: **PASS**.
 2. Return to watched dashboard tab/list position: **PASS**.
 3. Non-fullscreen Player title: **FAIL**. A bar appears only outside fullscreen, but title text is not visible.
-4. Language-aware title/source behavior: **PASS**.
+4. Language-aware source/title behavior: **PASS**.
 5. Failed-player recovery UI polish: **NOT TESTED**.
 6. Refresh source staying in Player: **NOT TESTED**.
 7. Active-tab multi-select: **PASS** (user wrote `pPASS`, treated as PASS).
@@ -51,16 +51,7 @@ User reported:
 10. Diagnostics/History access: **PASS**.
 11. Short regression suite: **PASS**.
 
-### Candidate 6 approved UX/features status
-- dashboard return anchor — device PASS;
-- language-aware source/title behavior — device PASS;
-- active-tab multi-select — device PASS;
-- per-tab speed/manual-quality preference memory — device PASS;
-- search/filter accordions — device PASS;
-- Diagnostics/History across relevant collections — device PASS;
-- general regression check — device PASS.
-
-## Candidate 7 — accepted release candidate
+## Candidate 7 — accepted
 App-code head: `a1a0ed1dd53c6ec44ed76dd9307f100a6a9fae1b`.
 - Actions run `32670860768` / run #407
 - job `97271395006`
@@ -69,21 +60,20 @@ App-code head: `a1a0ed1dd53c6ec44ed76dd9307f100a6a9fae1b`.
 - debug artifact `9501361426`
 - build/sign/package/alignment: **PASS**
 
-Candidate 7 is intentionally narrow and does **not** change the Candidate 6 Revive All architecture or other device-PASS features.
+Candidate 7 only changes `PlayerTitleProvider`; Candidate 6 Revive All architecture and other device-PASS features are untouched.
 
 ### Candidate 7 title fix
-`PlayerTitleProvider` no longer depends primarily on generic Activity/window title placement.
 - title text is sourced first from the exact `ResolvedMedia` JSON passed to Player;
 - persistent tab title is the fallback;
 - generic `Activity.title` is last-resort compatibility only;
-- the title view is attached directly to the actual `activity_player` `FrameLayout`, not window decor;
+- title view attaches directly to the actual `activity_player` `FrameLayout`, not window decor;
 - if no legitimate title exists, the overlay is hidden instead of showing an empty decorative bar;
-- fullscreen/system-bars-hidden behavior remains: title visible only in non-fullscreen UI.
+- fullscreen/system-bars-hidden behavior remains clean.
 
 No machine translation, title inference, media-content inspection, resolver-order changes, background-playback changes, or extra ExoPlayer were introduced.
 
 ### Candidate 7 final device QA — PASS
-User reported all four merge-gate checks PASS on Candidate 7:
+User reported all four final checks PASS:
 1. Non-fullscreen Player title fix: **PASS**.
 2. Failed-player recovery UI: **PASS**.
 3. In-player Refresh source remains in Player and reloads the same persistent tab/ExoPlayer path: **PASS**.
@@ -91,11 +81,25 @@ User reported all four merge-gate checks PASS on Candidate 7:
 
 The historical automatic diagnostics-dialog concern did not block acceptance in the reported recovery test.
 
+## Final PR-head validation and merge
+Latest PR-head docs commit: `aa81c55c1d7bd1b60283f9721c029cd62bf17d4f`.
+- Actions run `32679562829` / run #411
+- job `97293721788`
+- signed release artifact `9503753613`
+- signed artifact digest `sha256:de9cdf59d5e2572b5ce925294d3e51da538942b630ba95a321ddf3e18fb62225`
+- debug artifact `9503754068`
+- full workflow including build, signing, upload, package/alignment checks: **PASS**
+
+PR #2 merged into `main` at `601d32e11355dc9452d01b2f9d4877b1355e1082` on 2026-08-24 UTC.
+
+## Release status
+0.3.2 / versionCode 5 is **merged and device-accepted**, but do not call the release provenance fully closed until the push-triggered `main` workflow artifact is identified and its build/sign/package/alignment result is recorded here. The workflow is configured to run on pushes to `main`.
+
+Explicitly postponed: `Report log on GitHub` shortcut.
+Return-to-Vivaldi behavior remains unchanged.
+
 ### Language/title rule
 Never machine-translate, infer, rewrite, or invent titles. Prefer legitimate source-provided metadata from the app-selected language source/site variant where available; otherwise preserve original metadata/title.
-
-## Merge gate
-**PR #2 is READY TO MERGE.** Candidate 7 passed all remaining device checks. After merge, verify the final `main` build/sign/package/alignment results and record the final release artifact/run IDs before declaring 0.3.2 released.
 
 ## QA format
 When asking user to test an APK: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
