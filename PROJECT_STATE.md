@@ -27,16 +27,15 @@ Final accepted app-code/provenance head: `aa81c55c1d7bd1b60283f9721c029cd62bf17d
 - debug artifact `9503754068`
 - build/sign/package/alignment/upload: **PASS**
 
-Release provenance is considered closed without depending on the inaccessible push-run listing because GitHub compare from `aa81c55c1d7bd1b60283f9721c029cd62bf17d4f` to the post-merge handoff head showed changes only in `PROJECT_STATE.md` and `CHAT_BOOTSTRAP.md`; no app source, resources, manifest, Gradle, or workflow files changed. Therefore run #411 built the same 0.3.2 app code that is on `main`.
+Release provenance is closed because GitHub compare from the accepted head to the post-merge handoff head showed only `PROJECT_STATE.md` and `CHAT_BOOTSTRAP.md` changes; no app source, resources, manifest, Gradle, or workflow files changed after the green #411 build.
 
 Direct APK update remains supported with the permanent signer. Material Files installs successfully; Files by Google was the installer-specific failure path observed during 0.3.x QA.
 
-## Candidate 6/7 acceptance highlights
-Candidate 6 resolved the Revive All foreground-interference blocker by preventing `PlayerActivity` from acting as a hidden/default-display preparation host; only the protected service/private-display revival coordinator continues true background revival. Do not alter this path without regression evidence.
+## Accepted 0.3.2 regression fixes
+- Candidate 6 resolved the Revive All foreground-interference blocker by preventing `PlayerActivity` from acting as a hidden/default-display preparation host. Only the protected service/private-display revival coordinator continues true background revival. Do not alter this path without regression evidence.
+- Candidate 7 fixed the non-fullscreen player title by sourcing title text from exact `ResolvedMedia` JSON first, persistent-tab title second, generic Activity title last, and attaching the title view directly to `activity_player`.
 
-Candidate 7 fixed the non-fullscreen player title by sourcing title text from the exact `ResolvedMedia` JSON first, persistent-tab title second, generic Activity title last, and attaching the title view directly to `activity_player`.
-
-Final Candidate 7 device QA reported:
+Final Candidate 7 device QA:
 1. Non-fullscreen Player title fix — **PASS**.
 2. Failed-player recovery UI — **PASS**.
 3. Refresh source remains in Player and reloads the same persistent-tab/single-ExoPlayer path — **PASS**.
@@ -44,19 +43,20 @@ Final Candidate 7 device QA reported:
 
 Other accepted 0.3.2 areas include dashboard return anchoring, language-aware source/title behavior, active-tab multi-select, per-tab playback preferences, search/filter accordions, Diagnostics/History access, Recently Closed up to 100 entries, consolidated dashboard gear menu, privacy curtain + system authentication, decoder fallback, and direct APK validation improvements.
 
+## Roadmap correction
+The `Report log on GitHub` / GitHub issue-reporting feature is **NOT PLANNED**.
+- Issue #3 is closed as not planned.
+- PR #4 is closed without merge.
+- The abandoned `work/0.3.3-report-log-github` branch was reset back to the released baseline so its implementation is not an active code line.
+- Do not reintroduce GitHub-reporting behavior unless the user explicitly requests it in a future conversation.
+
 ## Next development — 0.3.3
-Issue #3 tracks the postponed feature: **user-initiated “Report log on GitHub” shortcut**.
+Start 0.3.3 cleanly from the current post-release `main` head.
+- version target: 0.3.3 / versionCode 6;
+- no feature scope is assumed yet;
+- keep all 0.3.2 accepted behavior and protected architecture intact until a new feature/fix is explicitly chosen.
 
-Required boundaries:
-- user initiated only; never upload diagnostics automatically;
-- reuse sanitized `OperationLog` behavior;
-- no thumbnails, media frames, page/body text, cookies, request headers, Authorization values, credentials, or browser credentials;
-- user must be able to review what will be shared before external navigation/submission;
-- keep existing `OperationLog.share(...)` available;
-- preserve protected Build #234 architecture, resolver policy, and exactly one ExoPlayer;
-- bilingual English/Spanish UI.
-
-Start 0.3.3 from the post-release `main` head on a dedicated branch. Return-to-Vivaldi behavior remains unchanged.
+Return-to-Vivaldi behavior remains unchanged.
 
 ## QA format
 When asking the user to test an APK: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
