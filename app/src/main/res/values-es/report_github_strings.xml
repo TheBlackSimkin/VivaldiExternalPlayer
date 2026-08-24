@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="report_issue_github">Reportar problema en GitHub</string>
+    <string name="github_report_preview_title">Revisar reporte de GitHub</string>
+    <string name="github_report_preview">GitHub recibirá solo este texto prellenado:\n\nVersión: %1$s (%2$d)\nCommit Git: %3$s\nCompilación de GitHub Actions: %4$s\n\nEl registro de operaciones no está incluido. Puedes editar todo en GitHub antes de enviarlo.</string>
+    <string name="github_report_issue_title">Problema de ExternalPlayer %1$s</string>
+    <string name="github_report_issue_body">### Problema\nDescribe aquí lo que ocurrió.\n\n### Compilación de la app\n- Versión: %1$s (%2$d)\n- Commit Git: %3$s\n- Compilación de GitHub Actions: %4$s\n\n### Privacidad\nNo se adjunta automáticamente ningún registro de operaciones. Añade solo los detalles técnicos que quieras compartir.</string>
+    <string name="open_github">Abrir GitHub</string>
+    <string name="github_report_unavailable">Ninguna aplicación puede abrir GitHub en este dispositivo.</string>
+</resources>
