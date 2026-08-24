@@ -71,6 +71,9 @@ object DashboardMenu {
         row(content, activity, R.string.settings) {
             dialog.dismiss(); activity.startActivity(Intent(activity, SettingsActivity::class.java))
         }
+        row(content, activity, R.string.report_issue_github) {
+            dialog.dismiss(); GitHubIssueReporter.showReview(activity)
+        }
         row(content, activity, R.string.share_operations_log) {
             dialog.dismiss(); OperationLog.share(activity)
         }
