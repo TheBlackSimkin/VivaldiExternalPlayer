@@ -13,7 +13,8 @@ import androidx.appcompat.app.AppCompatActivity
  * Privacy boundary:
  * - No operations-log content is read or attached here.
  * - No page/media/request data is included.
- * - Nothing is sent until the user confirms and then submits on GitHub.
+ * - No report metadata leaves the app before the user confirms the preview.
+ * - GitHub still requires the user to review/edit and submit the issue there.
  */
 object GitHubIssueReporter {
     private const val NEW_ISSUE_URL =
