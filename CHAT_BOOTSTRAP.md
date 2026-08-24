@@ -25,10 +25,10 @@ Final accepted app-code/provenance head `aa81c55c1d7bd1b60283f9721c029cd62bf17d4
 - debug artifact `9503754068`
 - build/sign/package/alignment/upload PASS
 
-GitHub compare from that accepted head to the post-merge handoff head showed only `PROJECT_STATE.md` and `CHAT_BOOTSTRAP.md` changes, so no app code changed after the green #411 build. This closes release provenance without relying on the unavailable push-run listing.
+GitHub compare from that accepted head to the post-merge handoff showed only `PROJECT_STATE.md` and `CHAT_BOOTSTRAP.md` changes, so no app code changed after the green #411 build. Release provenance is closed.
 
 ## Critical accepted regression fix
-Candidate 6 barred `PlayerActivity` from the hidden/default-display preparation path. The exact former Revive All + foreground playback failure is device-PASS, including continued background revival while watching. Do not alter this path without regression evidence.
+Candidate 6 barred `PlayerActivity` from the hidden/default-display preparation path. The former Revive All + foreground playback failure is device-PASS, including continued background revival while watching. Do not alter this path without regression evidence.
 
 ## Candidate 7 final device QA
 1. Non-fullscreen Player title — **PASS**.
@@ -38,20 +38,20 @@ Candidate 6 barred `PlayerActivity` from the hidden/default-display preparation 
 
 Never translate/infer/invent titles; use legitimate resolved/stored source metadata only.
 
-## START HERE — 0.3.3
-Issue #3: **Add user-initiated “Report log on GitHub” shortcut**.
+## Roadmap correction
+`Report log on GitHub` is **NOT PLANNED**.
+- Issue #3: closed as not planned.
+- PR #4: closed without merge.
+- `work/0.3.3-report-log-github`: reset to the released baseline.
+Do not reintroduce this feature unless the user explicitly requests it later.
 
-Implementation boundaries:
-- user initiated only; never upload/post logs automatically;
-- keep existing `OperationLog.share(...)`;
-- reuse sanitized OperationLog/build metadata;
-- no thumbnails, media frames, page/body text, cookies, request headers, Authorization values, credentials, or browser credentials;
-- user must review what will be shared before external navigation/submission;
-- minimal prefilled GitHub issue context by default; do not silently place the full operations log into a public issue body;
-- bilingual English/Spanish UI;
-- preserve Build #234 background preparation, current resolver policy, return-to-Vivaldi behavior, and exactly one ExoPlayer.
+## START HERE — clean 0.3.3
+Start a fresh 0.3.3 development branch from current `main`.
+- target 0.3.3 / versionCode 6;
+- no new feature scope is assumed yet;
+- preserve all accepted 0.3.2 behavior and architecture until a new feature/fix is explicitly selected.
 
-Create a dedicated 0.3.3 branch from the post-release `main` head before changing app code.
+Return-to-Vivaldi behavior remains unchanged.
 
 ## QA format
 When asking for APK QA: exactly one detailed steps/EXPECTED/RESULT code block, then one compact-answer code block. No extra code blocks.
