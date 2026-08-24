@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="report_issue_github">Report issue on GitHub</string>
+    <string name="github_report_preview_title">Review GitHub report</string>
+    <string name="github_report_preview">GitHub will receive only this prefilled text:\n\nVersion: %1$s (%2$d)\nGit commit: %3$s\nGitHub Actions build: %4$s\n\nThe operations log is not included. You can edit everything on GitHub before submitting.</string>
+    <string name="github_report_issue_title">ExternalPlayer %1$s issue</string>
+    <string name="github_report_issue_body">### Problem\nDescribe what happened here.\n\n### App build\n- Version: %1$s (%2$d)\n- Git commit: %3$s\n- GitHub Actions build: %4$s\n\n### Privacy\nNo operations log is attached automatically. Add only technical details you choose to share.</string>
+    <string name="open_github">Open GitHub</string>
+    <string name="github_report_unavailable">No app can open GitHub on this device.</string>
+</resources>
